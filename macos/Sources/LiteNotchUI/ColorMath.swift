@@ -45,6 +45,13 @@ public enum ColorMath {
         return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
     }
 
+    /// `fg` drawn with `alpha` over an opaque `bg` (sRGB-space blending,
+    /// which is what AppKit does).
+    public static func over(_ fg: RGB, alpha: Double, _ bg: RGB) -> RGB {
+        let a = min(max(alpha, 0), 1)
+        return RGB(r: fg.r * a + bg.r * (1 - a), g: fg.g * a + bg.g * (1 - a), b: fg.b * a + bg.b * (1 - a))
+    }
+
     /// True when black text reads better than white on this background:
     /// the luminance where both have the same contrast ratio is about 0.179.
     public static func prefersDarkText(on c: RGB) -> Bool {

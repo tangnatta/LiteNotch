@@ -167,6 +167,13 @@ scripts/         build-app.sh, bench.sh, coverage.sh
     directly inside the data directory's `artwork` folder.
   - Only validated integers and a `[A-Za-z0-9/._-]` path are interpolated into
     the root watchdog command.
+  - Copies the clipboard history would not keep (off, concealed, excluded
+    app) never reach disk; files of dropped copies are pruned at once, and
+    with "Keep on restart" off the clips folder is emptied on quit.
+  - Socket notifications cannot use the core's own sources (`agent`,
+    `litenotch`, …) or the captured-banner group; they get "(script)".
+  - The app and CLI are signed with the hardened runtime (no `DYLD_*`
+    injection to borrow the Accessibility permission). Keep it on.
   - The socket lives in a 0700 directory with mode 0600; server and CLI both
     check the peer uid. A request line must arrive within 5 s in total.
 - Anything that moves continuously in the shell (the equaliser bars) must be
@@ -233,6 +240,21 @@ the plain animation.
   time holds anything below High), in contrast to Notchy's "newest wins".
 
 ## Not done yet
+
+- Before a public release (security review, Nov 2026): compile the
+  `LITENOTCH_BENCH_*` switches out of release builds (bench a separate
+  build), stop `LITENOTCH_DATA_DIR` from chmod-ing a folder LiteNotch did
+  not create, downsample now-playing artwork and bound pasteboard text
+  before converting it, Developer ID signing + notarization (then drop the
+  cask's quarantine removal), and `cargo audit` in CI.
+- Next after the beta (agreed): make the closed-lid root watchdog
+  event-driven. Today it polls every 2 s (`ps` plus a file check, about
+  0.1 % CPU, only while the mode is on). Plan: LiteNotch holds the write end
+  of a FIFO in its private temp dir; the root loop blocks reading it and
+  restores sleep the moment it gets EOF (LiteNotch quit, crashed, or turned
+  the mode off), keeping the 12 h cap. Root code: review it on its own.
+  Longer term, a launchd daemon via SMAppService (needs a Developer ID)
+  replaces the password prompt and the watchdog.
 
 - Reading other apps' notifications (`SystemNotificationObserver`) is
   unit-tested against a fake accessibility tree only. It has never run

@@ -85,6 +85,9 @@ public enum ShellCommand: Equatable {
     /// Not part of the Rust `Command` enum: the app's bridge handles these
     /// (writing/removing the Claude Code hook entries) itself.
     case hooksInstall, hooksUninstall
+    /// Makes LiteNotch Claude Code's status line (wrapping the one there),
+    /// which is where usage limits come from; and the reverse.
+    case statuslineInstall, statuslineUninstall
 
     var object: [String: Any] {
         func c(_ name: String, _ extra: [String: Any] = [:]) -> [String: Any] {
@@ -140,6 +143,8 @@ public enum ShellCommand: Equatable {
         case .colorPicked(let hex): return c("color_picked", ["hex": hex])
         case .hooksInstall: return c("hooks_install")
         case .hooksUninstall: return c("hooks_uninstall")
+        case .statuslineInstall: return c("statusline_install")
+        case .statuslineUninstall: return c("statusline_uninstall")
         }
     }
 
@@ -226,14 +231,16 @@ public final class AppModel: ObservableObject {
     private let sampler: ColorSampling
     private var openPanels: Set<ObjectIdentifier> = []
 
-    /// Brings the app a target names to the front, launching it if needed.
+    /// Brings the app a target names to the front. A bundle id that is not
+    /// running is launched only from the standard application folders, so a
+    /// notification cannot start an arbitrary program by naming its id.
     public static func activate(_ target: OpenTarget) {
         let ws = NSWorkspace.shared
         switch target {
         case .app(let id):
             if let running = NSRunningApplication.runningApplications(withBundleIdentifier: id).first {
                 running.activate()
-            } else if let url = ws.urlForApplication(withBundleIdentifier: id) {
+            } else if let url = ws.urlForApplication(withBundleIdentifier: id), mayLaunch(url) {
                 ws.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
             }
         case .appNamed(let name):
@@ -243,6 +250,17 @@ public final class AppModel: ObservableObject {
         case .tab:
             break
         }
+    }
+
+    /// True for an app bundle in /Applications, /System/Applications or
+    /// ~/Applications (symlinks resolved, no `..` tricks).
+    public static func mayLaunch(_ url: URL,
+                                 home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Bool {
+        guard url.isFileURL else { return false }
+        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        let roots = ["/Applications", "/System/Applications",
+                     home.standardizedFileURL.resolvingSymlinksInPath().appendingPathComponent("Applications").path]
+        return roots.contains { path.hasPrefix($0 + "/") } && path.hasSuffix(".app")
     }
 
     public init(bridge: CoreBridge, sampler: ColorSampling = SystemColorSampler()) {

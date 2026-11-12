@@ -7,27 +7,37 @@ on:
     paths-ignore: ["Casks/**"]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   rust:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
           components: clippy, rustfmt, llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - uses: taiki-e/install-action@cargo-llvm-cov
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - uses: taiki-e/install-action@3f7c3597aa4e6da3f315e128de702ce61e7b2877 # cargo-llvm-cov
       - name: Tests with coverage (fails under 90 % lines)
         run: scripts/coverage.sh
 
   app:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Build the app bundle
         run: scripts/build-app.sh
       - name: Shell tests
@@ -36,7 +46,7 @@ jobs:
         run: scripts/bench.sh --check
       - name: Keep the app bundle
         run: ditto -c -k --keepParent dist/LiteNotch.app dist/LiteNotch-ci.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: LiteNotch-app
           path: dist/LiteNotch-ci.zip
@@ -45,6 +55,8 @@ jobs:
   cask:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Cask syntax
         run: ruby -c Casks/litenotch.rb

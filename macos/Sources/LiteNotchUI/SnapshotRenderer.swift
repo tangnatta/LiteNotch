@@ -17,7 +17,10 @@ public enum SnapshotRenderer {
                  section: SettingsSection = .general, pane: AgentsPane = .sessions,
                  timerPane: TimerPane = .focus, clipPreview: Int? = nil,
                  accessibilityNeeded: Bool = false) throws {
-            let size = expanded ? canvas : CGSize(width: canvas.width, height: 110)
+            // A pending approval opens the panel whatever `expanded` says;
+            // a short canvas would show it cut off.
+            let open = NotchPresentation.mode(expanded: expanded, view: vm) == .expanded
+            let size = open ? canvas : CGSize(width: canvas.width, height: 110)
             if let u = try write(vm, expanded: expanded, tab: tab, section: section, pane: pane,
                                  timerPane: timerPane, clipPreview: clipPreview,
                                  accessibilityNeeded: accessibilityNeeded, size: size,

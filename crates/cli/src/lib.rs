@@ -170,8 +170,13 @@ fn hook(env: &Env, stdin: &mut dyn Read, stdout: &mut dyn Write) -> i32 {
     let Some(mut payload) = read_input(stdin) else {
         return 0;
     };
-    if let (Some(app), Some(obj)) = (&env.app, payload.as_object_mut()) {
-        obj.insert("litenotch_app".into(), Value::String(app.clone()));
+    // Only this process's own app may be named; a value already in the
+    // payload is never passed on.
+    if let Some(obj) = payload.as_object_mut() {
+        obj.remove("litenotch_app");
+        if let Some(app) = &env.app {
+            obj.insert("litenotch_app".into(), Value::String(app.clone()));
+        }
     }
     let is_permission =
         payload.get("hook_event_name").and_then(Value::as_str) == Some("PermissionRequest");

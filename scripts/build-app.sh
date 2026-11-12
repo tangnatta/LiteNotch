@@ -21,8 +21,8 @@ APP=dist/LiteNotch.app
 
 echo "==> Rust core and CLI ($PROFILE)"
 # The CLI is built on its own so it does not pick up the app's frameworks.
-cargo build $CARGO_FLAGS -p litenotch-app
-cargo build $CARGO_FLAGS -p litenotch
+cargo build --locked $CARGO_FLAGS -p litenotch-app
+cargo build --locked $CARGO_FLAGS -p litenotch
 
 echo "==> Shell ($SWIFT_CONFIG)"
 LITENOTCH_RUST_LIB="$ROOT/target/$PROFILE" \
@@ -41,14 +41,21 @@ cp "target/$PROFILE/litenotch" "$APP/Contents/Helpers/litenotch"
 # comment at the top of the source file).
 clang -dynamiclib -fobjc-arc -Os -fvisibility=hidden -framework Foundation \
     -o "$APP/Contents/Helpers/libnowplaying.dylib" macos/NowPlayingHelper/nowplaying.m
-sed "s/@VERSION@/$VERSION/g" macos/Info.plist > "$APP/Contents/Info.plist"
+# macOS wants plain numbers in the bundle version; a pre-release suffix such
+# as -beta.1 stays in the release name and the Homebrew cask.
+BUNDLE_VERSION=${VERSION%%-*}
+sed "s/@VERSION@/$BUNDLE_VERSION/g" macos/Info.plist > "$APP/Contents/Info.plist"
 if [ "$PROFILE" = release ]; then
     strip -x "$APP/Contents/MacOS/LiteNotch"
 fi
 # Ad-hoc signature: enough to run locally. Distribution needs a Developer ID
 # identity and notarization.
-codesign --force --sign - "$APP/Contents/Helpers/litenotch"
+# The hardened runtime makes macOS refuse DYLD_* injection, so code that
+# launches LiteNotch cannot borrow its Accessibility permission. The
+# now-playing library is loaded by /usr/bin/perl, not by the app, so it is
+# signed without it.
+codesign --force --options runtime --sign - "$APP/Contents/Helpers/litenotch"
 codesign --force --sign - "$APP/Contents/Helpers/libnowplaying.dylib"
-codesign --force --sign - "$APP"
+codesign --force --options runtime --sign - "$APP"
 
 du -sh "$APP" | awk '{print "==> " $2 " (" $1 ")"}'

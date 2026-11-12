@@ -4,7 +4,7 @@
 //! entitlement, and `/usr/bin/perl` is one. The helper library is therefore
 //! loaded into perl; this module starts that process and reads its output.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread::JoinHandle;
@@ -26,7 +26,11 @@ const MAX_LINE_BYTES: usize = 16 * 1024;
 
 fn perl(lib: &Path, mode: &str) -> Command {
     let mut command = Command::new(PERL);
+    // A clean environment: PERL5OPT / PERL5LIB from the user's session must
+    // not change what perl loads.
     command
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
         .arg("-e")
         .arg(LOADER)
         .arg(lib)
@@ -70,15 +74,29 @@ impl NowPlayingStream {
             .name("litenotch-nowplaying".into())
             .spawn(move || {
                 let mut lines = BufReader::new(stdout);
-                let mut line = String::new();
+                let mut line = Vec::new();
                 loop {
                     line.clear();
-                    match lines.read_line(&mut line) {
+                    // Never hold more than a line's limit in memory: a web
+                    // page chooses its own media title.
+                    let read = (&mut lines)
+                        .take(MAX_LINE_BYTES as u64 + 1)
+                        .read_until(b'\n', &mut line);
+                    match read {
                         Ok(0) | Err(_) => break,
-                        Ok(_) if line.len() <= MAX_LINE_BYTES => {
-                            sink(line.trim_end().to_string());
+                        Ok(_) if line.len() > MAX_LINE_BYTES => {
+                            // Too long: drop the rest of it, then go on.
+                            if line.last() != Some(&b'\n')
+                                && lines.skip_until(b'\n').map_or(true, |n| n == 0)
+                            {
+                                break;
+                            }
                         }
-                        Ok(_) => {}
+                        Ok(_) => {
+                            if let Ok(text) = std::str::from_utf8(&line) {
+                                sink(text.trim_end().to_string());
+                            }
+                        }
                     }
                 }
             });
@@ -149,7 +167,10 @@ mod tests {
     fn lines_are_delivered_and_oversized_ones_dropped() {
         let (tx, rx) = mpsc::channel();
         let script = format!(
-            "echo one; printf '%s\\n' \"$(head -c {} /dev/zero | tr '\\0' x)\"; echo two; sleep 30",
+            // `exec`, so the shell becomes `sleep`: a child `sleep` would
+            // keep the pipe open after the shell is killed (the real helper
+            // is a single perl process).
+            "echo one; printf '%s\\n' \"$(head -c {} /dev/zero | tr '\\0' x)\"; echo two; exec sleep 30",
             MAX_LINE_BYTES + 10
         );
         let stream = NowPlayingStream::spawn(&mut shell(&script), move |line| {

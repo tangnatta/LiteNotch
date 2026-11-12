@@ -378,7 +378,8 @@ final class FormatTests: XCTestCase {
         XCTAssertEqual(Format.tokens(2_000), "2k")
         XCTAssertEqual(Format.tokens(4_200_000), "4.2M")
         XCTAssertEqual(Format.percent(42.4), "42%")
-        XCTAssertEqual(Format.featureName("agent_request"), "Agent request")
+        XCTAssertEqual(Format.featureName("agent_request"), "Approval requests")
+        XCTAssertEqual(Format.featureName("something_new"), "Something new")
         XCTAssertEqual(Format.phaseLabel(.longBreak), "Long break")
         XCTAssertEqual(Format.duration(secs: 0), "0m")
         XCTAssertEqual(Format.duration(secs: 45 * 60), "45m")
@@ -408,16 +409,17 @@ final class FormatTests: XCTestCase {
         XCTAssertEqual(Format.agentsHeadline([s("a", .ended)]), "No active sessions")
         XCTAssertEqual(Format.agentsHeadline([s("a", .working)]), "1 active session")
         XCTAssertEqual(Format.agentsHeadline([s("a", .working), s("b", .idle), s("c", .ended)]), "2 active sessions")
-        XCTAssertEqual(Format.agentsHeadline([s("a", .working), s("b", .waitingInput)]), "b needs input")
+        XCTAssertEqual(Format.agentsHeadline([s("a", .working), s("b", .waitingInput)]), "b needs you")
         XCTAssertEqual(Format.agentsHeadline([s("a", .waitingInput), s("b", .waitingApproval)]), "b needs approval")
 
         let media = try loadFixture("media").usage
-        XCTAssertEqual(Format.agentsDetail(media), "5-hour 42% \u{00B7} 832k tokens today")
+        XCTAssertEqual(Format.agentsDetail(media).tokens, "832k tokens today")
+        XCTAssertEqual(Format.agentsDetail(media).limit, "42% of 5-hour limit")
         XCTAssertTrue(Format.hasTokenData(media))
         var none = try loadFixture("idle").usage
         none.week = []; none.models = []; none.projects = []
         none.today = TokenTotals(input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0)
-        XCTAssertEqual(Format.agentsDetail(none), "0 tokens today")
+        XCTAssertEqual(Format.agentsDetail(none).tokens, "0 tokens today")
         XCTAssertFalse(Format.hasTokenData(none))
         XCTAssertFalse(Format.hasTokenData(try loadFixture("idle").usage))
     }
@@ -446,7 +448,7 @@ final class ApprovalSecurityTests: XCTestCase {
         XCTAssertFalse(p.offeredDecisions.contains(.allow))
         XCTAssertEqual(p.offeredDecisions, [.deny, .pass])
         XCTAssertEqual(ApprovalPresentation.truncatedNotice,
-                       "Command too long to review here \u{2014} answer in the terminal")
+                       "Command too long to review here \u{2014} answer in Terminal")
     }
 
     func testAllowOfferedWhenComplete() {
@@ -1408,6 +1410,221 @@ final class TypedTimerLengthTests: XCTestCase {
         ]
         for (text, want) in cases {
             XCTAssertEqual(Format.parseDuration(text), want, "\"\(text)\"")
+        }
+    }
+}
+
+/// Text tokens stay readable (WCAG AA, 4.5:1) on every surface they sit on:
+/// the panel, a card, a hovered row, and a hovered row inside a card.
+final class TextContrastTests: XCTestCase {
+    private func surfaces(dark: Bool) -> [(String, ColorMath.RGB)] {
+        let panel = NT.Tone.panel.resolved(dark: dark, over: ColorMath.RGB(r: 0, g: 0, b: 0))
+        let card = NT.Tone.fill.resolved(dark: dark, over: panel)
+        return [("panel", panel), ("card", card),
+                ("hover", NT.Tone.fillHi.resolved(dark: dark, over: panel)),
+                ("hover in card", NT.Tone.fill.resolved(dark: dark, over: card))]
+    }
+
+    func testTextTokensPassAAOnEverySurfaceInBothSchemes() {
+        for dark in [true, false] {
+            for (name, bg) in surfaces(dark: dark) {
+                for tone in [NT.Tone.text1, .text2, .text3] {
+                    let ratio = ColorMath.contrast(tone.resolved(dark: dark, over: bg), bg)
+                    XCTAssertGreaterThanOrEqual(ratio, 4.5, "\(tone) on \(name), \(dark ? "dark" : "light"): \(ratio)")
+                }
+            }
+        }
+    }
+
+    func testTextLevelsStayDistinct() {
+        for dark in [true, false] {
+            let bg = NT.Tone.panel.resolved(dark: dark, over: ColorMath.RGB(r: 0, g: 0, b: 0))
+            let r = [NT.Tone.text1, .text2, .text3].map { ColorMath.contrast($0.resolved(dark: dark, over: bg), bg) }
+            XCTAssertGreaterThan(r[0], r[1])
+            XCTAssertGreaterThan(r[1], r[2])
+        }
+    }
+
+    func testCompositing() {
+        let w = ColorMath.RGB(r: 1, g: 1, b: 1), b = ColorMath.RGB(r: 0, g: 0, b: 0)
+        XCTAssertEqual(ColorMath.over(w, alpha: 0.5, b), ColorMath.RGB(r: 0.5, g: 0.5, b: 0.5))
+        XCTAssertEqual(ColorMath.over(w, alpha: 2, b), w)
+        XCTAssertEqual(ColorMath.over(w, alpha: 0, b), b)
+    }
+
+    func testTheClosedNotchAndToastAreBlackInEveryTheme() throws {
+        let src = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/LiteNotchUI/NotchRootView.swift"), encoding: .utf8)
+        XCTAssertTrue(src.contains("shape.fill(mode == .expanded ? NT.panel : Color.black)"))
+    }
+}
+
+final class ConfirmGateTests: XCTestCase {
+    private let t0 = Date(timeIntervalSince1970: 1_000)
+
+    func testFirstClickArmsSecondClickActs() {
+        var g = ConfirmGate()
+        XCTAssertFalse(g.isArmed(at: t0))
+        XCTAssertFalse(g.tap(at: t0), "the first click only asks")
+        XCTAssertTrue(g.isArmed(at: t0.addingTimeInterval(1)))
+        XCTAssertTrue(g.tap(at: t0.addingTimeInterval(2.9)), "a second click inside the window acts")
+        XCTAssertFalse(g.isArmed(at: t0.addingTimeInterval(2.9)), "and disarms")
+    }
+
+    func testTimeoutReverts() {
+        var g = ConfirmGate()
+        _ = g.tap(at: t0)
+        XCTAssertFalse(g.isArmed(at: t0.addingTimeInterval(ConfirmGate.window)))
+        XCTAssertFalse(g.tap(at: t0.addingTimeInterval(3.5)), "a late click asks again")
+        XCTAssertTrue(g.isArmed(at: t0.addingTimeInterval(4)))
+    }
+
+    func testLeavingDisarms() {
+        var g = ConfirmGate()
+        _ = g.tap(at: t0)
+        g.disarm()
+        XCTAssertFalse(g.tap(at: t0.addingTimeInterval(0.5)), "after leaving, a click asks again")
+    }
+
+    func testClockGoingBackwardsDoesNotConfirm() {
+        var g = ConfirmGate()
+        _ = g.tap(at: t0)
+        XCTAssertFalse(g.isArmed(at: t0.addingTimeInterval(-1)))
+    }
+
+    func testQuestion() {
+        XCTAssertEqual(ConfirmGate.question(count: 12), "Clear 12 items?")
+        XCTAssertEqual(ConfirmGate.question(count: 1), "Clear 1 item?")
+        XCTAssertEqual(ConfirmGate.question(count: nil), "Clear all?")
+        XCTAssertEqual(ConfirmGate.question(count: 0), "Clear all?")
+    }
+}
+
+final class CopyTests: XCTestCase {
+    func testStatusLabelsArePlain() {
+        XCTAssertEqual(Format.statusLabel(.working), "Working")
+        XCTAssertEqual(Format.statusLabel(.waitingInput), "Needs you")
+        XCTAssertEqual(Format.statusLabel(.waitingApproval), "Waiting for approval")
+        XCTAssertEqual(Format.statusLabel(.idle), "Idle")
+        XCTAssertEqual(Format.statusLabel(.ended), "Done")
+    }
+
+    func testKeepAwakeTooltipSaysWhatHappensAndForHowLong() {
+        XCTAssertEqual(KeepAwakeText.help(on: false, untilMs: nil, nowMs: 0), "Keep the Mac awake")
+        XCTAssertEqual(KeepAwakeText.help(on: true, untilMs: nil, nowMs: 0),
+                       "Keeping the Mac awake until you turn it off. Click to stop.")
+        XCTAssertEqual(KeepAwakeText.help(on: true, untilMs: 42 * 60_000 - 500, nowMs: 0),
+                       "Keeping the Mac awake, 42 min left. Click to stop.")
+        XCTAssertEqual(KeepAwakeText.help(on: true, untilMs: 90 * 60_000, nowMs: 0),
+                       "Keeping the Mac awake, 1h 30m left. Click to stop.")
+        XCTAssertEqual(KeepAwakeText.help(on: true, untilMs: 1_000, nowMs: 5_000),
+                       "Keeping the Mac awake, 1 min left. Click to stop.")
+    }
+
+    func testNoTrackedCapsLabelsInViews() throws {
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/LiteNotchUI")
+        for f in try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+            where f.pathExtension == "swift" {
+            let src = try String(contentsOf: f, encoding: .utf8)
+            XCTAssertFalse(src.contains(".tracking("), f.lastPathComponent)
+            XCTAssertFalse(src.contains(".uppercased())"), f.lastPathComponent)
+        }
+    }
+}
+
+final class RoundTwoTests: XCTestCase {
+    private func request(_ tool: String, _ summary: String) -> PermissionRequest {
+        PermissionRequest(id: "r", sessionId: "s", project: "LiteNotch", toolName: tool, summary: summary,
+                          detail: summary, createdMs: 0, expiresMs: 0)
+    }
+
+    func testApprovalHeadlineSaysWhatIsAsked() {
+        XCTAssertEqual(ApprovalPresentation.headline(request("Bash", "ls")),
+                       "Claude Code wants to run a command in LiteNotch")
+        XCTAssertEqual(ApprovalPresentation.headline(request("Edit", "/Users/me/src/main.rs")),
+                       "Claude Code wants to edit main.rs in LiteNotch")
+        XCTAssertEqual(ApprovalPresentation.headline(request("Write", "")),
+                       "Claude Code wants to edit a file in LiteNotch")
+        XCTAssertEqual(ApprovalPresentation.headline(request("WebSearch", "q")),
+                       "Claude Code wants to use WebSearch in LiteNotch")
+        // Invisible formatting cannot sneak into the headline either.
+        XCTAssertEqual(ApprovalPresentation.headline(request("Bash\u{202E}", "x")),
+                       "Claude Code wants to use Bash\u{FFFD} in LiteNotch")
+    }
+
+    func testOverrunAndScheduleAndSourceTags() throws {
+        XCTAssertEqual(Format.overrun(65), "1:05")
+        XCTAssertEqual(Format.overrun(-65), "1:05 over")
+        let p = try loadFixture("idle").settings.pomodoro
+        XCTAssertEqual(Format.scheduleLines(p),
+                       ["\(p.focusSecs / 60) min focus \u{00B7} \(p.shortBreakSecs / 60) min break",
+                        "\(p.longBreakSecs / 60) min long break every \(p.roundsBeforeLong) rounds"])
+        XCTAssertEqual(Format.sourceTag("ci"), "CI")
+        XCTAssertEqual(Format.sourceTag("agent"), "Agent")
+        XCTAssertEqual(Format.sourceTag("Slack"), "Slack")
+        XCTAssertNil(Format.sourceTag(""))
+        XCTAssertNil(Format.sourceTag("litenotch"))
+        XCTAssertEqual(Format.phaseLabel(.idle), "Focus")
+    }
+
+    func testStatuslineCommandsAndField() throws {
+        XCTAssertEqual(ShellCommand.statuslineInstall.encode(), #"{"cmd":"statusline_install"}"#)
+        XCTAssertEqual(ShellCommand.statuslineUninstall.encode(), #"{"cmd":"statusline_uninstall"}"#)
+        XCTAssertNil(try loadFixture("idle").agents.statuslineInstalled)
+        let json = #"{"sessions":[],"pending":[],"hooks_installed":true,"statusline_installed":true}"#
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        XCTAssertEqual(try d.decode(AgentsView.self, from: Data(json.utf8)).statuslineInstalled, true)
+        let old = #"{"sessions":[],"pending":[]}"#
+        XCTAssertNil(try d.decode(AgentsView.self, from: Data(old.utf8)).statuslineInstalled)
+    }
+
+    func testOnlyAppsInApplicationFoldersMayBeLaunched() {
+        let home = URL(fileURLWithPath: "/Users/me")
+        func ok(_ p: String) -> Bool { AppModel.mayLaunch(URL(fileURLWithPath: p), home: home) }
+        XCTAssertTrue(ok("/Applications/Ghostty.app"))
+        XCTAssertTrue(ok("/System/Applications/Utilities/Terminal.app"))
+        XCTAssertTrue(ok("/Users/me/Applications/Tool.app"))
+        XCTAssertFalse(ok("/Users/me/Downloads/Evil.app"))
+        XCTAssertFalse(ok("/tmp/x.app"))
+        XCTAssertFalse(ok("/Applications/../tmp/x.app"))
+        XCTAssertFalse(ok("/ApplicationsX/x.app"))
+        XCTAssertFalse(ok("/Applications/script.sh"))
+        XCTAssertFalse(AppModel.mayLaunch(URL(string: "https://example.com/Applications/a.app")!, home: home))
+    }
+
+    func testHugeImagesAreRefusedAndSmallOnesDownsampled() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        func png(_ w: Int, _ h: Int) throws -> String {
+            let rep = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+                                                     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                                     isPlanar: false, colorSpaceName: .deviceRGB,
+                                                     bytesPerRow: 0, bitsPerPixel: 0))
+            let url = dir.appendingPathComponent("\(w)x\(h).png")
+            try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: url)
+            return url.path
+        }
+        let big = try png(4097, 2)
+        XCTAssertNil(Thumbnails.downsample(big, px: 300, maxSourceSide: Thumbnails.maxSourceSide))
+        let ok = try png(1200, 600)
+        let cg = try XCTUnwrap(Thumbnails.downsample(ok, px: ArtworkCache.pixels, maxSourceSide: Thumbnails.maxSourceSide))
+        XCTAssertEqual(max(cg.width, cg.height), ArtworkCache.pixels)
+        XCTAssertNil(Thumbnails.downsample(dir.appendingPathComponent("missing.png").path, px: 300, maxSourceSide: 4096))
+    }
+
+    func testWarningAndDenyTextPassAA() {
+        for dark in [true, false] {
+            let panel = NT.Tone.panel.resolved(dark: dark, over: ColorMath.RGB(r: 0, g: 0, b: 0))
+            let card = NT.Tone.fill.resolved(dark: dark, over: panel)
+            for bg in [panel, card] {
+                XCTAssertGreaterThanOrEqual(ColorMath.contrast(dark ? NT.warningRGB.dark : NT.warningRGB.light, bg), 4.5)
+                XCTAssertGreaterThanOrEqual(ColorMath.contrast(dark ? NT.denyRGB.dark : NT.denyRGB.light, bg), 4.5)
+            }
         }
     }
 }

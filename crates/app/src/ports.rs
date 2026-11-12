@@ -29,8 +29,9 @@ pub trait Ports: Send {
     /// Sends a transport command to whatever is playing.
     fn media_command(&mut self, code: u32);
     fn power(&mut self) -> Option<PowerStatus>;
-    /// The new pasteboard content if it changed since the last call.
-    fn poll_clipboard(&mut self) -> Option<ClipCapture>;
+    /// The new pasteboard content if it changed since the last call. Images
+    /// and formatting are saved to disk only when `keep` accepts the copy.
+    fn poll_clipboard(&mut self, keep: &dyn Fn(&ClipCapture) -> bool) -> Option<ClipCapture>;
     /// Puts the image saved in `path` back on the pasteboard.
     fn write_clipboard_image(&mut self, path: &str);
     /// Puts text back with the formatting saved in `path`.
@@ -250,14 +251,14 @@ impl Ports for MacPorts {
         })
     }
 
-    fn poll_clipboard(&mut self) -> Option<ClipCapture> {
+    fn poll_clipboard(&mut self, keep: &dyn Fn(&ClipCapture) -> bool) -> Option<ClipCapture> {
         let count = pasteboard::change_count();
         if count == self.last_change {
             return None;
         }
         self.last_change = count;
         let mut capture = pasteboard::read().map(capture_from)?;
-        if self.clips_dir.as_os_str().is_empty() || capture.concealed {
+        if self.clips_dir.as_os_str().is_empty() || capture.concealed || !keep(&capture) {
             return Some(capture);
         }
         match capture.kind {
@@ -366,7 +367,7 @@ mod tests {
         // Whatever is on the pasteboard at launch is not reported. (Another
         // app copying during the test would legitimately produce a capture,
         // so only the immediate first poll is checked.)
-        assert_eq!(ports.poll_clipboard(), None);
+        assert_eq!(ports.poll_clipboard(&|_| true), None);
         ports.set_assertion(AwakeMode::System);
         assert_eq!(ports.assertion.mode(), Awake::System);
         ports.set_assertion(AwakeMode::Display);
@@ -418,14 +419,24 @@ mod tests {
         let mut ports = MacPorts::for_app(None, &dir);
         let html = b"<b>Bold</b> words";
         assert!(write_rich("Bold words", html, RichFormat::Html));
-        let capture = ports.poll_clipboard().expect("the copy is seen");
+        let capture = ports.poll_clipboard(&|_| true).expect("the copy is seen");
         assert_eq!(capture.text, "Bold words");
         let rich = capture.rich_path.expect("formatting is kept");
         assert_eq!(std::fs::read(&rich).unwrap(), html);
-        assert!(ports.poll_clipboard().is_none(), "seen once");
+        assert!(ports.poll_clipboard(&|_| true).is_none(), "seen once");
 
         assert!(write_text("plain"));
-        assert_eq!(ports.poll_clipboard().unwrap().rich_path, None);
+        assert_eq!(ports.poll_clipboard(&|_| true).unwrap().rich_path, None);
+
+        // A copy the history would not keep (excluded app, …) writes nothing.
+        let before = std::fs::read_dir(dir.join("clips")).unwrap().count();
+        assert!(write_rich("Secret", b"<b>Secret</b>", RichFormat::Html));
+        let capture = ports.poll_clipboard(&|_| false).unwrap();
+        assert_eq!(capture.rich_path, None);
+        assert_eq!(
+            std::fs::read_dir(dir.join("clips")).unwrap().count(),
+            before
+        );
 
         ports.write_clipboard_rich("Bold words", &rich);
         assert_eq!(

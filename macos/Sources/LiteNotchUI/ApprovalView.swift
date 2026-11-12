@@ -1,21 +1,33 @@
 import SwiftUI
 
+/// The strip beside the notch while approvals wait: what it is on the
+/// left, and with more than one, `1 of 2` and arrows to look through them.
 struct ApprovalHeader: View {
     let index: Int
     let total: Int
     let notch: CGSize
     let ear: CGFloat
+    var step: (Int) -> Void = { _ in }
 
     var body: some View {
         HStack(spacing: 0) {
             HStack(spacing: 7) {
                 Circle().fill(NT.accent).frame(width: 8, height: 8)
-                Text(verbatim: "Approval needed").nfont(12, .semibold).foregroundStyle(NT.text1)
+                Text(verbatim: "Approval needed").nfont(.emphasis).foregroundStyle(NT.text1)
             }
             Spacer(minLength: notch.width + 24)
             if total > 1 {
-                Text(verbatim: "\(index) of \(total)")
-                    .nfont(11.5, .medium).monospacedDigit().foregroundStyle(NT.text2)
+                HStack(spacing: 0) {
+                    IconButton(symbol: "chevron.left", label: "Previous request", size: NGlyph.small,
+                               tint: index > 1 ? NT.text1 : NT.text3) { step(-1) }
+                        .disabled(index <= 1)
+                    Text(verbatim: "\(index) of \(total)")
+                        .nfont(.bodyMedium).monospacedDigit().foregroundStyle(NT.text2)
+                        .accessibilityLabel(Text(verbatim: "Request \(index) of \(total)"))
+                    IconButton(symbol: "chevron.right", label: "Next request", size: NGlyph.small,
+                               tint: index < total ? NT.text1 : NT.text3) { step(1) }
+                        .disabled(index >= total)
+                }
             }
         }
         .padding(.horizontal, ear + 16)
@@ -40,46 +52,41 @@ struct ApprovalView: View {
     var body: some View {
         let p = ApprovalPresentation(request)
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                VText(request.project).nfont(12, .medium).foregroundStyle(NT.text2).lineLimit(1)
-                VText(request.toolName)
-                    .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(NT.text1)
-                    .padding(.horizontal, 7).frame(height: 20)
-                    .background(NT.fillHi, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .lineLimit(1)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VText(ApprovalPresentation.headline(request))
+                    .nfont(.title).foregroundStyle(NT.text1)
+                    .lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 8)
                 EverySecond { now in
                     let left = Format.secondsLeft(until: request.expiresMs, nowMs: now)
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock").font(.system(size: 10, weight: .semibold))
-                        Text(verbatim: Format.countdown(seconds: left)).monospacedDigit()
-                    }
-                    .nfont(11.5, .medium)
-                    .foregroundStyle(left <= 15 ? NT.accent : NT.text2)
-                    .accessibilityLabel(Text(verbatim: "Expires in \(left) seconds"))
+                    Text(verbatim: "Expires in \(Format.countdown(seconds: left))")
+                        .nfont(.bodyMedium).monospacedDigit()
+                        .foregroundStyle(left <= 15 ? NT.warning : NT.text2)
+                        .fixedSize()
+                        .help("Unanswered requests go back to the terminal")
+                        .accessibilityLabel(Text(verbatim: "Expires in \(left) seconds"))
                 }
             }
 
             NotchScroll {
                 VText(p.detail)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(size: NType.body.size, design: .monospaced))
                     .foregroundStyle(NT.text1)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .padding(10)
             }
             .frame(maxWidth: .infinity, minHeight: 36, maxHeight: .infinity)
-            .background(NT.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous))
 
             if p.showTruncatedNotice {
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 11))
-                    Text(verbatim: ApprovalPresentation.truncatedNotice).nfont(11.5, .medium)
+                    Image(systemName: "exclamationmark.triangle.fill").glyph(11, .regular)
+                    Text(verbatim: ApprovalPresentation.truncatedNotice).nfont(.bodyMedium)
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 }
-                .foregroundStyle(NT.accentText)
+                .foregroundStyle(NT.warning)
             }
 
             HStack(spacing: 8) {
@@ -104,16 +111,18 @@ struct ApprovalView: View {
             send(.agentDecide(requestId: request.id, decision: d))
         } label: {
             Text(verbatim: title(d))
-                .nfont(12.5, .semibold)
+                .nfont(.emphasis)
                 .foregroundStyle(foreground(d))
                 .frame(maxWidth: .infinity)
                 .frame(height: 34)
-                .background(background(d), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(background(d), in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
                 .opacity(enabled ? 1 : 0.4)
                 .contentShape(Rectangle())
+                .controlHover(RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+        .help(help(d))
         // Deliberately no `.keyboardShortcut` on any decision.
         .accessibilityLabel(Text(verbatim: title(d)))
     }
@@ -122,7 +131,14 @@ struct ApprovalView: View {
         switch d {
         case .allow: return "Allow"
         case .deny: return "Deny"
-        case .pass: return "Answer in terminal"
+        case .pass: return "Answer in Terminal"
+        }
+    }
+    private func help(_ d: Decision) -> String {
+        switch d {
+        case .allow: return "Let Claude Code run this once"
+        case .deny: return "Don\u{2019}t run it; Claude Code is told no"
+        case .pass: return "Show Claude Code\u{2019}s own prompt in the terminal instead"
         }
     }
     private func foreground(_ d: Decision) -> Color {

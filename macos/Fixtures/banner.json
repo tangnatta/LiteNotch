@@ -164,7 +164,8 @@
       }
     ],
     "pending": [],
-    "hooks_installed": true
+    "hooks_installed": true,
+    "statusline_installed": null
   },
   "usage": {
     "five_hour": {

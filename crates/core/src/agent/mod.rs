@@ -2,6 +2,7 @@
 
 pub mod hooks;
 pub mod install;
+pub mod statusline;
 
 pub use hooks::{
     decision_output, describe, sanitize, summarize, valid_bundle_id, Description, HookError,

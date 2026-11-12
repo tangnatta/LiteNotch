@@ -1,19 +1,39 @@
 import AppKit
 import SwiftUI
 
-/// Keeps the current track's artwork decoded. One entry is enough: only one
-/// thing plays at a time, and the path changes whenever the art does.
+/// The current track's artwork, downsampled off the main thread. One entry
+/// is enough: only one thing plays at a time, and the path changes whenever
+/// the art does.
 enum ArtworkCache {
-    private static var path: String?
-    private static var image: NSImage?
+    /// Longest side kept in memory; the largest place it is drawn is 150 pt.
+    static let pixels = 300
 
-    /// Main thread only (called from view bodies).
-    static func image(at path: String?) -> NSImage? {
-        guard let path, !path.isEmpty else { return nil }
-        if path == self.path { return image }
-        self.path = path
-        image = NSImage(contentsOfFile: path)
+    @MainActor private static var path: String?
+    @MainActor private static var image: NSImage?
+
+    @MainActor static func cached(_ path: String?) -> NSImage? {
+        guard let path, path == self.path else { return nil }
         return image
+    }
+
+    /// Decodes `path` at `pixels` on a background thread. Files over
+    /// `Thumbnails.maxSourceSide` pixels on a side are refused unread.
+    static func load(_ path: String?) async -> NSImage? {
+        guard let path, !path.isEmpty else { return nil }
+        if let hit = await cached(path) { return hit }
+        let cg = await Task.detached(priority: .utility) {
+            Thumbnails.downsample(path, px: pixels, maxSourceSide: Thumbnails.maxSourceSide)
+        }.value
+        let img = cg.map { NSImage(cgImage: $0, size: .zero) }
+        await MainActor.run { self.path = path; image = img }
+        return img
+    }
+
+    /// Snapshots only: the same decode, on the calling thread.
+    @MainActor static func loadNow(_ path: String?) -> NSImage? {
+        guard let path, !path.isEmpty else { return nil }
+        return Thumbnails.downsample(path, px: pixels, maxSourceSide: Thumbnails.maxSourceSide)
+            .map { NSImage(cgImage: $0, size: .zero) }
     }
 }
 
@@ -23,11 +43,14 @@ struct ArtworkView: View {
     let size: CGFloat
     let radius: CGFloat
     var dimmed = false
+    @Environment(\.isSnapshot) private var snapshot
+    @State private var loaded: NSImage?
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let image = snapshot ? ArtworkCache.loadNow(path) : (loaded ?? ArtworkCache.cached(path))
         Group {
-            if let image = ArtworkCache.image(at: path) {
+            if let image {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -45,6 +68,10 @@ struct ArtworkView: View {
         .frame(width: size, height: size)
         .clipShape(shape)
         .overlay(shape.strokeBorder(NT.hairline, lineWidth: size >= 40 ? 1 : 0.5))
+        .task(id: path) {
+            guard !snapshot else { return }
+            loaded = await ArtworkCache.load(path)
+        }
         .accessibilityHidden(true)
     }
 }
@@ -77,7 +104,7 @@ struct MediaProgress: View {
                     Spacer()
                     Text(verbatim: Format.clock(ms: dur))
                 }
-                .font(.system(size: 10)).monospacedDigit().foregroundStyle(NT.text3)
+                .nfont(.caption).monospacedDigit().foregroundStyle(NT.text3)
             }
         }
     }
@@ -97,12 +124,14 @@ struct MediaControls: View {
                        frame: size) { send(.media(.previous)) }
             Button { send(.media(.playPause)) } label: {
                 Image(systemName: media.playing ? "pause.fill" : "play.fill")
-                    .font(.system(size: size * 0.42, weight: .bold)).foregroundStyle(NT.panel)
+                    .glyph(size * 0.42, .bold).foregroundStyle(NT.panel)
                     .frame(width: size, height: size)
                     .background(NT.text1, in: Circle())
                     .contentShape(Circle())
+                    .controlHover(Circle())
             }
             .buttonStyle(.plain)
+            .help(media.playing ? "Pause" : "Play")
             .accessibilityLabel(Text(verbatim: media.playing ? "Pause" : "Play"))
             IconButton(symbol: "forward.fill", label: "Next", size: size * 0.42, tint: NT.text1,
                        frame: size) { send(.media(.next)) }

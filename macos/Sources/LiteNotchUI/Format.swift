@@ -107,15 +107,32 @@ public enum Format {
 
     public static func phaseLabel(_ p: Phase) -> String {
         switch p {
-        case .idle, .unknown: return "Pomodoro"
+        case .idle, .unknown: return "Focus"
         case .focus: return "Focus"
         case .shortBreak: return "Break"
         case .longBreak: return "Long break"
         }
     }
 
-    /// `agent_request` becomes `Agent request`.
+    /// A counter's name in plain words; unknown ones fall back to
+    /// `agent_request` → `Agent request`.
     public static func featureName(_ raw: String) -> String {
+        let plain: [String: String] = [
+            "panel_open": "Panel opened", "tab_now": "Home opened", "tab_home": "Home opened",
+            "tab_music": "Music opened", "tab_timer": "Timer opened", "tab_clipboard": "Clipboard opened",
+            "tab_agents": "Agents opened", "tab_inbox": "Inbox opened", "tab_settings": "Settings opened",
+            "pomodoro_start": "Focus sessions started", "pomodoro_complete": "Focus sessions finished",
+            "pomodoro_skip": "Focus phases skipped", "clipboard_copy": "Copied from history",
+            "clipboard_pin": "Clips pinned", "clipboard_search": "Clipboard searches",
+            "media_control": "Music controls used", "agent_request": "Approval requests",
+            "agent_allow": "Requests allowed", "agent_deny": "Requests denied",
+            "agent_pass": "Requests answered in Terminal", "caffeine_on": "Keep awake turned on",
+            "lid_mode_on": "Lid-closed mode turned on", "notification_shown": "Notifications shown",
+            "external_notify": "Notifications from scripts", "settings_change": "Settings changed",
+            "meeting_start": "Meetings started", "meeting_finish": "Meetings finished",
+            "color_pick": "Colours picked", "timer_start": "Timers started",
+        ]
+        if let p = plain[raw] { return p }
         let spaced = raw.replacingOccurrences(of: "_", with: " ")
         return spaced.prefix(1).uppercased() + spaced.dropFirst()
     }
@@ -123,10 +140,10 @@ public enum Format {
     public static func statusLabel(_ s: AgentStatus) -> String {
         switch s {
         case .working: return "Working"
-        case .waitingApproval: return "Needs approval"
-        case .waitingInput: return "Needs input"
+        case .waitingApproval: return "Waiting for approval"
+        case .waitingInput: return "Needs you"
         case .idle: return "Idle"
-        case .ended: return "Ended"
+        case .ended: return "Done"
         case .unknown: return "Unknown"
         }
     }
@@ -175,7 +192,7 @@ public enum Format {
             return "\(s.project) needs approval"
         }
         if let s = sessions.first(where: { $0.status == .waitingInput }) {
-            return "\(s.project) needs input"
+            return "\(s.project) needs you"
         }
         let n = activeSessions(sessions)
         switch n {
@@ -185,13 +202,36 @@ public enum Format {
         }
     }
 
-    /// `5-hour 42% · 184.6k tokens today`.
-    public static func agentsDetail(_ u: UsageSnapshot) -> String {
-        var parts: [String] = []
-        if let w = u.fiveHour { parts.append("5-hour \(percent(w.usedPct))") }
+    /// The Home row's second line (`184.6k tokens today`) and, when the
+    /// status line reports it, the 5-hour limit (`42% of 5-hour limit`)
+    /// shown apart from it on the right.
+    public static func agentsDetail(_ u: UsageSnapshot) -> (tokens: String, limit: String?) {
         let today = u.today.input + u.today.output
-        if today > 0 || parts.isEmpty { parts.append("\(tokens(today)) tokens today") }
-        return parts.joined(separator: " \u{00B7} ")
+        return ("\(tokens(today)) tokens today", u.fiveHour.map { "\(percent($0.usedPct)) of 5-hour limit" })
+    }
+
+    /// The pomodoro schedule in two lines that break at their own seams:
+    /// `25 min focus · 5 min break` and `15 min long break every 4 rounds`.
+    public static func scheduleLines(_ p: PomodoroConfig) -> [String] {
+        let rounds = p.roundsBeforeLong == 1 ? "every round" : "every \(p.roundsBeforeLong) rounds"
+        return ["\(p.focusSecs / 60) min focus \u{00B7} \(p.shortBreakSecs / 60) min break",
+                "\(p.longBreakSecs / 60) min long break \(rounds)"]
+    }
+
+    /// `1:05 over` once a time box has run out, else the time left.
+    public static func overrun(_ secsLeft: Int) -> String {
+        secsLeft < 0 ? "\(countdown(seconds: -secsLeft)) over" : countdown(seconds: secsLeft)
+    }
+
+    /// A notification's source as a tag, or nil when it says nothing new:
+    /// short acronyms are upper-cased (`ci` → `CI`), lower-case words get a
+    /// capital (`agent` → `Agent`), names stay as they are.
+    public static func sourceTag(_ source: String) -> String? {
+        let s = source.trimmingCharacters(in: .whitespaces)
+        guard !s.isEmpty, s.lowercased() != "litenotch" else { return nil }
+        if s.count <= 3, s.allSatisfy(\.isLetter) { return s.uppercased() }
+        if s == s.lowercased() { return s.prefix(1).uppercased() + s.dropFirst() }
+        return s
     }
 
     /// False when the token breakdown has nothing to draw.
@@ -201,6 +241,24 @@ public enum Format {
     }
 }
 
+/// The keep-awake button's tooltip; pure so it can be unit tested.
+public enum KeepAwakeText {
+    /// `Keep the Mac awake`, or while on `Keeping the Mac awake, 42 min
+    /// left. Click to stop.` (rounded up to whole minutes).
+    public static func help(on: Bool, untilMs: Int?, nowMs: Int) -> String {
+        guard on else { return "Keep the Mac awake" }
+        guard let until = untilMs else { return "Keeping the Mac awake until you turn it off. Click to stop." }
+        let mins = max(1, (Format.secondsLeft(until: until, nowMs: nowMs) + 59) / 60)
+        let left = mins < 60 ? "\(mins) min" : Format.duration(secs: mins * 60)
+        return "Keeping the Mac awake, \(left) left. Click to stop."
+    }
+}
+
+extension String {
+    /// `resets in 5m` becomes `Resets in 5m`.
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+}
+
 /// Decisions about approval prompts. Kept out of the views so the safety rules
 /// are unit tested.
 public struct ApprovalPresentation: Equatable {
@@ -208,13 +266,33 @@ public struct ApprovalPresentation: Equatable {
     public let showTruncatedNotice: Bool
     public let detail: String
     public let summary: String
-    public static let truncatedNotice = "Command too long to review here \u{2014} answer in the terminal"
+    public static let truncatedNotice = "Command too long to review here \u{2014} answer in Terminal"
 
     public init(_ r: PermissionRequest) {
         showAllow = !r.truncated
         showTruncatedNotice = r.truncated
         detail = ApprovalPresentation.visible(r.detail)
         summary = ApprovalPresentation.visible(r.summary)
+    }
+
+    /// What is being asked, in words: `Claude Code wants to run a command
+    /// in LiteNotch`, `… wants to edit main.rs in LiteNotch`, `… wants to
+    /// use WebSearch in LiteNotch`. The detail below shows the whole input.
+    public static func headline(_ r: PermissionRequest) -> String {
+        let project = visible(r.project)
+        let place = project.isEmpty ? "" : " in \(project)"
+        let tool = visible(r.toolName)
+        let file = (visible(r.summary) as NSString).lastPathComponent
+        switch tool {
+        case "Bash":
+            return "Claude Code wants to run a command\(place)"
+        case "Edit", "MultiEdit", "Write", "NotebookEdit":
+            return file.isEmpty ? "Claude Code wants to edit a file\(place)" : "Claude Code wants to edit \(file)\(place)"
+        case "Read":
+            return file.isEmpty ? "Claude Code wants to read a file\(place)" : "Claude Code wants to read \(file)\(place)"
+        default:
+            return "Claude Code wants to use \(tool.isEmpty ? "a tool" : tool)\(place)"
+        }
     }
 
     /// Decisions the UI may offer. Allow is never offered for a truncated

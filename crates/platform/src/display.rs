@@ -101,7 +101,37 @@ mod imp {
         fn CFRunLoopAddSource(rl: *mut c_void, source: *mut c_void, mode: *const c_void);
         fn CFRunLoopRun();
         fn CFRunLoopStop(rl: *mut c_void);
+        fn CFRunLoopWakeUp(rl: *mut c_void);
+        fn CFRunLoopSourceCreate(
+            allocator: *const c_void,
+            order: isize,
+            context: *mut SourceContext,
+        ) -> *mut c_void;
+        fn CFRunLoopSourceSignal(source: *mut c_void);
+        fn CFRunLoopSourceInvalidate(source: *mut c_void);
+        fn CFRelease(cf: *const c_void);
         static kCFRunLoopDefaultMode: *const c_void;
+    }
+
+    /// `CFRunLoopSourceContext` (version 0); only `perform` is used.
+    #[repr(C)]
+    struct SourceContext {
+        version: isize,
+        info: *mut c_void,
+        retain: *const c_void,
+        release: *const c_void,
+        copy_description: *const c_void,
+        equal: *const c_void,
+        hash: *const c_void,
+        schedule: *const c_void,
+        cancel: *const c_void,
+        perform: Option<extern "C" fn(*mut c_void)>,
+    }
+
+    /// Runs on the watcher thread when `stop` signals: ends its run loop.
+    extern "C" fn stop_run_loop(_: *mut c_void) {
+        // SAFETY: called by the run loop on its own thread.
+        unsafe { CFRunLoopStop(CFRunLoopGetCurrent()) };
     }
 
     extern "C" fn on_message(refcon: *mut c_void, _: IoObject, message: u32, _: *mut c_void) {
@@ -117,21 +147,26 @@ mod imp {
     }
 
     pub struct Watcher {
-        /// The listening thread's run loop, as an address (it is not `Send`).
+        /// The listening thread's run loop and its stop source, as addresses
+        /// (CF objects are not `Send`). A signalled source stays pending
+        /// until its run loop runs, so a stop can never be lost, even one
+        /// sent before the loop has started.
         run_loop: usize,
+        stop_source: usize,
         thread: Option<JoinHandle<()>>,
     }
 
     impl Watcher {
         pub fn start(sink: Sink) -> Option<Watcher> {
-            let (ready_tx, ready_rx) = mpsc::channel::<Option<usize>>();
+            let (ready_tx, ready_rx) = mpsc::channel::<Option<(usize, usize)>>();
             let thread = std::thread::Builder::new()
                 .name("litenotch-lid".into())
                 .spawn(move || listen(sink, ready_tx))
                 .ok()?;
             match ready_rx.recv() {
-                Ok(Some(run_loop)) => Some(Watcher {
+                Ok(Some((run_loop, stop_source))) => Some(Watcher {
                     run_loop,
+                    stop_source,
                     thread: Some(thread),
                 }),
                 _ => {
@@ -142,16 +177,20 @@ mod imp {
         }
 
         pub fn stop(&mut self) {
-            // SAFETY: the run loop belongs to the thread joined below, which
-            // is still running it; CFRunLoopStop may be called from any thread.
-            unsafe { CFRunLoopStop(self.run_loop as *mut c_void) };
+            // SAFETY: the source and run loop belong to the thread joined
+            // below, which keeps both alive until its loop has ended; both
+            // calls are safe from any thread.
+            unsafe {
+                CFRunLoopSourceSignal(self.stop_source as *mut c_void);
+                CFRunLoopWakeUp(self.run_loop as *mut c_void);
+            }
             if let Some(thread) = self.thread.take() {
                 let _ = thread.join();
             }
         }
     }
 
-    fn listen(sink: Sink, ready: mpsc::Sender<Option<usize>>) {
+    fn listen(sink: Sink, ready: mpsc::Sender<Option<(usize, usize)>>) {
         let sink: Box<Sink> = Box::new(sink);
         // SAFETY: every IOKit / CF object created here is released before
         // the function returns; `sink` lives until then too.
@@ -189,11 +228,34 @@ mod imp {
                 IONotificationPortGetRunLoopSource(port),
                 kCFRunLoopDefaultMode,
             );
+            let mut context = SourceContext {
+                version: 0,
+                info: std::ptr::null_mut(),
+                retain: std::ptr::null(),
+                release: std::ptr::null(),
+                copy_description: std::ptr::null(),
+                equal: std::ptr::null(),
+                hash: std::ptr::null(),
+                schedule: std::ptr::null(),
+                cancel: std::ptr::null(),
+                perform: Some(stop_run_loop),
+            };
+            let stop_source = CFRunLoopSourceCreate(std::ptr::null(), 0, &mut context);
+            if stop_source.is_null() {
+                IOObjectRelease(notifier);
+                IONotificationPortDestroy(port);
+                IOObjectRelease(service);
+                let _ = ready.send(None);
+                return;
+            }
+            CFRunLoopAddSource(run_loop, stop_source, kCFRunLoopDefaultMode);
             if let Some(state) = clamshell() {
                 sink(state);
             }
-            let _ = ready.send(Some(run_loop as usize));
+            let _ = ready.send(Some((run_loop as usize, stop_source as usize)));
             CFRunLoopRun();
+            CFRunLoopSourceInvalidate(stop_source);
+            CFRelease(stop_source);
             IOObjectRelease(notifier);
             IONotificationPortDestroy(port);
             IOObjectRelease(service);
@@ -294,6 +356,20 @@ mod tests {
             assert!(!first.closed);
             let started = std::time::Instant::now();
             drop(watcher);
+            assert!(started.elapsed() < Duration::from_secs(2));
+        }
+    }
+
+    /// The security review's L7: a stop right after start must not hang.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn stopping_at_once_after_starting_never_hangs() {
+        if clamshell().is_none() {
+            return;
+        }
+        for _ in 0..50 {
+            let started = std::time::Instant::now();
+            drop(LidWatcher::start(|_| {}));
             assert!(started.elapsed() < Duration::from_secs(2));
         }
     }

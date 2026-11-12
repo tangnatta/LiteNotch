@@ -5,6 +5,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use litenotch_core::agent::statusline::{
+    install_statusline, is_statusline_installed, uninstall_statusline,
+};
 use litenotch_core::agent::{install, is_installed, uninstall};
 
 pub const BACKUP_SUFFIX: &str = "litenotch-backup";
@@ -54,6 +57,25 @@ pub fn install_hooks(claude_dir: &Path, cli_path: &str) -> Result<(), HooksFileE
 pub fn uninstall_hooks(claude_dir: &Path, cli_path: &str) -> Result<(), HooksFileError> {
     rewrite(claude_dir, |text| {
         uninstall(text, cli_path).map_err(|e| e.to_string())
+    })
+}
+
+/// Whether Claude Code's status line goes through LiteNotch (usage limits).
+pub fn statusline_installed(claude_dir: &Path, cli_path: &str) -> Option<bool> {
+    read(claude_dir)
+        .ok()
+        .map(|text| is_statusline_installed(&text, cli_path))
+}
+
+pub fn install_statusline_file(claude_dir: &Path, cli_path: &str) -> Result<(), HooksFileError> {
+    rewrite(claude_dir, |text| {
+        install_statusline(text, cli_path).map_err(|e| e.to_string())
+    })
+}
+
+pub fn uninstall_statusline_file(claude_dir: &Path, cli_path: &str) -> Result<(), HooksFileError> {
+    rewrite(claude_dir, |text| {
+        uninstall_statusline(text, cli_path).map_err(|e| e.to_string())
     })
 }
 

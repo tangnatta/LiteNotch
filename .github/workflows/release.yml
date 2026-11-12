@@ -1,83 +1,125 @@
 name: Release
 
-# Push a tag such as v0.1.0 to build, publish a GitHub release, and update the
-# Homebrew cask in Casks/litenotch.rb. The tag must match the version in
-# Cargo.toml.
+# Push a tag such as v0.2.0-beta.1 to build, publish a GitHub (pre-)release,
+# and update the Homebrew cask in Casks/litenotch.rb. The tag must match the
+# version in Cargo.toml.
+#
+# Two jobs, so the write token never meets build code: `build` compiles and
+# tests with read-only access and no stored credentials, and `publish` only
+# downloads the zip, hashes it and publishes. Third-party actions are pinned
+# to full commit hashes; cargo uses the lockfile as is.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)build, e.g. v0.1.0"
+        description: "Existing tag to (re)build, e.g. v0.2.0-beta.1"
         required: true
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
-  release:
+  build:
     runs-on: macos-latest
-    env:
-      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ env.TAG }}
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
 
       - name: Check the tag matches Cargo.toml
+        id: version
         run: |
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           [ "v$VERSION" = "$TAG" ] || { echo "tag $TAG != Cargo.toml version $VERSION"; exit 1; }
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Test
-        run: |
-          cargo test --workspace
-          swift test --package-path macos
+      - name: Rust tests
+        run: cargo test --locked --workspace
 
       - name: Build the app
         run: scripts/build-app.sh
 
+      # The shell's test target links the Rust library the build just made.
+      - name: Shell tests
+        run: LITENOTCH_RUST_LIB="$PWD/target/release" swift test --package-path macos
+
       - name: Package
         run: |
-          ZIP="LiteNotch-$VERSION-arm64.zip"
-          ditto -c -k --sequesterRsrc --keepParent dist/LiteNotch.app "dist/$ZIP"
-          SHA=$(shasum -a 256 "dist/$ZIP" | awk '{print $1}')
-          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
-          echo "SHA=$SHA" >> "$GITHUB_ENV"
-          echo "$SHA  $ZIP" > "dist/$ZIP.sha256"
+          VERSION=${{ steps.version.outputs.version }}
+          ditto -c -k --sequesterRsrc --keepParent dist/LiteNotch.app "dist/LiteNotch-$VERSION-arm64.zip"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release
+          path: dist/LiteNotch-*-arm64.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release
+          path: dist
 
       - name: Publish the GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES="LiteNotch $VERSION (Apple silicon, macOS 14+).
+          ZIP="LiteNotch-$VERSION-arm64.zip"
+          (cd dist && sha256sum "$ZIP" > "$ZIP.sha256")
+          SHA=$(cut -d' ' -f1 "dist/$ZIP.sha256")
+          echo "SHA=$SHA" >> "$GITHUB_ENV"
+          PRE=""
+          case "$VERSION" in *-*) PRE="--prerelease" ;; esac
+          NOTES="LiteNotch $VERSION for Apple silicon Macs, macOS 14 or later.
 
-          Install with Homebrew:
+          Install: download the zip, unzip, move LiteNotch to Applications. The app is
+          ad-hoc signed and not notarized, so the first time, allow it under
+          System Settings > Privacy & Security > Open Anyway. Homebrew:
 
               brew tap tangnatta/litenotch https://github.com/tangnatta/LiteNotch
               brew install --cask litenotch
 
-          The app is ad-hoc signed and not notarized yet.
-
-          SHA-256: $SHA"
+          SHA-256 of the zip: $SHA"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "dist/$ZIP" "dist/$ZIP.sha256" --clobber
           else
             gh release create "$TAG" "dist/$ZIP" "dist/$ZIP.sha256" \
-              --title "LiteNotch $VERSION" --notes "$NOTES" --prerelease
+              --title "LiteNotch $VERSION" --notes "$NOTES" $PRE
           fi
 
+      # Only the cask file is edited, through the API: no checkout, no build.
       - name: Update the Homebrew cask
         run: |
-          git fetch origin main
-          git checkout -B cask-update origin/main
-          sed -i '' -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" Casks/litenotch.rb
-          if git diff --quiet; then echo "cask already up to date"; exit 0; fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "Cask: litenotch $VERSION"
-          git push origin HEAD:main
+          PATH_IN_REPO=Casks/litenotch.rb
+          gh api "repos/$GH_REPO/contents/$PATH_IN_REPO?ref=main" > cask.json
+          BLOB=$(jq -r .sha cask.json)
+          jq -r .content cask.json | base64 -d > litenotch.rb
+          sed -i -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" litenotch.rb
+          if [ "$(jq -r .content cask.json | base64 -d)" = "$(cat litenotch.rb)" ]; then
+            echo "cask already up to date"; exit 0
+          fi
+          gh api -X PUT "repos/$GH_REPO/contents/$PATH_IN_REPO" \
+            -f message="Cask: litenotch $VERSION" \
+            -f content="$(base64 -w0 litenotch.rb)" \
+            -f sha="$BLOB" -f branch=main >/dev/null

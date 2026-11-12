@@ -34,7 +34,8 @@
   "agents": {
     "sessions": [],
     "pending": [],
-    "hooks_installed": null
+    "hooks_installed": null,
+    "statusline_installed": null
   },
   "usage": {
     "five_hour": null,

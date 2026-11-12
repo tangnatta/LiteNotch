@@ -11,9 +11,13 @@ struct HomeTab: View {
         HStack(alignment: .top, spacing: 12) {
             nowPlaying
                 .frame(width: 236)
-            VStack(spacing: 8) {
+            // One list, not three cards: the now-playing card is the only
+            // container on this screen.
+            VStack(spacing: 0) {
                 timerRow
+                Hairline()
                 agentsRow
+                Hairline()
                 inboxRow
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -30,10 +34,10 @@ struct HomeTab: View {
                         ArtworkView(path: m.artworkPath, size: 56, radius: 10)
                         VStack(alignment: .leading, spacing: 2) {
                             VText(m.title.isEmpty ? "Unknown title" : m.title)
-                                .nfont(13, .semibold).foregroundStyle(NT.text1)
+                                .nfont(.title).foregroundStyle(NT.text1)
                                 .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                             VText(m.artist.isEmpty ? m.app : m.artist)
-                                .nfont(11.5).foregroundStyle(NT.text2).lineLimit(1)
+                                .nfont(.body).foregroundStyle(NT.text2).lineLimit(1)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -44,11 +48,16 @@ struct HomeTab: View {
                     } else {
                         // No controls for this player: say what is playing
                         // where, instead of leaving a hole.
-                        HStack(spacing: 6) {
-                            Image(systemName: m.playing ? "play.fill" : "pause.fill")
-                                .font(.system(size: 9, weight: .bold)).foregroundStyle(NT.text3)
-                            VText(m.playing ? "Playing in \(m.app)" : "Paused in \(m.app)")
-                                .nfont(11).foregroundStyle(NT.text2).lineLimit(1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Image(systemName: m.playing ? "play.fill" : "pause.fill")
+                                    .glyph(9, .bold).foregroundStyle(NT.text3)
+                                VText(m.playing ? "Playing in \(m.app)" : "Paused in \(m.app)")
+                                    .nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
+                            }
+                            Text(verbatim: MediaText.notControllable)
+                                .nfont(.caption).foregroundStyle(NT.text3)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -56,10 +65,15 @@ struct HomeTab: View {
                     MediaProgress(media: m, showTimes: false, height: 3)
                 }
             } else {
-                VStack(spacing: 8) {
+                VStack(spacing: 6) {
                     ArtworkView(path: nil, size: 56, radius: 10, dimmed: true)
                     Text(verbatim: vm.settings.media.enabled ? "Nothing playing" : "Now playing is off")
-                        .nfont(12).foregroundStyle(NT.text3)
+                        .nfont(.emphasis).foregroundStyle(NT.text2)
+                    Text(verbatim: vm.settings.media.enabled ? "Play something in Music, Spotify or a browser and it shows up here."
+                                                             : "Turn it on in Settings \u{203A} Music.")
+                        .nfont(.caption).foregroundStyle(NT.text3)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -88,15 +102,15 @@ struct HomeTab: View {
                 let left = running && t.endsAtMs != nil
                     ? Format.secondsLeft(until: t.endsAtMs ?? now, nowMs: now) : t.remainingSecs
                 Text(verbatim: Format.countdown(seconds: left))
-                    .font(.system(size: 15, weight: .semibold)).monospacedDigit()
+                    .nfont(.heading).monospacedDigit()
                     .foregroundStyle(NT.text1)
             }
             Text(verbatim: running ? "Timer" : "Timer paused")
-                .nfont(11).foregroundStyle(NT.text2).lineLimit(1)
+                .nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
         } trailing: {
             Button { model.send(.timerToggle) } label: {
                 Image(systemName: running ? "pause.fill" : "play.fill")
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(NT.onAccent)
+                    .glyph(11, .bold).foregroundStyle(NT.onAccent)
                     .frame(width: 28, height: 28)
                     .background(NT.accent, in: Circle())
                     .contentShape(Circle())
@@ -117,13 +131,17 @@ struct HomeTab: View {
             } else {
                 meetingClock(MeetingMath.currentLeft(m, nowMs: 0))
             }
-            VText([running ? MeetingMath.currentItem(m)?.name ?? m.title : "Paused", MeetingMath.position(m)]
-                    .joined(separator: " \u{00B7} "))
-                .nfont(11).foregroundStyle(NT.text2).lineLimit(1)
+            HStack(spacing: 6) {
+                VText(running ? MeetingMath.currentItem(m)?.name ?? m.title : "Paused")
+                    .nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
+                Spacer(minLength: 4)
+                Text(verbatim: MeetingMath.position(m))
+                    .nfont(.caption).monospacedDigit().foregroundStyle(NT.text3).lineLimit(1).fixedSize()
+            }
         } trailing: {
             Button { model.send(.meetingToggle) } label: {
                 Image(systemName: running ? "pause.fill" : "play.fill")
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(NT.onAccent)
+                    .glyph(11, .bold).foregroundStyle(NT.onAccent)
                     .frame(width: 28, height: 28)
                     .background(NT.accent, in: Circle())
                     .contentShape(Circle())
@@ -135,9 +153,7 @@ struct HomeTab: View {
     }
 
     private func meetingClock(_ left: Int) -> some View {
-        Text(verbatim: Format.signedCountdown(left))
-            .font(.system(size: 15, weight: .semibold)).monospacedDigit()
-            .foregroundStyle(left < 0 ? NT.deny : NT.text1)
+        OverrunText(left: left, font: .heading)
     }
 
     private var pomodoroRow: some View {
@@ -148,15 +164,15 @@ struct HomeTab: View {
                 let left = running && p.endsAtMs != nil
                     ? Format.secondsLeft(until: p.endsAtMs ?? now, nowMs: now) : p.remainingSecs
                 Text(verbatim: Format.countdown(seconds: left))
-                    .font(.system(size: 15, weight: .semibold)).monospacedDigit()
+                    .nfont(.heading).monospacedDigit()
                     .foregroundStyle(NT.text1)
             }
             Text(verbatim: p.runState == .paused ? "Paused" : (p.phase == .idle ? "Timer ready" : Format.phaseLabel(p.phase)))
-                .nfont(11).foregroundStyle(NT.text2).lineLimit(1)
+                .nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
         } trailing: {
             Button { model.send(.pomodoroToggle) } label: {
                 Image(systemName: running ? "pause.fill" : "play.fill")
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(NT.onAccent)
+                    .glyph(11, .bold).foregroundStyle(NT.onAccent)
                     .frame(width: 28, height: 28)
                     .background(NT.accent, in: Circle())
                     .contentShape(Circle())
@@ -169,12 +185,18 @@ struct HomeTab: View {
 
     private var agentsRow: some View {
         let waiting = vm.agents.sessions.contains { $0.status == .waitingApproval || $0.status == .waitingInput }
-        return HomeRow(symbol: "sparkles", tint: waiting ? NT.accent : NT.text2) {
+        let detail = Format.agentsDetail(vm.usage)
+        return HomeRow(symbol: "terminal", tint: waiting ? NT.accent : NT.text2) {
             VText(Format.agentsHeadline(vm.agents.sessions))
-                .nfont(12.5, .semibold).foregroundStyle(NT.text1).lineLimit(1)
-            Text(verbatim: Format.agentsDetail(vm.usage))
-                .nfont(11).monospacedDigit().foregroundStyle(NT.text2).lineLimit(1)
+                .nfont(.emphasis).foregroundStyle(NT.text1).lineLimit(1)
+            Text(verbatim: detail.tokens)
+                .nfont(.caption).monospacedDigit().foregroundStyle(NT.text2).lineLimit(1)
         } trailing: {
+            if let limit = detail.limit {
+                Text(verbatim: limit)
+                    .nfont(.caption).monospacedDigit().foregroundStyle(NT.text3).lineLimit(1).fixedSize()
+                    .help("Share of the 5-hour usage limit used")
+            }
             Chevron()
         }
         .opens(.agents, "Agents", model)
@@ -185,17 +207,20 @@ struct HomeTab: View {
         let now = nowMs(Date(), offset: offset)
         return HomeRow(symbol: "bell", tint: vm.inbox.unread > 0 ? NT.accent : NT.text2) {
             if let n = latest {
-                VText(n.title).nfont(12.5, .semibold).foregroundStyle(NT.text1).lineLimit(1)
-                VText([n.source, Format.relative(from: n.createdMs, nowMs: now)].joined(separator: " \u{00B7} "))
-                    .nfont(11).foregroundStyle(NT.text2).lineLimit(1)
+                VText(n.title).nfont(.emphasis).foregroundStyle(NT.text1).lineLimit(1)
+                VText(Format.sourceTag(n.source) ?? "LiteNotch").nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
             } else {
-                Text(verbatim: "No notifications").nfont(12.5, .semibold).foregroundStyle(NT.text2)
-                Text(verbatim: "You are all caught up").nfont(11).foregroundStyle(NT.text3)
+                Text(verbatim: "No notifications").nfont(.emphasis).foregroundStyle(NT.text2)
+                Text(verbatim: "You\u{2019}re all caught up").nfont(.caption).foregroundStyle(NT.text3)
             }
         } trailing: {
+            if let n = latest {
+                Text(verbatim: Format.relative(from: n.createdMs, nowMs: now))
+                    .nfont(.caption).foregroundStyle(NT.text3).lineLimit(1).fixedSize()
+            }
             if vm.inbox.unread > 0 {
                 Text(verbatim: vm.inbox.unread > 9 ? "9+" : "\(vm.inbox.unread)")
-                    .font(.system(size: 10, weight: .bold)).monospacedDigit()
+                    .nfont(.badge)
                     .foregroundStyle(NT.onAccent)
                     .padding(.horizontal, 5)
                     .frame(minWidth: 18, minHeight: 18)
@@ -211,13 +236,13 @@ struct HomeTab: View {
 
 private struct Chevron: View {
     var body: some View {
-        Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+        Image(systemName: "chevron.right").glyph(NGlyph.small)
             .foregroundStyle(NT.text3)
             .accessibilityHidden(true)
     }
 }
 
-/// Icon tile, two lines, something on the right.
+/// Icon, two lines, something on the right; one row of the Home list.
 private struct HomeRow<Lines: View, Trailing: View>: View {
     let symbol: String
     let tint: Color
@@ -227,16 +252,14 @@ private struct HomeRow<Lines: View, Trailing: View>: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: symbol)
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(tint)
-                .frame(width: 30, height: 30)
-                .background(NT.fill, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .glyph(NGlyph.regular).foregroundStyle(tint)
+                .frame(width: 22)
             VStack(alignment: .leading, spacing: 1) { lines }
                 .frame(maxWidth: .infinity, alignment: .leading)
             trailing
         }
-        .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(NT.fill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .rowHover()
     }
 }
 
@@ -247,8 +270,9 @@ private extension View {
     }
 
     func opens(_ name: String, _ model: PanelState, _ go: @escaping () -> Void) -> some View {
-        contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        contentShape(Rectangle())
             .onTapGesture(perform: go)
+            .help("Open \(name)")
             .accessibilityAction(named: Text(verbatim: "Open \(name)"), go)
     }
 }

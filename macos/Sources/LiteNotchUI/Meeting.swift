@@ -135,12 +135,13 @@ struct MeetingPresets: View {
             ForEach(Array(m.presets.enumerated()), id: \.offset) { _, p in
                 let on = p.title == m.title
                 Button { send(.meetingLoad(preset: p.id)) } label: {
-                    VText(Self.shortTitle(p)).nfont(11, on ? .semibold : .medium)
+                    VText(Self.shortTitle(p)).nfont(on ? .captionStrong : .caption)
                         .foregroundStyle(on ? NT.text1 : NT.text2)
                         .lineLimit(1).fixedSize()
                         .padding(.horizontal, 8).frame(height: 22)
                         .background(on ? NT.fillHi : NT.fill, in: Capsule())
                         .contentShape(Capsule())
+                        .controlHover(Capsule())
                 }
                 .buttonStyle(.plain)
                 .help("Load the \(p.title) agenda")
@@ -154,11 +155,12 @@ private func roundButton(_ symbol: String, label: String, size: CGFloat, fill: C
                          action: @escaping () -> Void) -> some View {
     Button(action: action) {
         Image(systemName: symbol)
-            .font(.system(size: size * 0.38, weight: .bold))
+            .glyph(size * 0.38, .bold)
             .foregroundStyle(tint)
             .frame(width: size, height: size)
             .background(fill, in: Circle())
             .contentShape(Circle())
+            .controlHover(Circle())
     }
     .buttonStyle(.plain)
     .help(label)
@@ -173,15 +175,14 @@ struct MeetingStartCard: View {
     var body: some View {
         Card(padding: 12, expand: true) {
             VStack(alignment: .leading, spacing: 2) {
-                SectionLabel(text: "Meeting")
                 VText(m.title.isEmpty ? "Untitled meeting" : m.title)
-                    .nfont(13, .semibold).foregroundStyle(NT.text1).lineLimit(1)
-                    .padding(.top, 4)
+                    .nfont(.title).foregroundStyle(NT.text1).lineLimit(1)
                 Text(verbatim: Format.countdown(seconds: m.totalPlannedSecs))
-                    .font(.system(size: 30, weight: .semibold)).monospacedDigit()
+                    .nfont(.display)
                     .foregroundStyle(NT.text1).lineLimit(1)
+                    .padding(.top, 2)
                 Text(verbatim: m.items.count == 1 ? "1 item planned" : "\(m.items.count) items planned")
-                    .nfont(11).foregroundStyle(NT.text2)
+                    .nfont(.caption).foregroundStyle(NT.text2)
                 Spacer(minLength: 6)
                 TextPill(title: "Start meeting", tint: NT.onAccent, background: NT.accent, height: 30,
                          weight: .semibold) { send(.meetingToggle) }
@@ -202,16 +203,15 @@ struct MeetingRunCard: View {
         let running = m.runState == .running
         Card(padding: 12, expand: true) {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    SectionLabel(text: MeetingMath.position(m))
-                    Spacer(minLength: 0)
-                    if !running {
-                        Text(verbatim: "Paused").nfont(10.5, .semibold).foregroundStyle(NT.accentText)
-                    }
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    VText(MeetingMath.currentItem(m)?.name ?? m.title)
+                        .nfont(.title).foregroundStyle(NT.text1).lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(verbatim: running ? MeetingMath.position(m) : "Paused")
+                        .nfont(running ? .caption : .captionStrong).monospacedDigit()
+                        .foregroundStyle(running ? NT.text3 : NT.accentText)
+                        .lineLimit(1).fixedSize()
                 }
-                VText(MeetingMath.currentItem(m)?.name ?? m.title)
-                    .nfont(13, .semibold).foregroundStyle(NT.text1).lineLimit(1)
-                    .padding(.top, 4)
                 if running {
                     EverySecond { now in numbers(now: now) }
                 } else {
@@ -238,13 +238,10 @@ struct MeetingRunCard: View {
         let left = MeetingMath.currentLeft(m, nowMs: now)
         let total = MeetingMath.totalElapsed(m, nowMs: now)
         return VStack(alignment: .leading, spacing: 2) {
-            Text(verbatim: Format.signedCountdown(left))
-                .font(.system(size: 30, weight: .semibold)).monospacedDigit()
-                .foregroundStyle(left < 0 ? NT.deny : NT.text1).lineLimit(1)
-                .accessibilityLabel(Text(verbatim: left < 0
-                    ? "\(Format.countdown(seconds: -left)) over time" : "\(Format.countdown(seconds: left)) left"))
-            Text(verbatim: "Total \(Format.countdown(seconds: total)) of \(Format.countdown(seconds: m.totalPlannedSecs))")
-                .nfont(11).monospacedDigit().foregroundStyle(NT.text2).lineLimit(1)
+            OverrunText(left: left, font: .display)
+                .padding(.top, 2)
+            Text(verbatim: "\(Format.countdown(seconds: total)) of \(Format.countdown(seconds: m.totalPlannedSecs)) planned")
+                .nfont(.caption).monospacedDigit().foregroundStyle(NT.text2).lineLimit(1)
         }
     }
 }
@@ -258,15 +255,18 @@ struct MeetingSummaryCard: View {
         let over = m.totalElapsedSecs > m.totalPlannedSecs
         Card(padding: 12, expand: true) {
             VStack(alignment: .leading, spacing: 2) {
-                SectionLabel(text: "Meeting finished")
-                VText(m.title.isEmpty ? "Meeting" : m.title)
-                    .nfont(13, .semibold).foregroundStyle(NT.text1).lineLimit(1)
-                    .padding(.top, 4)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    VText(m.title.isEmpty ? "Meeting" : m.title)
+                        .nfont(.title).foregroundStyle(NT.text1).lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(verbatim: "Finished").nfont(.caption).foregroundStyle(NT.text3).fixedSize()
+                }
                 Text(verbatim: Format.countdown(seconds: m.totalElapsedSecs))
-                    .font(.system(size: 30, weight: .semibold)).monospacedDigit()
+                    .nfont(.display)
+                    .padding(.top, 2)
                     .foregroundStyle(over ? NT.deny : NT.text1).lineLimit(1)
                 Text(verbatim: "Planned \(Format.countdown(seconds: m.totalPlannedSecs))")
-                    .nfont(11).monospacedDigit().foregroundStyle(NT.text2)
+                    .nfont(.caption).monospacedDigit().foregroundStyle(NT.text2)
                 Spacer(minLength: 6)
                 TextPill(title: "New meeting", tint: NT.onAccent, background: NT.accent, height: 30,
                          weight: .semibold) { send(.meetingReset) }
@@ -287,7 +287,7 @@ struct AgendaList: View {
                 Spacer(minLength: 4)
                 if m.runState == .finished {
                     Text(verbatim: "\(Format.countdown(seconds: m.totalElapsedSecs)) / \(Format.countdown(seconds: m.totalPlannedSecs))")
-                        .nfont(10.5, .medium).monospacedDigit()
+                        .nfont(.caption).monospacedDigit()
                         .foregroundStyle(m.totalElapsedSecs > m.totalPlannedSecs ? NT.deny : NT.text2)
                 }
             }
@@ -309,7 +309,7 @@ struct AgendaList: View {
         return HStack(spacing: 8) {
             Group {
                 if done {
-                    Image(systemName: "checkmark").font(.system(size: 9.5, weight: .bold)).foregroundStyle(NT.text2)
+                    Image(systemName: "checkmark").glyph(9, .bold).foregroundStyle(NT.text2)
                 } else if current {
                     Circle().fill(NT.accent).frame(width: 7, height: 7)
                 } else {
@@ -317,7 +317,7 @@ struct AgendaList: View {
                 }
             }
             .frame(width: 12)
-            VText(item.name).nfont(12, current ? .semibold : .regular)
+            VText(item.name).nfont(current ? .emphasis : .body)
                 .foregroundStyle(NT.text1).lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 4)
             if done || current {
@@ -326,22 +326,32 @@ struct AgendaList: View {
                 } else {
                     actual(MeetingMath.elapsed(m, item: i, nowMs: 0), item)
                 }
+            } else {
+                Text(verbatim: planned(item))
+                    .nfont(.caption).monospacedDigit().foregroundStyle(NT.text3)
             }
-            Text(verbatim: "\(max(1, (item.plannedSecs + 30) / 60))m")
-                .nfont(11).monospacedDigit().foregroundStyle(NT.text3)
-                .frame(minWidth: 30, alignment: .trailing)
         }
         .padding(.horizontal, 8)
         .frame(height: 26)
-        .background(current ? NT.fillHi : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(current ? NT.fill : Color.clear, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
         .opacity(done && m.runState != .finished ? 0.55 : 1)
         .accessibilityElement(children: .combine)
     }
 
+    private func planned(_ item: MeetingItem) -> String { "\(max(1, (item.plannedSecs + 30) / 60))m" }
+
+    /// `26:05 / 25m`: time spent against the plan, red with a mark when over.
     private func actual(_ secs: Int, _ item: MeetingItem) -> some View {
-        Text(verbatim: Format.countdown(seconds: secs))
-            .nfont(11, .medium).monospacedDigit()
-            .foregroundStyle(secs > item.plannedSecs ? NT.deny : NT.text2)
+        let over = secs > item.plannedSecs
+        return HStack(spacing: 4) {
+            if over {
+                Image(systemName: "exclamationmark.circle").glyph(NGlyph.small)
+                    .accessibilityLabel(Text(verbatim: "Over time"))
+            }
+            Text(verbatim: "\(Format.countdown(seconds: secs)) / \(planned(item))")
+        }
+        .nfont(.caption).monospacedDigit()
+        .foregroundStyle(over ? NT.deny : NT.text2)
     }
 }
 
@@ -381,7 +391,7 @@ struct AgendaEditor: View {
                 SectionLabel(text: "Agenda")
                 Spacer(minLength: 4)
                 Text(verbatim: "\(lines.reduce(0) { $0 + $1.minutes }) min")
-                    .nfont(10.5, .medium).monospacedDigit().foregroundStyle(NT.text3)
+                    .nfont(.caption).monospacedDigit().foregroundStyle(NT.text3)
             }
             .padding(.horizontal, 4)
             NotchScroll {
@@ -392,13 +402,14 @@ struct AgendaEditor: View {
                     if lines.count < MeetingMath.maxItems {
                         Button(action: add) {
                             HStack(spacing: 6) {
-                                Image(systemName: "plus").font(.system(size: 9.5, weight: .bold))
-                                Text(verbatim: "Add item").nfont(11.5, .medium)
+                                Image(systemName: "plus").glyph(9, .bold)
+                                Text(verbatim: "Add item").nfont(.bodyMedium)
                             }
                             .foregroundStyle(NT.text2)
                             .padding(.horizontal, 8).frame(height: 24)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
+                            .rowHover(inset: 0)
                         }
                         .buttonStyle(.plain)
                     }
@@ -426,13 +437,13 @@ struct AgendaEditor: View {
         return HStack(spacing: 6) {
             Group {
                 if snapshot {
-                    VText(line.wrappedValue.name).nfont(12).foregroundStyle(NT.text1).lineLimit(1)
+                    VText(line.wrappedValue.name).nfont(.body).foregroundStyle(NT.text1).lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     TextField("", text: line.name,
                               prompt: Text(verbatim: "Item name").foregroundColor(NT.text3))
                         .textFieldStyle(.plain)
-                        .font(.system(size: 12))
+                        .font(NType.body.font)
                         .foregroundStyle(NT.text1)
                         .focused($focused, equals: id)
                         .onSubmit { focused = nil }
@@ -442,13 +453,14 @@ struct AgendaEditor: View {
             }
             .padding(.horizontal, 7)
             .frame(height: 24)
-            .background(NT.fill, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
             MiniStepper(value: line.minutes, range: MeetingMath.minutes, label: "Minutes")
-            Text(verbatim: "min").nfont(10.5).foregroundStyle(NT.text3)
-            IconButton(symbol: "minus.circle", label: "Remove item", size: 11, tint: NT.text3, frame: 22) {
+            Text(verbatim: "min").nfont(.caption).foregroundStyle(NT.text3)
+            IconButton(symbol: "minus.circle", label: "Remove item", size: 11, tint: NT.text3) {
                 lines.removeAll { $0.id == id }
             }
-            .help("Remove")
+            // 28 pt to click, without making the row taller.
+            .padding(.vertical, -2)
         }
     }
 
@@ -471,5 +483,26 @@ struct AgendaEditor: View {
         let work = DispatchWorkItem { pending = nil; send(.meetingSet(title: title, items: agenda)) }
         pending = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+}
+
+/// A time box's time left, or `1:05 over` in red with a mark once it ran out.
+struct OverrunText: View {
+    let left: Int
+    var font: NType = .display
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            if left < 0 {
+                Image(systemName: "exclamationmark.circle")
+                    .font(.system(size: font.size * 0.7, weight: .semibold))
+            }
+            Text(verbatim: Format.overrun(left)).font(font.font).monospacedDigit()
+        }
+        .foregroundStyle(left < 0 ? NT.deny : NT.text1)
+        .lineLimit(1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: left < 0
+            ? "\(Format.countdown(seconds: -left)) over time" : "\(Format.countdown(seconds: left)) left"))
     }
 }

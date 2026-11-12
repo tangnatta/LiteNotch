@@ -18,30 +18,38 @@ struct InboxTab: View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 if vm.inbox.dnd {
-                    Image(systemName: "moon.fill").font(.system(size: 10.5)).foregroundStyle(NT.accentText)
-                    Text(verbatim: "Focus mode: holding low-priority notifications")
-                        .nfont(11.5).foregroundStyle(NT.text2).lineLimit(1)
+                    Image(systemName: "moon.fill").glyph(NGlyph.small).foregroundStyle(NT.accentText)
+                    Text(verbatim: "Focus: less urgent notifications wait until it ends")
+                        .nfont(.body).foregroundStyle(NT.text2).lineLimit(1)
                 } else {
                     Text(verbatim: vm.inbox.unread > 0 ? "\(vm.inbox.unread) unread" : "All caught up")
-                        .nfont(11.5).foregroundStyle(NT.text3)
+                        .nfont(.body).foregroundStyle(NT.text3)
                 }
                 Spacer(minLength: 4)
-                TextPill(title: "Mark all read", tint: vm.inbox.unread > 0 ? NT.text1 : NT.text3, height: 24) {
-                    send(.notifyMarkRead)
+                if vm.inbox.unread > 0 {
+                    TextPill(title: "Mark all read", height: 24) { send(.notifyMarkRead) }
                 }
-                TextPill(title: "Clear", height: 24) { send(.notifyClear) }
+                ConfirmPill(title: "Clear inbox", question: ConfirmGate.question(count: rows.count),
+                            help: "Remove every notification", enabled: !rows.isEmpty) {
+                    send(.notifyClear)
+                }
             }
             .frame(height: 24)
             systemRow
             if rows.isEmpty {
-                EmptyState(symbol: "bell", title: "No notifications")
+                EmptyState(symbol: "bell", title: "No notifications",
+                           hint: vm.settings.notify.system
+                               ? "Notifications from LiteNotch, Claude Code and other apps appear here."
+                               : "Notifications from LiteNotch and Claude Code appear here.")
             } else {
                 NotchScroll {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, n in
                         row(n, isBanner: n.id == vm.inbox.banner?.id, now: now)
-                        if i < rows.count - 1 { Divider().overlay(NT.hairline) }
+                        if i < rows.count - 1 { Hairline().padding(.horizontal, 6) }
                     }
+                    .padding(.horizontal, 6)
                 }
+                .padding(.horizontal, -6)
             }
         }
     }
@@ -49,33 +57,47 @@ struct InboxTab: View {
     /// Offers other apps' notifications, or says what is still missing.
     @ViewBuilder private var systemRow: some View {
         if !vm.settings.notify.system {
-            notice(symbol: "app.badge", text: "Show notifications from other apps", action: "Enable") {
+            notice(symbol: "app.badge", text: "Also show notifications from other apps", action: "Turn on",
+                   help: "LiteNotch reads other apps\u{2019} banners through Accessibility") {
                 var s = vm.settings
                 s.notify.system = true
                 send(.setSettings(s))
             }
         } else if model.accessibilityNeeded {
-            notice(symbol: "lock",
-                   text: "Allow LiteNotch in System Settings \u{203A} Privacy & Security \u{203A} Accessibility",
-                   action: "Open Settings") { model.app?.onOpenAccessibilitySettings() }
+            notice(symbol: "exclamationmark.triangle.fill",
+                   text: "Allow LiteNotch to read other apps\u{2019} notifications in System Settings",
+                   action: "Open Settings", warning: true,
+                   help: "Opens Privacy & Security \u{203A} Accessibility") { model.app?.onOpenAccessibilitySettings() }
             notice(symbol: "arrow.clockwise",
-                   text: "Already allowed? Each new build needs it again.",
-                   action: "Reset and ask again") { model.app?.onResetAccessibility() }
+                   text: "Already allowed it?",
+                   action: "Reset and ask again", primary: false,
+                   help: "macOS forgets the permission when LiteNotch is updated") { model.app?.onResetAccessibility() }
         }
     }
 
-    private func notice(symbol: String, text: String, action: String, run: @escaping () -> Void) -> some View {
+    /// One line with one button. Only the `primary` one is filled with the
+    /// accent, so a screen has one call to action.
+    private func notice(symbol: String, text: String, action: String, primary: Bool = true,
+                        warning: Bool = false, help: String, run: @escaping () -> Void) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: symbol).font(.system(size: 11, weight: .semibold)).foregroundStyle(NT.accentText)
+            Image(systemName: symbol).glyph(11)
+                .foregroundStyle(warning ? NT.warning : (primary ? NT.accentText : NT.text3))
                 .frame(width: 16)
-            Text(verbatim: text).nfont(11.5).foregroundStyle(NT.text2)
+            Text(verbatim: text).nfont(.body).foregroundStyle(warning ? NT.warning : NT.text2)
                 .lineLimit(1).minimumScaleFactor(0.85)
             Spacer(minLength: 4)
-            TextPill(title: action, tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold, action: run)
+            if primary {
+                TextPill(title: action, tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold,
+                         action: run)
+                    .help(help)
+            } else {
+                TextPill(title: action, tint: NT.text1, height: 22, action: run)
+                    .help(help)
+            }
         }
         .padding(.leading, 10).padding(.trailing, 5)
         .frame(height: 32)
-        .background(NT.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
     }
 
     private func row(_ n: NotificationItem, isBanner: Bool, now: Int) -> some View {
@@ -85,33 +107,39 @@ struct InboxTab: View {
             Button { model.openNotification(n, isBanner: isBanner) } label: { content(n, now: now) }
                 .buttonStyle(.plain)
                 .help(Format.openHelp(n.open))
-            IconButton(symbol: "xmark", label: "Dismiss", size: 10, tint: NT.text3, frame: 24) {
+            IconButton(symbol: "xmark", label: "Dismiss", size: NGlyph.small, tint: NT.text3) {
                 send(isBanner ? .notifyDismissBanner : .notifyDismiss(id: n.id))
             }
+            .padding(.top, -6)
         }
         .padding(.vertical, 7)
+        .rowHover()
     }
 
+    /// Title and time on the first line, the message below, the source
+    /// as a quiet tag after the title.
     private func content(_ n: NotificationItem, now: Int) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    VText(n.source.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.6)
-                        .foregroundStyle(NT.text3).lineLimit(1)
-                    Text(verbatim: Format.relative(from: n.createdMs, nowMs: now))
-                        .nfont(10.5).foregroundStyle(NT.text3)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                VText(n.title).nfont(.emphasis).foregroundStyle(NT.text1).lineLimit(1)
+                    .layoutPriority(1)
+                if let tag = Format.sourceTag(n.source) {
+                    VText(tag).nfont(.caption).foregroundStyle(NT.text3).lineLimit(1)
                 }
-                VText(n.title).nfont(12.5, .semibold).foregroundStyle(NT.text1).lineLimit(1)
-                if !n.body.isEmpty {
-                    VText(n.body).nfont(11.5).foregroundStyle(NT.text2).lineLimit(2)
+                Spacer(minLength: 4)
+                Text(verbatim: Format.relative(from: n.createdMs, nowMs: now))
+                    .nfont(.caption).foregroundStyle(NT.text3).lineLimit(1).fixedSize()
+                if n.open != nil {
+                    Image(systemName: "arrow.up.forward").glyph(9)
+                        .foregroundStyle(NT.text3)
+                        .accessibilityHidden(true)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            if n.open != nil {
-                Image(systemName: "arrow.up.forward").font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(NT.text3).padding(.top, 3)
+            if !n.body.isEmpty {
+                VText(n.body).nfont(.body).foregroundStyle(NT.text2).lineLimit(2)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
 }

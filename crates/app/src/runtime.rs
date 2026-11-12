@@ -67,6 +67,9 @@ impl Config {
 enum ShellCommand {
     HooksInstall,
     HooksUninstall,
+    /// Route Claude Code's status line through LiteNotch (usage limits).
+    StatuslineInstall,
+    StatuslineUninstall,
     #[serde(untagged)]
     Core(Command),
 }
@@ -239,6 +242,10 @@ impl Loop {
             });
         }
         let _ = store::save(&self.config.dir, &self.core.persisted());
+        // History that is not kept across restarts leaves no files behind.
+        if !self.core.settings().general.persist_clipboard {
+            self.ports.prune_clip_files(&[]);
+        }
     }
 
     fn clipboard_enabled(&self) -> bool {
@@ -265,8 +272,15 @@ impl Loop {
     fn poll(&mut self, now: u64) {
         if self.clipboard_enabled() && now >= self.next_clip {
             self.next_clip = now.saturating_add(self.config.clipboard_poll_ms);
-            if let Some(capture) = self.ports.poll_clipboard() {
+            let core = &self.core;
+            if let Some(capture) = self.ports.poll_clipboard(&|c| core.clip_would_keep(c)) {
+                let had_file = capture.image_path.is_some() || capture.rich_path.is_some();
                 self.apply(Input::ClipCaptured(capture), now);
+                if had_file {
+                    // A file was written; if the copy was then dropped (too
+                    // large, empty), nothing refers to it: prune now.
+                    self.kept_files = None;
+                }
             }
         }
         if self.core.wants_power_updates() && now >= self.next_power {
@@ -318,12 +332,26 @@ impl Loop {
             Msg::Shell(ShellCommand::HooksInstall) => {
                 let result =
                     hooks_file::install_hooks(&self.config.claude_dir, &self.config.cli_path);
-                self.report_hooks(result, "Claude Code hooks installed", now);
+                self.report_hooks(result, "Connected to Claude Code", now);
             }
             Msg::Shell(ShellCommand::HooksUninstall) => {
                 let result =
                     hooks_file::uninstall_hooks(&self.config.claude_dir, &self.config.cli_path);
-                self.report_hooks(result, "Claude Code hooks removed", now);
+                self.report_hooks(result, "Disconnected from Claude Code", now);
+            }
+            Msg::Shell(ShellCommand::StatuslineInstall) => {
+                let result = hooks_file::install_statusline_file(
+                    &self.config.claude_dir,
+                    &self.config.cli_path,
+                );
+                self.report_hooks(result, "Usage limits turned on", now);
+            }
+            Msg::Shell(ShellCommand::StatuslineUninstall) => {
+                let result = hooks_file::uninstall_statusline_file(
+                    &self.config.claude_dir,
+                    &self.config.cli_path,
+                );
+                self.report_hooks(result, "Usage limits turned off", now);
             }
             Msg::Server(ServerEvent::Request {
                 request,
@@ -517,18 +545,18 @@ impl Loop {
         let (title, body, priority) = match result {
             Ok(()) => (
                 done.to_string(),
-                "Applies to new Claude Code sessions.".to_string(),
+                "Takes effect in new Claude Code sessions.".to_string(),
                 Priority::Normal,
             ),
             Err(e) => (
-                "Hooks not changed".to_string(),
+                "Claude Code settings not changed".to_string(),
                 e.to_string(),
                 Priority::High,
             ),
         };
         self.refresh_hooks_installed(now);
         self.apply(
-            Input::ExternalNotify(NotificationInput {
+            Input::OwnNotify(NotificationInput {
                 source: "litenotch".into(),
                 title,
                 body,
@@ -543,6 +571,9 @@ impl Loop {
     fn refresh_hooks_installed(&mut self, now: u64) {
         let state = hooks_file::installed(&self.config.claude_dir, &self.config.cli_path);
         self.apply(Input::HooksInstalled(state), now);
+        let state =
+            hooks_file::statusline_installed(&self.config.claude_dir, &self.config.cli_path);
+        self.apply(Input::StatuslineInstalled(state), now);
     }
 
     fn apply(&mut self, input: Input, now: u64) {
@@ -702,7 +733,7 @@ pub(crate) mod testing {
             os.calls.push("power".into());
             os.power.clone()
         }
-        fn poll_clipboard(&mut self) -> Option<ClipCapture> {
+        fn poll_clipboard(&mut self, _keep: &dyn Fn(&ClipCapture) -> bool) -> Option<ClipCapture> {
             self.0
                 .lock()
                 .unwrap()
@@ -1345,10 +1376,7 @@ mod tests {
         let view = h
             .views
             .wait("installed", |v| v["agents"]["hooks_installed"] == true);
-        assert_eq!(
-            view["inbox"]["banner"]["title"],
-            "Claude Code hooks installed"
-        );
+        assert_eq!(view["inbox"]["banner"]["title"], "Connected to Claude Code");
         let text = std::fs::read_to_string(h.dir.join("claude/settings.json")).unwrap();
         assert!(
             text.contains("'/opt/litenotch/litenotch' hook")
@@ -1367,7 +1395,7 @@ mod tests {
         let h = Harness::start_in(dir, FakeOs::default());
         h.send(r#"{"cmd":"hooks_install"}"#);
         let view = h.views.wait("error banner", |v| {
-            v["inbox"]["banner"]["title"] == "Hooks not changed"
+            v["inbox"]["banner"]["title"] == "Claude Code settings not changed"
         });
         assert_eq!(view["inbox"]["banner"]["priority"], "high");
         assert_eq!(
@@ -1537,5 +1565,36 @@ mod tests {
             .err()
             .unwrap();
         assert_eq!(err.kind(), std::io::ErrorKind::AddrInUse);
+    }
+
+    #[test]
+    fn usage_limits_can_be_turned_on_and_off_from_the_notch() {
+        let dir = crate::store::temp_dir("rt-statusline");
+        std::fs::create_dir_all(dir.join("claude")).unwrap();
+        std::fs::write(
+            dir.join("claude/settings.json"),
+            r#"{"statusLine":{"type":"command","command":"my-line"}}"#,
+        )
+        .unwrap();
+        let h = Harness::start_in(dir, FakeOs::default());
+        h.views.wait("not installed", |v| {
+            v["agents"]["statusline_installed"] == false
+        });
+        h.send(r#"{"cmd":"statusline_install"}"#);
+        h.views
+            .wait("installed", |v| v["agents"]["statusline_installed"] == true);
+        let text = std::fs::read_to_string(h.dir.join("claude/settings.json")).unwrap();
+        assert!(
+            text.contains("statusline -- /bin/sh -c 'my-line'"),
+            "{text}"
+        );
+        h.send(r#"{"cmd":"statusline_uninstall"}"#);
+        h.views
+            .wait("removed", |v| v["agents"]["statusline_installed"] == false);
+        let back: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(h.dir.join("claude/settings.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(back["statusLine"]["command"], "my-line");
     }
 }

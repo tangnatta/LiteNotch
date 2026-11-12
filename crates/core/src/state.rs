@@ -44,6 +44,17 @@ const EXTERNAL_MAX_TTL_SECS: u32 = 60;
 /// banners. Each gets a unique group, so none replaces another; the NUL
 /// keeps any other sender from imitating it.
 const SYSTEM_GROUP: &str = "\u{0}system-";
+/// Notification sources only the core itself uses.
+const RESERVED_SOURCES: &[&str] = &[
+    "agent",
+    "litenotch",
+    "pomodoro",
+    "meeting",
+    "timer",
+    "usage",
+    "caffeine",
+    "color",
+];
 /// Usage percentages that raise an alert, lowest first.
 const USAGE_ALERT_LEVELS: [u8; 2] = [80, 95];
 
@@ -293,6 +304,9 @@ pub enum Input {
     },
     UtcOffset(i32),
     HooksInstalled(Option<bool>),
+    StatuslineInstalled(Option<bool>),
+    /// A notification from the runtime itself (not from the socket).
+    OwnNotify(NotificationInput),
     Tick,
 }
 
@@ -411,6 +425,9 @@ pub struct AgentsView {
     pub pending: Vec<PermissionRequest>,
     /// Whether the Claude Code hooks are registered; `None` if unknown.
     pub hooks_installed: Option<bool>,
+    /// Whether Claude Code's status line goes through LiteNotch, which is
+    /// what brings the usage limits; `None` if unknown.
+    pub statusline_installed: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -467,6 +484,7 @@ pub struct Core {
     /// Highest alert level already raised per usage window (5 h, 7 d).
     usage_alerted: [u8; 2],
     hooks_installed: Option<bool>,
+    statusline_installed: Option<bool>,
     dirty: bool,
 }
 
@@ -545,6 +563,7 @@ impl Core {
             dnd: false,
             usage_alerted: [0; 2],
             hooks_installed: None,
+            statusline_installed: None,
             dirty: false,
         }
     }
@@ -569,6 +588,12 @@ impl Core {
     /// True once since the last call if something worth saving changed.
     pub fn take_dirty(&mut self) -> bool {
         std::mem::take(&mut self.dirty)
+    }
+
+    /// Whether the clipboard history would keep this copy (see
+    /// `ClipboardHistory::would_keep`).
+    pub fn clip_would_keep(&self, capture: &ClipCapture) -> bool {
+        self.clipboard.would_keep(capture)
     }
 
     /// Files (images, formatting) the clipboard history refers to.
@@ -654,6 +679,8 @@ impl Core {
             } => self.clamshell(closed, external_display, &mut fx),
             Input::UtcOffset(secs) => self.set_utc_offset(secs),
             Input::HooksInstalled(state) => self.hooks_installed = state,
+            Input::StatuslineInstalled(state) => self.statusline_installed = state,
+            Input::OwnNotify(input) => self.post(input, now),
             Input::Tick => {}
         }
         self.settle(now, &mut fx);
@@ -1185,6 +1212,11 @@ impl Core {
         {
             input.group = None;
         }
+        // Nor may a script pose as LiteNotch or an agent: those sources pick
+        // where a click goes and replace the real notification of their group.
+        if RESERVED_SOURCES.contains(&input.source.trim()) {
+            input.source = format!("{} (script)", input.source.trim());
+        }
         self.post_capped(input, now);
     }
 
@@ -1378,6 +1410,7 @@ impl Core {
             sessions: self.agents.sessions().to_vec(),
             pending: self.agents.pending().to_vec(),
             hooks_installed: self.hooks_installed,
+            statusline_installed: self.statusline_installed,
         };
         let caf = self.caffeine.snapshot(now);
         let caffeine = CaffeineView {
@@ -3203,5 +3236,42 @@ mod tests {
         );
         cmd(&mut c, Command::NotifyOpened { id: 9_999 }, T0 + 3);
         assert_eq!(c.view(T0 + 3).inbox.unread, 1);
+    }
+
+    #[test]
+    fn scripts_cannot_pose_as_litenotch_or_an_agent() {
+        let mut c = core();
+        c.apply(
+            Input::ExternalNotify(NotificationInput {
+                source: "agent".into(),
+                group: Some("agent-s1".into()),
+                ..note("fake", Priority::Normal)
+            }),
+            T0,
+        );
+        let n = c.view(T0).inbox.banner.unwrap();
+        assert_eq!(n.source, "agent (script)");
+        assert_eq!(n.open, None, "a click does not go to a session's terminal");
+        c.apply(
+            Input::OwnNotify(NotificationInput {
+                source: "litenotch".into(),
+                ..note("own", Priority::High)
+            }),
+            T0 + 1,
+        );
+        assert!(c
+            .view(T0 + 1)
+            .inbox
+            .history
+            .iter()
+            .any(|n| n.source == "litenotch" && n.title == "own"));
+    }
+
+    #[test]
+    fn the_status_line_state_is_shown() {
+        let mut c = core();
+        assert_eq!(c.view(T0).agents.statusline_installed, None);
+        c.apply(Input::StatuslineInstalled(Some(true)), T0);
+        assert_eq!(c.view(T0).agents.statusline_installed, Some(true));
     }
 }

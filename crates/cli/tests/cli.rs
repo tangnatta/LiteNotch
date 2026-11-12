@@ -502,3 +502,31 @@ fn hooks_carry_the_app_the_session_runs_in() {
         other => panic!("{other:?}"),
     }
 }
+
+#[test]
+fn a_terminal_id_in_the_payload_itself_is_dropped() {
+    let fx = serve("cli-app-spoof", |_| Some(Response::Ok));
+    let mut child = Command::new(BIN)
+        .arg("hook")
+        .env("LITENOTCH_SOCKET", &fx.socket)
+        .env("HOME", &fx.dir)
+        .env_remove("__CFBundleIdentifier")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(
+            br#"{"hook_event_name":"Stop","session_id":"s1","litenotch_app":"com.evil.app"}"#,
+        )
+        .unwrap();
+    child.wait().unwrap();
+    let seen = fx.seen.lock().unwrap();
+    match &seen[0] {
+        Request::Hook { payload } => assert!(payload.get("litenotch_app").is_none()),
+        other => panic!("{other:?}"),
+    }
+}

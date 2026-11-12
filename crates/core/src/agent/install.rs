@@ -258,13 +258,13 @@ mod tests {
 
     #[test]
     fn install_handles_unicode_and_spaces_in_path() {
-        let cli = "/Users/ณัฐ/My Apps/litenotch";
+        let cli = "/Users/ทดสอบ/My Apps/litenotch";
         let out = install("{}", cli).unwrap();
         assert!(is_installed(&out, cli));
         assert!(val(&out)["hooks"]["Stop"][0]["hooks"][0]["command"]
             .as_str()
             .unwrap()
-            .starts_with("'/Users/ณัฐ/My Apps/litenotch'"));
+            .starts_with("'/Users/ทดสอบ/My Apps/litenotch'"));
     }
 
     #[test]

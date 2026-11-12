@@ -462,6 +462,9 @@ public struct AgentsView: Codable, Equatable {
     public var sessions: [AgentSession]
     public var pending: [PermissionRequest]
     public var hooksInstalled: Bool?
+    /// LiteNotch is Claude Code's status line (the source of usage limits);
+    /// nil when not known.
+    public var statuslineInstalled: Bool? = nil
 }
 
 public struct RateWindow: Codable, Equatable {

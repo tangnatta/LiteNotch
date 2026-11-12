@@ -172,6 +172,20 @@ impl ClipboardHistory {
     }
 
     /// Record a pasteboard reading.
+    /// Whether a copy would be kept, judged before anything about it is
+    /// written to disk (images, formatting): off, concealed and excluded-app
+    /// copies are never saved anywhere.
+    pub fn would_keep(&self, c: &ClipCapture) -> bool {
+        self.cfg.enabled
+            && !(c.concealed && self.cfg.ignore_concealed)
+            && !c.source_app.as_ref().is_some_and(|app| {
+                self.cfg
+                    .excluded_apps
+                    .iter()
+                    .any(|e| e.eq_ignore_ascii_case(app))
+            })
+    }
+
     pub fn capture(&mut self, c: ClipCapture, now_ms: u64) -> CaptureOutcome {
         if !self.cfg.enabled {
             return CaptureOutcome::Ignored(IgnoreReason::Disabled);
@@ -862,5 +876,29 @@ mod tests {
             4,
         );
         assert_eq!(h.file_paths(), ["/c/img-1.png", "/c/rich-2.html"]);
+    }
+
+    #[test]
+    fn would_keep_matches_the_capture_rules_that_need_no_content() {
+        let mut h = ClipboardHistory::new(ClipboardConfig {
+            excluded_apps: vec!["Bank".into()],
+            ..Default::default()
+        });
+        assert!(h.would_keep(&text("x")));
+        let from = |app: &str| ClipCapture {
+            source_app: Some(app.into()),
+            ..text("x")
+        };
+        assert!(!h.would_keep(&from("bank")));
+        assert!(h.would_keep(&from("Notes")));
+        assert!(!h.would_keep(&ClipCapture {
+            concealed: true,
+            ..text("x")
+        }));
+        h.set_config(ClipboardConfig {
+            enabled: false,
+            ..Default::default()
+        });
+        assert!(!h.would_keep(&text("x")));
     }
 }

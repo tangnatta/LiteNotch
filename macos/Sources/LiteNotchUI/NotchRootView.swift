@@ -3,6 +3,12 @@ import SwiftUI
 
 extension NotchPresentation {
     static let spring = Animation.spring(response: 0.42, dampingFraction: 0.80)
+
+    /// Open and close: the spring, or no animation at all when Reduce
+    /// Motion is on (the shape would still move under a short fade).
+    static func animation(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : spring
+    }
 }
 
 /// The SwiftUI root hosted by one panel. The window never resizes; the
@@ -13,6 +19,8 @@ public struct NotchRootView: View {
     @ObservedObject var model: PanelState
     /// The window's scheme, which follows the system setting live.
     @Environment(\.colorScheme) private var systemScheme
+    /// With Reduce Motion on, the shape changes size without the spring.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(model: PanelState) {
         self.model = model
@@ -34,7 +42,10 @@ public struct NotchRootView: View {
         let shape = NotchShape(topRadius: ear, bottomRadius: bottom)
 
         ZStack(alignment: .top) {
-            shape.fill(mode == .closed ? Color.black : NT.panel)
+            // Closed and as a toast the shape is black in every theme, so it
+            // reads as part of the hardware notch; only the open panel follows
+            // the theme.
+            shape.fill(mode == .expanded ? NT.panel : Color.black)
             switch mode {
             case .closed:
                 if let c = model.view?.compact, c.kind != .idle, c.kind != .unknown {
@@ -48,11 +59,12 @@ public struct NotchRootView: View {
                     ToastView(banner: b, notch: model.notch, ear: ear,
                               open: { model.openNotification(b, isBanner: true) },
                               dismiss: { model.send(.notifyDismissBanner) })
+                        .environment(\.colorScheme, .dark)
                         .transition(.opacity)
                 }
             case .expanded:
                 ExpandedView(model: model, ear: ear)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
         }
         .environment(\.colorScheme, scheme)
@@ -67,8 +79,8 @@ public struct NotchRootView: View {
         // without "hover to expand". Buttons inside take their own clicks,
         // and the open panel's top strip has its own gesture that closes it.
         .onTapGesture { if !model.expanded { model.open() } }
-        .animation(NotchPresentation.spring, value: size)
-        .animation(NotchPresentation.spring, value: mode)
+        .animation(NotchPresentation.animation(reduceMotion: reduceMotion), value: size)
+        .animation(NotchPresentation.animation(reduceMotion: reduceMotion), value: mode)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
@@ -105,9 +117,9 @@ struct ClosedActivityView: View {
         case .media:
             ArtworkView(path: artworkPath, size: 20, radius: 5)
         case .caffeine:
-            Image(systemName: "cup.and.saucer.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.text1)
+            Image(systemName: "cup.and.heat.waves.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.text1)
         case .agent:
-            Image(systemName: "sparkles").font(.system(size: 12, weight: .semibold)).foregroundStyle(NT.accentText)
+            Image(systemName: "terminal.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
         case .timer:
             Image(systemName: "hourglass").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
         case .meeting:
@@ -168,7 +180,7 @@ struct ClosedActivityView: View {
                 VText(compact.value).wingText(mono: false)
                 if compact.count > 1 {
                     Text(verbatim: "\(compact.count)")
-                        .font(.system(size: 10, weight: .bold)).monospacedDigit()
+                        .font(NType.badge.font)
                         .foregroundStyle(NT.onAccent)
                         .frame(minWidth: 15, minHeight: 15)
                         .background(NT.accent, in: Capsule())
@@ -184,7 +196,7 @@ struct ClosedActivityView: View {
 
 private extension Text {
     func wingText(mono: Bool, tint: Color = NT.text1) -> some View {
-        self.font(.system(size: 12, weight: .semibold))
+        self.font(NType.emphasis.font)
             .monospacedDigit()
             .foregroundStyle(tint)
             .lineLimit(1)
@@ -218,6 +230,8 @@ private struct AnimatedBars: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 16, height: 14))
         view.wantsLayer = true
+        // With Reduce Motion on, the bars stay still at their resting heights.
+        let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let durations: [CFTimeInterval] = [0.42, 0.34, 0.50, 0.38]
         for i in 0..<4 {
             let bar = CALayer()
@@ -225,6 +239,8 @@ private struct AnimatedBars: NSViewRepresentable {
             bar.cornerRadius = 1.25
             bar.bounds = CGRect(x: 0, y: 0, width: 2.5, height: MediaBars.base[i])
             bar.position = CGPoint(x: 1.25 + CGFloat(i) * 4.5, y: 7)
+            view.layer?.addSublayer(bar)
+            if still { continue }
             let pulse = CABasicAnimation(keyPath: "bounds.size.height")
             pulse.fromValue = 4
             pulse.toValue = 13
@@ -234,7 +250,6 @@ private struct AnimatedBars: NSViewRepresentable {
             pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             pulse.isRemovedOnCompletion = false
             bar.add(pulse, forKey: "pulse")
-            view.layer?.addSublayer(bar)
         }
         return view
     }
@@ -256,20 +271,23 @@ struct ToastView: View {
             Color.clear.frame(height: notch.height)
             HStack(spacing: 10) {
                 Image(systemName: "bell.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .glyph(NGlyph.regular)
                     .foregroundStyle(NT.accentText)
                     .frame(width: 18)
                 Button(action: open) {
                     VStack(alignment: .leading, spacing: 1) {
-                        VText(banner.title).nfont(12.5, .semibold).foregroundStyle(NT.text1).lineLimit(1)
-                        VText(banner.body).nfont(11.5).foregroundStyle(NT.text2).lineLimit(1)
+                        VText(banner.title).nfont(.emphasis).foregroundStyle(NT.text1).lineLimit(1)
+                        VText(banner.body).nfont(.body).foregroundStyle(NT.text2).lineLimit(1)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                VText(banner.source).nfont(10.5).foregroundStyle(NT.text3).lineLimit(1)
-                IconButton(symbol: "xmark", label: "Dismiss", size: 10, frame: 22, action: dismiss)
+                .help("Open")
+                if let tag = Format.sourceTag(banner.source) {
+                    VText(tag).nfont(.caption).foregroundStyle(NT.text3).lineLimit(1)
+                }
+                IconButton(symbol: "xmark", label: "Dismiss", size: NGlyph.small, action: dismiss)
             }
             .padding(.horizontal, ear + 14)
             .frame(height: NotchGeometry.toastExtraHeight - 6)
@@ -283,16 +301,26 @@ struct ToastView: View {
 struct ExpandedView: View {
     @ObservedObject var model: PanelState
     let ear: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shownApproval: String?
 
     var body: some View {
         let vm = model.view
         let pending = vm?.agents.pending ?? []
         VStack(spacing: 0) {
-            if let first = pending.first {
-                ApprovalHeader(index: 1, total: pending.count, notch: model.notch, ear: ear)
-                    .frame(height: model.notch.height)
-                ApprovalView(request: first, send: model.send)
-                    .id(first.id)
+            if !pending.isEmpty {
+                // The one being looked at; the first when it was answered or
+                // none was picked.
+                let i = pending.firstIndex { $0.id == shownApproval } ?? 0
+                let request = pending[i]
+                ApprovalHeader(index: i + 1, total: pending.count, notch: model.notch, ear: ear) { d in
+                    let j = min(max(i + d, 0), pending.count - 1)
+                    shownApproval = pending[j].id
+                }
+                .frame(height: model.notch.height)
+                // A new id re-arms Allow (see ApprovalView.armDelay).
+                ApprovalView(request: request, send: model.send)
+                    .id(request.id)
                     .padding(.horizontal, ear + 14)
                     .padding(.top, 8)
                     .padding(.bottom, 18)
@@ -322,7 +350,7 @@ struct ExpandedView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(.easeOut(duration: 0.15), value: model.tab)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.tab)
     }
 }
 
@@ -333,9 +361,22 @@ extension Tab {
         case .music: return "music.note"
         case .timer: return "timer"
         case .clipboard: return "doc.on.clipboard"
-        case .agents: return "sparkles"
+        case .agents: return "terminal"
         case .inbox: return "bell"
         case .settings: return "gearshape"
+        }
+    }
+
+    /// Tooltip: the name and what the tab holds.
+    var help: String {
+        switch self {
+        case .home: return "Home"
+        case .music: return "Music: what\u{2019}s playing"
+        case .timer: return "Timer: focus sessions, meetings and a countdown"
+        case .clipboard: return "Clipboard history"
+        case .agents: return "Agents: Claude Code sessions and usage"
+        case .inbox: return "Inbox: notifications"
+        case .settings: return "Settings"
         }
     }
 
@@ -389,30 +430,45 @@ struct TabBar: View {
     private var pickerButton: some View {
         Button { model.pickColor() } label: {
             Image(systemName: "eyedropper")
-                .font(.system(size: 11.5, weight: .semibold))
+                .glyph(13)
                 .foregroundStyle(NT.text3)
                 .frame(width: 30, height: 24)
                 .contentShape(Capsule())
+                .controlHover(Capsule())
         }
         .buttonStyle(.plain)
-        .help("Pick a colour from the screen")
+        .help("Pick a colour from the screen and copy it")
         .accessibilityLabel(Text(verbatim: "Pick a colour from the screen"))
     }
 
-    private var keepAwakeButton: some View {
-        let mode = model.view?.caffeine.mode ?? .off
-        let on = mode != .off && mode != .unknown
-        let label = "Keep awake: \(on ? "on" : "off")"
-        return Button { model.send(.caffeineToggle) } label: {
-            Image(systemName: on ? "cup.and.saucer.fill" : "cup.and.saucer")
-                .font(.system(size: 11.5, weight: .semibold))
-                .foregroundStyle(on ? NT.accent : NT.text3)
+    /// Filled and in the accent while on; the tooltip says for how long.
+    @ViewBuilder private var keepAwakeButton: some View {
+        let c = model.view?.caffeine
+        let on = c.map { $0.mode != .off && $0.mode != .unknown } ?? false
+        if on, let until = c?.untilMs {
+            // Minutes are enough for a tooltip, so this redraws twice a minute.
+            EverySecond(interval: 30) { now in
+                keepAwakeButton(on: true, help: KeepAwakeText.help(on: true, untilMs: until, nowMs: now))
+            }
+        } else {
+            keepAwakeButton(on: on, help: KeepAwakeText.help(on: on, untilMs: nil, nowMs: 0))
+        }
+    }
+
+    private func keepAwakeButton(on: Bool, help: String) -> some View {
+        Button { model.send(.caffeineToggle) } label: {
+            Image(systemName: on ? "cup.and.heat.waves.fill" : "cup.and.heat.waves")
+                .glyph(13)
+                .foregroundStyle(on ? NT.accentText : NT.text3)
                 .frame(width: 30, height: 24)
+                .background(on ? NT.fillHi : Color.clear, in: Capsule())
                 .contentShape(Capsule())
+                .controlHover(Capsule())
         }
         .buttonStyle(.plain)
-        .help(label)
-        .accessibilityLabel(Text(verbatim: label))
+        .help(help)
+        .accessibilityLabel(Text(verbatim: "Keep the Mac awake"))
+        .accessibilityValue(Text(verbatim: on ? "On" : "Off"))
         .accessibilityAddTraits(.isToggle)
     }
 
@@ -420,14 +476,14 @@ struct TabBar: View {
         let selected = model.tab == t
         let count = badge(for: t)
         return Button { model.selectTab(t) } label: {
-            Image(systemName: t.symbol).font(.system(size: 12, weight: .semibold))
+            Image(systemName: t.symbol).glyph(13)
                 .foregroundStyle(selected ? NT.text1 : NT.text3)
                 .frame(width: 30, height: 24)
                 .background(selected ? NT.fillHi : Color.clear, in: Capsule())
                 .overlay(alignment: .topTrailing) {
                     if count > 0 {
                         Text(verbatim: count > 9 ? "9+" : "\(count)")
-                            .font(.system(size: 8.5, weight: .bold)).monospacedDigit()
+                            .font(NType.badge.font)
                             .foregroundStyle(NT.onAccent)
                             .padding(.horizontal, 3.5)
                             .frame(minWidth: 13, minHeight: 13)
@@ -436,9 +492,10 @@ struct TabBar: View {
                     }
                 }
                 .contentShape(Capsule())
+                .controlHover(Capsule())
         }
         .buttonStyle(.plain)
-        .help(t.title)
+        .help(t.help)
         .accessibilityLabel(Text(verbatim: count > 0 ? "\(t.title), \(count)" : t.title))
         .accessibilityAddTraits(selected ? .isSelected : [])
     }

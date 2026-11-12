@@ -27,11 +27,10 @@ struct ClipboardTab: View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 searchField
-                TextPill(title: "Clear", tint: hasUnpinned ? NT.text1 : NT.text3, height: 30) {
+                ConfirmPill(title: "Clear history", question: ConfirmGate.question(count: clearCount),
+                            help: "Remove everything except pinned items", enabled: hasUnpinned, height: 30) {
                     model.send(.clipClear)
                 }
-                .disabled(!hasUnpinned)
-                .help("Clear history (pinned items stay)")
             }
             swatches
             if items.isEmpty {
@@ -41,9 +40,13 @@ struct ClipboardTab: View {
                     let now = nowMs(Date(), offset: offset)
                     ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in
                         row(item, now: now)
-                        if idx < items.count - 1 { Divider().overlay(NT.hairline) }
+                        if idx < items.count - 1 { Hairline().padding(.horizontal, 6) }
                     }
+                    .padding(.horizontal, 6)
                 }
+                // Rows reach 6 pt past the column so their hover fill has
+                // room while the text stays aligned with the search field.
+                .padding(.horizontal, -6)
             }
         }
         .onAppear { query = vm.clipboard.query }
@@ -53,17 +56,17 @@ struct ClipboardTab: View {
 
     private var searchField: some View {
         HStack(spacing: 7) {
-            Image(systemName: "magnifyingglass").font(.system(size: 11, weight: .semibold))
+            Image(systemName: "magnifyingglass").glyph(11)
                 .foregroundStyle(NT.text3)
             if snapshot {
                 Text(verbatim: query.isEmpty ? "Search clipboard" : query)
-                    .nfont(12.5).foregroundStyle(NT.text3)
+                    .nfont(.body).foregroundStyle(NT.text3)
                 Spacer(minLength: 0)
             } else {
                 TextField("", text: $query,
                           prompt: Text(verbatim: "Search clipboard").foregroundColor(NT.text3))
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12.5))
+                    .font(NType.body.font)
                     .foregroundStyle(NT.text1)
                     .focused($focused)
                     .onChange(of: query) { _, q in debounce(q) }
@@ -72,12 +75,12 @@ struct ClipboardTab: View {
                     .accessibilityLabel(Text(verbatim: "Search clipboard"))
             }
             if !query.isEmpty && !snapshot {
-                IconButton(symbol: "xmark.circle.fill", label: "Clear search", size: 11, frame: 18) { query = "" }
+                IconButton(symbol: "xmark.circle.fill", label: "Clear search", size: 11, frame: 24) { query = "" }
             }
         }
         .padding(.horizontal, 10)
         .frame(height: 30)
-        .background(NT.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
     }
 
     /// Colours picked from the screen; a click copies one again.
@@ -85,8 +88,9 @@ struct ClipboardTab: View {
         let colors = vm.colors.compactMap(ColorMath.normalize).prefix(8)
         if !colors.isEmpty {
             HStack(spacing: 7) {
-                Image(systemName: "eyedropper").font(.system(size: 10, weight: .semibold))
+                Image(systemName: "eyedropper").glyph(NGlyph.small)
                     .foregroundStyle(NT.text3)
+                    .help("Colours you picked from the screen")
                 ForEach(Array(colors.enumerated()), id: \.offset) { _, hex in
                     Button { model.send(.colorPicked(hex: hex)) } label: {
                         Circle().fill(NT.color(hex))
@@ -95,12 +99,12 @@ struct ClipboardTab: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .help(hex)
+                    .help("Copy \(hex)")
                     .accessibilityLabel(Text(verbatim: "Copy \(hex)"))
                 }
                 Spacer(minLength: 4)
                 if let first = colors.first {
-                    VText(first).nfont(10.5, .medium).monospaced().foregroundStyle(NT.text3)
+                    VText(first).nfont(.caption).monospaced().foregroundStyle(NT.text3)
                 }
             }
             .padding(.horizontal, 4)
@@ -131,13 +135,20 @@ struct ClipboardTab: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 
-    private var empty: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "doc.on.clipboard").font(.system(size: 20)).foregroundStyle(NT.text3)
-            Text(verbatim: vm.clipboard.query.isEmpty ? "Nothing copied yet" : "No matches")
-                .nfont(12).foregroundStyle(NT.text3)
+    @ViewBuilder private var empty: some View {
+        if vm.clipboard.query.isEmpty {
+            EmptyState(symbol: "doc.on.clipboard", title: "Nothing copied yet",
+                       hint: "Copy something and it appears here.")
+        } else {
+            EmptyState(symbol: "magnifyingglass", title: "No matches",
+                       hint: "Try fewer words, or clear the search.")
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Items Clear would remove, when the list shows all of them.
+    private var clearCount: Int? {
+        guard vm.clipboard.query.isEmpty, items.count == vm.clipboard.total else { return nil }
+        return items.filter { !$0.pinned }.count
     }
 
     private func icon(_ k: ClipKind) -> String {
@@ -149,7 +160,7 @@ struct ClipboardTab: View {
     }
 
     private func row(_ item: ClipView, now: Int) -> some View {
-        HStack(alignment: .center, spacing: 6) {
+        HStack(alignment: .center, spacing: 2) {
             let source = Thumbnails.source(of: item)
             Button { copy(item) } label: {
                 HStack(spacing: 10) {
@@ -157,61 +168,60 @@ struct ClipboardTab: View {
                         ClipThumb(source: source)
                     } else {
                         Image(systemName: icon(item.kind))
-                            .font(.system(size: 11, weight: .medium)).foregroundStyle(NT.text2)
+                            .glyph(11, .medium).foregroundStyle(NT.text2)
                             .frame(width: 24, height: 24)
-                            .background(NT.fill, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
                             // Same column as the thumbnails.
                             .frame(width: 34, alignment: .leading)
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        VText(item.preview).nfont(12).foregroundStyle(NT.text1)
+                        VText(item.preview).nfont(.body).foregroundStyle(NT.text1)
                             .lineLimit(2).multilineTextAlignment(.leading)
                         if copiedId == item.id {
                             HStack(spacing: 4) {
-                                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                                Image(systemName: "checkmark").glyph(9, .bold)
                                 Text(verbatim: "Copied")
                             }
-                            .nfont(10.5, .semibold).foregroundStyle(NT.accentText)
-                        } else {
-                            VText(meta(item, now: now)).nfont(10.5).foregroundStyle(NT.text3).lineLimit(1)
+                            .nfont(.captionStrong).foregroundStyle(NT.accentText)
+                        } else if let app = item.sourceApp, !app.isEmpty {
+                            VText(app).nfont(.caption).foregroundStyle(NT.text3).lineLimit(1)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(verbatim: Format.relative(from: item.createdMs, nowMs: now))
+                        .nfont(.caption).foregroundStyle(NT.text3).lineLimit(1).fixedSize()
+                        .padding(.trailing, 4)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .help("Copy")
             .accessibilityLabel(Text(verbatim: "Copy: \(item.preview)"))
             let actions = ClipActions.of(item, hasPreview: source != nil)
             if actions.contains(.copyPlain) {
                 IconButton(symbol: "textformat", label: "Copy as plain text", size: 11,
-                           tint: item.rich ? NT.text2 : NT.text3, frame: 24) {
+                           tint: item.rich ? NT.text2 : NT.text3, help: "Copy without formatting") {
                     copyPlain(item)
                 }
-                .help(item.rich ? "Copy without formatting" : "Copy as plain text")
             }
             if actions.contains(.preview) {
-                IconButton(symbol: "eye", label: "Preview", size: 11, tint: NT.text3, frame: 24) {
+                IconButton(symbol: "eye", label: "Preview", size: 11, tint: NT.text3) {
                     model.requestKeyboard(false)
                     model.clipPreview = item.id
                 }
-                .help("Preview")
             }
             IconButton(symbol: item.pinned ? "pin.fill" : "pin", label: item.pinned ? "Unpin" : "Pin",
-                       size: 11, tint: item.pinned ? NT.accent : NT.text3, frame: 24) {
+                       size: 11, tint: item.pinned ? NT.accent : NT.text3,
+                       help: item.pinned ? "Unpin" : "Pin: keep it when the history is cleared") {
                 model.send(.clipPin(id: item.id, pinned: !item.pinned))
             }
-            IconButton(symbol: "xmark", label: "Delete", size: 10, tint: NT.text3, frame: 24) {
+            IconButton(symbol: "xmark", label: "Delete", size: NGlyph.small, tint: NT.text3,
+                       help: "Remove from history") {
                 model.send(.clipRemove(id: item.id))
             }
         }
-        .padding(.vertical, 6)
-    }
-
-    private func meta(_ item: ClipView, now: Int) -> String {
-        let when = Format.relative(from: item.createdMs, nowMs: now)
-        if let a = item.sourceApp, !a.isEmpty { return "\(a) \u{00B7} \(when)" }
-        return when
+        .padding(.vertical, 4)
+        .rowHover()
     }
 }
 

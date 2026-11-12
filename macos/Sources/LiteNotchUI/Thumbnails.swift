@@ -8,6 +8,8 @@ import SwiftUI
 enum Thumbnails {
     static let rowPixels = 128
     static let previewPixels = 720
+    /// Images larger than this on either side are not decoded at all.
+    static let maxSourceSide = 4096
 
     private static let cache: NSCache<NSString, NSImage> = {
         let c = NSCache<NSString, NSImage>()
@@ -58,9 +60,18 @@ enum Thumbnails {
         }.value
     }
 
-    private static func downsample(_ path: String, px: Int) -> CGImage? {
+    /// The image at `path` with its longer side at most `px`. With
+    /// `maxSourceSide`, a file whose header reports a larger (or no) pixel
+    /// size is refused before anything is decoded.
+    static func downsample(_ path: String, px: Int, maxSourceSide: Int? = nil) -> CGImage? {
         let opts = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, opts) else { return nil }
+        if let limit = maxSourceSide {
+            guard let props = CGImageSourceCopyPropertiesAtIndex(src, 0, opts) as? [CFString: Any],
+                  let w = props[kCGImagePropertyPixelWidth] as? Int,
+                  let h = props[kCGImagePropertyPixelHeight] as? Int,
+                  w > 0, h > 0, w <= limit, h <= limit else { return nil }
+        }
         let thumb: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -147,23 +158,25 @@ struct ClipPreview: View {
             HStack(spacing: 6) {
                 Button(action: close) {
                     HStack(spacing: 4) {
-                        Image(systemName: "chevron.left").font(.system(size: 10, weight: .bold))
-                        Text(verbatim: "Back").nfont(11.5, .medium)
+                        Image(systemName: "chevron.left").glyph(NGlyph.small, .bold)
+                        Text(verbatim: "Back").nfont(.bodyMedium)
                     }
                     .foregroundStyle(NT.text1)
                     .padding(.horizontal, 9).frame(height: 24)
                     .background(NT.fill, in: Capsule())
                     .contentShape(Capsule())
+                    .controlHover(Capsule())
                 }
                 .buttonStyle(.plain)
+                .help("Back to the list")
                 .accessibilityLabel(Text(verbatim: "Back to the list"))
-                VText(caption).nfont(11.5).foregroundStyle(NT.text2).lineLimit(1).truncationMode(.middle)
+                VText(caption).nfont(.body).foregroundStyle(NT.text2).lineLimit(1).truncationMode(.middle)
                     .frame(maxWidth: .infinity)
                 TextPill(title: "Copy", tint: NT.onAccent, background: NT.accent, height: 24, weight: .semibold,
                          action: copy)
             }
             ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous).fill(NT.fill)
+                RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous).fill(NT.fill)
                 ClipThumb(source: source, size: 120, radius: 8, px: Thumbnails.previewPixels, fit: true)
                     .padding(8)
             }

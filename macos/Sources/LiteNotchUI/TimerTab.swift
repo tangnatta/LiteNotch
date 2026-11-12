@@ -19,57 +19,54 @@ struct TimerTab: View {
     }
 
     private var focus: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 16) {
             PomodoroCard(p: vm.pomodoro, send: model.send)
                 .frame(width: 226)
-            VStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 today
+                Hairline()
                 schedule
+                Spacer(minLength: 0)
             }
+            .padding(.top, 6)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
+    /// Today's totals; the captions say what they count, so no label.
     private var today: some View {
-        Card(padding: 12, expand: true) {
-            VStack(alignment: .leading, spacing: 8) {
-                SectionLabel(text: "Today")
-                HStack(alignment: .top, spacing: 0) {
-                    stat("\(vm.pomodoro.completedToday)",
-                         vm.pomodoro.completedToday == 1 ? "focus session" : "focus sessions")
-                    stat(Format.duration(secs: vm.pomodoro.focusSecsToday), "focused")
-                }
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(alignment: .top, spacing: 0) {
+            stat("\(vm.pomodoro.completedToday)",
+                 vm.pomodoro.completedToday == 1 ? "focus session today" : "focus sessions today")
+            stat(Format.duration(secs: vm.pomodoro.focusSecsToday), "focused today")
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func stat(_ value: String, _ caption: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(verbatim: value).font(.system(size: 24, weight: .semibold)).monospacedDigit()
+            Text(verbatim: value).nfont(.display)
                 .foregroundStyle(NT.text1).lineLimit(1)
-            Text(verbatim: caption).nfont(11).foregroundStyle(NT.text2).lineLimit(1)
+            Text(verbatim: caption).nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 
     private var schedule: some View {
-        Card(padding: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    SectionLabel(text: "Schedule")
-                    Spacer(minLength: 4)
-                    TextPill(title: "Edit", tint: NT.text1, height: 22) { model.openSettings(.timer) }
-                        .help("Open Settings \u{203A} Timer")
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                SectionLabel(text: "Schedule")
+                ForEach(Format.scheduleLines(vm.settings.pomodoro), id: \.self) { line in
+                    Text(verbatim: line).nfont(.body).foregroundStyle(NT.text2).lineLimit(1)
+                        .minimumScaleFactor(0.9)
                 }
-                Text(verbatim: Format.schedule(vm.settings.pomodoro))
-                    .nfont(11.5).foregroundStyle(NT.text2)
-                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 4)
+            TextPill(title: "Edit", tint: NT.text1, height: 22) { model.openSettings(.timer) }
+                .help("Change the lengths in Settings \u{203A} Timer")
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -125,13 +122,13 @@ struct PomodoroCard: View {
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: 1) {
                     Text(verbatim: Format.countdown(seconds: left))
-                        .font(.system(size: 23, weight: .semibold)).monospacedDigit()
+                        .nfont(.display)
                         .foregroundStyle(NT.text1)
                     Text(verbatim: p.runState == .paused ? "Paused" : Format.phaseLabel(p.phase))
-                        .nfont(10.5, .medium).foregroundStyle(NT.text2)
+                        .nfont(.caption).foregroundStyle(NT.text2)
                 }
             }
-            .frame(width: 96, height: 96)
+            .frame(width: 100, height: 100)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(verbatim: "\(Format.phaseLabel(p.phase)), \(Format.countdown(seconds: left)) left"))
         }
@@ -157,7 +154,7 @@ struct PomodoroCard: View {
             circleButton(p.runState == .running ? "pause.fill" : "play.fill",
                          label: p.runState == .running ? "Pause" : "Start",
                          size: 36, fill: NT.accent, tint: NT.onAccent) { send(.pomodoroToggle) }
-            circleButton("forward.end.fill", label: "Skip", size: 28, fill: NT.fill, tint: NT.text2) {
+            circleButton("forward.end.fill", label: "Skip to the next phase", size: 28, fill: NT.fill, tint: NT.text2) {
                 send(.pomodoroSkip)
             }
         }
@@ -167,13 +164,15 @@ struct PomodoroCard: View {
                               tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: size * 0.38, weight: .bold))
+                .glyph(size * 0.38, .bold)
                 .foregroundStyle(tint)
                 .frame(width: size, height: size)
                 .background(fill, in: Circle())
                 .contentShape(Circle())
+                .controlHover(Circle())
         }
         .buttonStyle(.plain)
+        .help(label)
         .accessibilityLabel(Text(verbatim: label))
     }
 }
@@ -191,12 +190,26 @@ struct CountdownPane: View {
     private var editable: Bool { !t.isActive }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 16) {
             clock.frame(width: 226)
-            VStack(spacing: 10) {
-                presets
-                length
+            VStack(alignment: .leading, spacing: 12) {
+                if editable {
+                    presets
+                    Hairline()
+                    length
+                } else {
+                    // Lengths only change while stopped, so they are not
+                    // shown at all rather than shown disabled.
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(verbatim: "Set for \(Format.timerPreset(t.durationSecs))")
+                            .nfont(.title).foregroundStyle(NT.text1)
+                        Text(verbatim: "Reset the timer to change its length.")
+                            .nfont(.caption).foregroundStyle(NT.text3)
+                    }
+                }
+                Spacer(minLength: 0)
             }
+            .padding(.top, 6)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -220,10 +233,15 @@ struct CountdownPane: View {
                         VStack(spacing: 1) {
                             if typed != nil {
                                 timeField
+                            } else if !editable {
+                                // Plain text while running: a disabled
+                                // button would draw the digits greyed out.
+                                Text(verbatim: Format.countdown(seconds: l))
+                                    .nfont(.display).foregroundStyle(NT.text1)
                             } else {
                                 Button(action: beginTyping) {
                                     Text(verbatim: Format.countdown(seconds: l))
-                                        .font(.system(size: 23, weight: .semibold)).monospacedDigit()
+                                        .nfont(.display)
                                         .foregroundStyle(NT.text1)
                                         .contentShape(Rectangle())
                                 }
@@ -232,7 +250,7 @@ struct CountdownPane: View {
                                 .help(editable ? "Click to type a time, e.g. 25, 1:30 or 1h 15m" : "")
                                 .accessibilityLabel(Text(verbatim: "Set the time"))
                             }
-                            Text(verbatim: typed != nil ? typingHint : status).nfont(10.5, .medium)
+                            Text(verbatim: typed != nil ? typingHint : status).nfont(.caption)
                                 .foregroundStyle(typed != nil && invalid ? NT.deny
                                                  : (t.runState == .done ? NT.accentText : NT.text2))
                         }
@@ -248,10 +266,11 @@ struct CountdownPane: View {
                         send(.timerToggle)
                     }
                     Button { send(.timerAdd(secs: 60)) } label: {
-                        Text(verbatim: "+1m").nfont(11, .semibold).foregroundStyle(NT.text2)
+                        Text(verbatim: "+1m").nfont(.captionStrong).foregroundStyle(NT.text2)
                             .frame(width: 28, height: 28)
                             .background(NT.fill, in: Circle())
                             .contentShape(Circle())
+                            .controlHover(Circle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text(verbatim: "Add one minute"))
@@ -275,9 +294,9 @@ struct CountdownPane: View {
                   prompt: Text(verbatim: Format.countdown(seconds: t.durationSecs)))
             .textFieldStyle(.plain)
             .multilineTextAlignment(.center)
-            .font(.system(size: 21, weight: .semibold)).monospacedDigit()
+            .font(NType.display.font)
             .foregroundStyle(invalid ? NT.deny : NT.text1)
-            .frame(width: 84)
+            .frame(width: 90)
             .focused($focused)
             .onSubmit(commitTyping)
             .onExitCommand(perform: cancelTyping)
@@ -315,48 +334,41 @@ struct CountdownPane: View {
         }
     }
 
+    /// Preset lengths; they read as times, so no label.
     private var presets: some View {
-        Card(padding: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                SectionLabel(text: "Quick set")
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
-                    ForEach(t.presets, id: \.self) { secs in
-                        let selected = secs == t.durationSecs
-                        Button { send(.timerSet(secs: secs)) } label: {
-                            Text(verbatim: Format.timerPreset(secs))
-                                .nfont(12, .semibold)
-                                .foregroundStyle(selected ? NT.onAccent : NT.text1)
-                                .frame(maxWidth: .infinity, minHeight: 26)
-                                .background(selected ? NT.accent : NT.fill, in: Capsule())
-                                .contentShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!editable)
-                        .opacity(editable ? 1 : 0.45)
-                        .accessibilityLabel(Text(verbatim: "Set timer to \(Format.timerPreset(secs))"))
-                    }
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+            ForEach(t.presets, id: \.self) { secs in
+                let selected = secs == t.durationSecs
+                Button { send(.timerSet(secs: secs)) } label: {
+                    Text(verbatim: Format.timerPreset(secs))
+                        .nfont(selected ? .emphasis : .bodyMedium)
+                        .foregroundStyle(selected ? NT.text1 : NT.text2)
+                        .frame(maxWidth: .infinity, minHeight: 28)
+                        .background(selected ? NT.fillHi : NT.fill, in: Capsule())
+                        .overlay(Capsule().strokeBorder(selected ? NT.text3 : Color.clear, lineWidth: 1))
+                        .contentShape(Capsule())
+                        .controlHover(Capsule())
                 }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+                .help("Set the timer to \(Format.timerPreset(secs))")
+                .accessibilityLabel(Text(verbatim: "Set timer to \(Format.timerPreset(secs))"))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var length: some View {
-        Card(padding: 12, expand: true) {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    SectionLabel(text: "Length")
-                    Text(verbatim: editable ? "Minutes" : "Stop the timer to change it")
-                        .nfont(11).foregroundStyle(NT.text3).lineLimit(1)
-                }
-                Spacer(minLength: 4)
-                MiniStepper(value: Binding(get: { max(1, t.durationSecs / 60) },
-                                           set: { send(.timerSet(secs: $0 * 60)) }),
-                            range: 1...240, label: "Timer minutes")
-                    .disabled(!editable)
-                    .opacity(editable ? 1 : 0.45)
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                SectionLabel(text: "Length in minutes")
+                Text(verbatim: "Or click the time to type one")
+                    .nfont(.caption).foregroundStyle(NT.text3).lineLimit(1)
             }
-            .frame(maxHeight: .infinity, alignment: .top)
+            Spacer(minLength: 4)
+            MiniStepper(value: Binding(get: { max(1, t.durationSecs / 60) },
+                                       set: { send(.timerSet(secs: $0 * 60)) }),
+                        range: 1...240, label: "Timer minutes")
         }
     }
 
@@ -364,13 +376,15 @@ struct CountdownPane: View {
                        action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: size * 0.38, weight: .bold))
+                .glyph(size * 0.38, .bold)
                 .foregroundStyle(tint)
                 .frame(width: size, height: size)
                 .background(fill, in: Circle())
                 .contentShape(Circle())
+                .controlHover(Circle())
         }
         .buttonStyle(.plain)
+        .help(label)
         .accessibilityLabel(Text(verbatim: label))
     }
 }

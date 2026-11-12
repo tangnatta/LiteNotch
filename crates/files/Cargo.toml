@@ -1,0 +1,10 @@
+[package]
+name = "litenotch-files"
+description = "File access shared by the LiteNotch app and CLI: saved state and Claude Code settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+litenotch-core.workspace = true
+serde_json.workspace = true

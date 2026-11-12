@@ -1,0 +1,14 @@
+[package]
+name = "litenotch"
+description = "Command-line companion for LiteNotch: agent hooks, status line, notifications"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+litenotch-core.workspace = true
+litenotch-files.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+litenotch-app.workspace = true

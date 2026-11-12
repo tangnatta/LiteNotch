@@ -1,0 +1,16 @@
+[package]
+name = "litenotch-app"
+description = "LiteNotch runtime: event loop, socket server, persistence, C FFI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+litenotch-core.workspace = true
+litenotch-platform.workspace = true
+litenotch-files.workspace = true
+serde.workspace = true
+serde_json.workspace = true

@@ -1,0 +1,372 @@
+{
+  "compact": {
+    "kind": "media",
+    "title": "Weightless",
+    "value": "Marconi Union",
+    "ends_at_ms": null,
+    "total_secs": null,
+    "count": 0
+  },
+  "attention": false,
+  "pomodoro": {
+    "phase": "idle",
+    "run_state": "stopped",
+    "remaining_secs": 1500,
+    "total_secs": 1500,
+    "ends_at_ms": null,
+    "round": 0,
+    "rounds_before_long": 4,
+    "completed_today": 0,
+    "focus_secs_today": 0
+  },
+  "media": {
+    "app": "Spotify",
+    "title": "Weightless",
+    "artist": "Marconi Union",
+    "album": "Ambient Transmissions",
+    "playing": true,
+    "duration_ms": 480000,
+    "position_ms": 95000,
+    "position_at_ms": 1794400000000,
+    "controllable": true,
+    "artwork_path": null
+  },
+  "clipboard": {
+    "items": [
+      {
+        "id": 1,
+        "kind": "text",
+        "preview": "cargo llvm-cov --workspace --fail-under-lines 90",
+        "source_app": "Ghostty",
+        "created_ms": 1794400000000,
+        "pinned": true,
+        "image_path": null,
+        "files": []
+      },
+      {
+        "id": 5,
+        "kind": "image",
+        "preview": "Image",
+        "source_app": "Preview",
+        "created_ms": 1794400000004,
+        "pinned": false,
+        "image_path": "/tmp/litenotch-fixture/clip.png",
+        "files": []
+      },
+      {
+        "id": 4,
+        "kind": "text",
+        "preview": "fn next_deadline(&self) -> Option<u64> { self.until_ms }",
+        "source_app": "Zed",
+        "created_ms": 1794400000003,
+        "pinned": false,
+        "image_path": null,
+        "files": []
+      },
+      {
+        "id": 3,
+        "kind": "files",
+        "preview": "/Users/me/Desktop/notch-mock.png /Users/me/Desktop/notch-mock@2x.png",
+        "source_app": "Finder",
+        "created_ms": 1794400000002,
+        "pinned": false,
+        "image_path": null,
+        "files": [
+          "/Users/me/Desktop/notch-mock.png",
+          "/Users/me/Desktop/notch-mock@2x.png"
+        ]
+      },
+      {
+        "id": 2,
+        "kind": "text",
+        "preview": "https://code.claude.com/docs/en/hooks",
+        "source_app": "Safari",
+        "created_ms": 1794400000001,
+        "pinned": false,
+        "image_path": null,
+        "files": []
+      }
+    ],
+    "total": 5,
+    "query": ""
+  },
+  "inbox": {
+    "banner": null,
+    "history": [
+      {
+        "id": 2,
+        "source": "ci",
+        "title": "Deploy finished",
+        "body": "main → production in 3m 12s",
+        "priority": "normal",
+        "group": null,
+        "ttl_secs": null,
+        "created_ms": 1794400000003,
+        "read": true
+      },
+      {
+        "id": 1,
+        "source": "agent",
+        "title": "api-server finished",
+        "body": "All 42 tests pass.",
+        "priority": "normal",
+        "group": "agent-s2",
+        "ttl_secs": null,
+        "created_ms": 1794400000001,
+        "read": true
+      }
+    ],
+    "unread": 0,
+    "dnd": false
+  },
+  "agents": {
+    "sessions": [
+      {
+        "id": "s1",
+        "project": "LiteNotch",
+        "cwd": "/Users/me/Github/LiteNotch",
+        "status": "working",
+        "last_event_ms": 1794400000000,
+        "last_message": "add tests"
+      },
+      {
+        "id": "s2",
+        "project": "api-server",
+        "cwd": "/Users/me/Github/api-server",
+        "status": "idle",
+        "last_event_ms": 1794400000001,
+        "last_message": "All 42 tests pass."
+      }
+    ],
+    "pending": [],
+    "hooks_installed": true
+  },
+  "usage": {
+    "five_hour": {
+      "used_pct": 42.0,
+      "resets_at_ms": 1794407200000
+    },
+    "seven_day": {
+      "used_pct": 18.5,
+      "resets_at_ms": 1794800000000
+    },
+    "session_cost_usd": 3.42,
+    "context_pct": 37.0,
+    "model": "Fable 5.2",
+    "updated_ms": 1794399960000,
+    "today": {
+      "input": 83200,
+      "output": 748800,
+      "cache_read": 4992000,
+      "cache_write": 416000,
+      "messages": 3
+    },
+    "week": [
+      {
+        "day_start_ms": 1793836800000,
+        "tokens": 410000,
+        "messages": 1
+      },
+      {
+        "day_start_ms": 1793923200000,
+        "tokens": 690000,
+        "messages": 1
+      },
+      {
+        "day_start_ms": 1794009600000,
+        "tokens": 240000,
+        "messages": 1
+      },
+      {
+        "day_start_ms": 1794096000000,
+        "tokens": 880000,
+        "messages": 1
+      },
+      {
+        "day_start_ms": 1794182400000,
+        "tokens": 150000,
+        "messages": 1
+      },
+      {
+        "day_start_ms": 1794268800000,
+        "tokens": 520000,
+        "messages": 1
+      },
+      {
+        "day_start_ms": 1794355200000,
+        "tokens": 832000,
+        "messages": 3
+      }
+    ],
+    "models": [
+      {
+        "name": "fable-5-2",
+        "tokens": 610000
+      },
+      {
+        "name": "sonnet-5-5",
+        "tokens": 180000
+      },
+      {
+        "name": "haiku-5-5",
+        "tokens": 42000
+      }
+    ],
+    "projects": [
+      {
+        "name": "litenotch",
+        "tokens": 610000
+      },
+      {
+        "name": "api-gateway",
+        "tokens": 180000
+      },
+      {
+        "name": "docs",
+        "tokens": 42000
+      }
+    ],
+    "summary": "832k tokens today across 3 projects, 73% above your daily average. Mostly fable-5-2 on litenotch."
+  },
+  "caffeine": {
+    "mode": "off",
+    "lid": "off",
+    "until_ms": null,
+    "guard": null
+  },
+  "meeting": {
+    "title": "Sprint review",
+    "items": [
+      {
+        "name": "Sprint goal recap",
+        "planned_secs": 300,
+        "elapsed_secs": 0,
+        "state": "pending"
+      },
+      {
+        "name": "Demo",
+        "planned_secs": 1500,
+        "elapsed_secs": 0,
+        "state": "pending"
+      },
+      {
+        "name": "Stakeholder feedback",
+        "planned_secs": 900,
+        "elapsed_secs": 0,
+        "state": "pending"
+      },
+      {
+        "name": "Backlog updates",
+        "planned_secs": 600,
+        "elapsed_secs": 0,
+        "state": "pending"
+      },
+      {
+        "name": "Wrap-up",
+        "planned_secs": 300,
+        "elapsed_secs": 0,
+        "state": "pending"
+      }
+    ],
+    "current": null,
+    "run_state": "stopped",
+    "ends_at_ms": null,
+    "running_since_ms": null,
+    "remaining_secs": 0,
+    "total_planned_secs": 3600,
+    "total_elapsed_secs": 0,
+    "presets": [
+      {
+        "id": "standup",
+        "title": "Daily stand-up"
+      },
+      {
+        "id": "sprint_review",
+        "title": "Sprint review"
+      },
+      {
+        "id": "sprint_planning",
+        "title": "Sprint planning"
+      },
+      {
+        "id": "retro",
+        "title": "Retrospective"
+      }
+    ]
+  },
+  "colors": [],
+  "analytics": [
+    {
+      "feature": "notification_shown",
+      "count": 2
+    },
+    {
+      "feature": "clipboard_pin",
+      "count": 1
+    },
+    {
+      "feature": "external_notify",
+      "count": 1
+    },
+    {
+      "feature": "panel_open",
+      "count": 1
+    }
+  ],
+  "settings": {
+    "general": {
+      "persist_clipboard": false,
+      "hover_to_expand": true,
+      "usage_alerts": true,
+      "all_screens": false
+    },
+    "appearance": {
+      "theme": "system",
+      "accent": "#FF9E0A"
+    },
+    "media": {
+      "enabled": true
+    },
+    "pomodoro": {
+      "focus_secs": 1500,
+      "short_break_secs": 300,
+      "long_break_secs": 900,
+      "rounds_before_long": 4,
+      "auto_start_breaks": true,
+      "auto_start_focus": false,
+      "utc_offset_secs": 0
+    },
+    "clipboard": {
+      "enabled": true,
+      "max_items": 100,
+      "max_item_bytes": 262144,
+      "max_total_bytes": 4194304,
+      "ignore_concealed": true,
+      "excluded_apps": []
+    },
+    "notify": {
+      "enabled": true,
+      "banner_secs": 5,
+      "max_history": 50,
+      "dnd_during_focus": true,
+      "dnd_min_priority": "high",
+      "system": false
+    },
+    "caffeine": {
+      "default_mode": "display",
+      "battery_floor_pct": 10,
+      "lid_battery_floor_pct": 25,
+      "lid_requires_ac": false
+    },
+    "agent": {
+      "enabled": true,
+      "approval_timeout_secs": 120,
+      "session_ttl_secs": 1800,
+      "auto_allow_tools": []
+    },
+    "analytics": {
+      "enabled": true,
+      "share": false
+    }
+  }
+}

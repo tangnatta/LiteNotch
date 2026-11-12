@@ -1,0 +1,218 @@
+{
+  "compact": {
+    "kind": "idle",
+    "title": "",
+    "value": "",
+    "ends_at_ms": null,
+    "total_secs": null,
+    "count": 0
+  },
+  "attention": false,
+  "pomodoro": {
+    "phase": "idle",
+    "run_state": "stopped",
+    "remaining_secs": 1500,
+    "total_secs": 1500,
+    "ends_at_ms": null,
+    "round": 0,
+    "rounds_before_long": 4,
+    "completed_today": 0,
+    "focus_secs_today": 0
+  },
+  "media": null,
+  "clipboard": {
+    "items": [],
+    "total": 0,
+    "query": ""
+  },
+  "inbox": {
+    "banner": null,
+    "history": [],
+    "unread": 0,
+    "dnd": false
+  },
+  "agents": {
+    "sessions": [],
+    "pending": [],
+    "hooks_installed": null
+  },
+  "usage": {
+    "five_hour": null,
+    "seven_day": null,
+    "session_cost_usd": null,
+    "context_pct": null,
+    "model": null,
+    "updated_ms": 0,
+    "today": {
+      "input": 0,
+      "output": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "messages": 0
+    },
+    "week": [
+      {
+        "day_start_ms": 0,
+        "tokens": 0,
+        "messages": 0
+      },
+      {
+        "day_start_ms": 0,
+        "tokens": 0,
+        "messages": 0
+      },
+      {
+        "day_start_ms": 0,
+        "tokens": 0,
+        "messages": 0
+      },
+      {
+        "day_start_ms": 0,
+        "tokens": 0,
+        "messages": 0
+      },
+      {
+        "day_start_ms": 0,
+        "tokens": 0,
+        "messages": 0
+      },
+      {
+        "day_start_ms": 0,
+        "tokens": 0,
+        "messages": 0
+      },
+      {
+        "day_start_ms": 0,
+        "tokens": 0,
+        "messages": 0
+      }
+    ],
+    "models": [],
+    "projects": [],
+    "summary": ""
+  },
+  "caffeine": {
+    "mode": "off",
+    "lid": "off",
+    "until_ms": null,
+    "guard": null
+  },
+  "meeting": {
+    "title": "Sprint review",
+    "items": [
+      {
+        "name": "Sprint goal recap",
+        "planned_secs": 300,
+        "elapsed_secs": 0,
+        "state": "pending"
+      },
+      {
+        "name": "Demo",
+        "planned_secs": 1500,
+        "elapsed_secs": 0,
+        "state": "pending"
+      },
+      {
+        "name": "Stakeholder feedback",
+        "planned_secs": 900,
+        "elapsed_secs": 0,
+        "state": "pending"
+      },
+      {
+        "name": "Backlog updates",
+        "planned_secs": 600,
+        "elapsed_secs": 0,
+        "state": "pending"
+      },
+      {
+        "name": "Wrap-up",
+        "planned_secs": 300,
+        "elapsed_secs": 0,
+        "state": "pending"
+      }
+    ],
+    "current": null,
+    "run_state": "stopped",
+    "ends_at_ms": null,
+    "running_since_ms": null,
+    "remaining_secs": 0,
+    "total_planned_secs": 3600,
+    "total_elapsed_secs": 0,
+    "presets": [
+      {
+        "id": "standup",
+        "title": "Daily stand-up"
+      },
+      {
+        "id": "sprint_review",
+        "title": "Sprint review"
+      },
+      {
+        "id": "sprint_planning",
+        "title": "Sprint planning"
+      },
+      {
+        "id": "retro",
+        "title": "Retrospective"
+      }
+    ]
+  },
+  "colors": [],
+  "analytics": [],
+  "settings": {
+    "general": {
+      "persist_clipboard": false,
+      "hover_to_expand": true,
+      "usage_alerts": true,
+      "all_screens": false
+    },
+    "appearance": {
+      "theme": "system",
+      "accent": "#FF9E0A"
+    },
+    "media": {
+      "enabled": true
+    },
+    "pomodoro": {
+      "focus_secs": 1500,
+      "short_break_secs": 300,
+      "long_break_secs": 900,
+      "rounds_before_long": 4,
+      "auto_start_breaks": true,
+      "auto_start_focus": false,
+      "utc_offset_secs": 0
+    },
+    "clipboard": {
+      "enabled": true,
+      "max_items": 100,
+      "max_item_bytes": 262144,
+      "max_total_bytes": 4194304,
+      "ignore_concealed": true,
+      "excluded_apps": []
+    },
+    "notify": {
+      "enabled": true,
+      "banner_secs": 5,
+      "max_history": 50,
+      "dnd_during_focus": true,
+      "dnd_min_priority": "high",
+      "system": false
+    },
+    "caffeine": {
+      "default_mode": "display",
+      "battery_floor_pct": 10,
+      "lid_battery_floor_pct": 25,
+      "lid_requires_ac": false
+    },
+    "agent": {
+      "enabled": true,
+      "approval_timeout_secs": 120,
+      "session_ttl_secs": 1800,
+      "auto_allow_tools": []
+    },
+    "analytics": {
+      "enabled": true,
+      "share": false
+    }
+  }
+}

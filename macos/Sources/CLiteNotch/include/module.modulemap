@@ -1,0 +1,4 @@
+module CLiteNotch {
+    header "litenotch.h"
+    export *
+}

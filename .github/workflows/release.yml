@@ -1,0 +1,83 @@
+name: Release
+
+# Push a tag such as v0.1.0 to build, publish a GitHub release, and update the
+# Homebrew cask in Casks/litenotch.rb. The tag must match the version in
+# Cargo.toml.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the tag matches Cargo.toml
+        run: |
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          [ "v$VERSION" = "$TAG" ] || { echo "tag $TAG != Cargo.toml version $VERSION"; exit 1; }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Test
+        run: |
+          cargo test --workspace
+          swift test --package-path macos
+
+      - name: Build the app
+        run: scripts/build-app.sh
+
+      - name: Package
+        run: |
+          ZIP="LiteNotch-$VERSION-arm64.zip"
+          ditto -c -k --sequesterRsrc --keepParent dist/LiteNotch.app "dist/$ZIP"
+          SHA=$(shasum -a 256 "dist/$ZIP" | awk '{print $1}')
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+          echo "SHA=$SHA" >> "$GITHUB_ENV"
+          echo "$SHA  $ZIP" > "dist/$ZIP.sha256"
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="LiteNotch $VERSION (Apple silicon, macOS 14+).
+
+          Install with Homebrew:
+
+              brew tap tangnatta/litenotch https://github.com/tangnatta/LiteNotch
+              brew install --cask litenotch
+
+          The app is ad-hoc signed and not notarized yet.
+
+          SHA-256: $SHA"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "dist/$ZIP" "dist/$ZIP.sha256" --clobber
+          else
+            gh release create "$TAG" "dist/$ZIP" "dist/$ZIP.sha256" \
+              --title "LiteNotch $VERSION" --notes "$NOTES" --prerelease
+          fi
+
+      - name: Update the Homebrew cask
+        run: |
+          git fetch origin main
+          git checkout -B cask-update origin/main
+          sed -i '' -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" Casks/litenotch.rb
+          if git diff --quiet; then echo "cask already up to date"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Cask: litenotch $VERSION"
+          git push origin HEAD:main

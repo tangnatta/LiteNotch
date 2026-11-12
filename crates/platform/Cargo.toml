@@ -1,0 +1,11 @@
+[package]
+name = "litenotch-platform"
+description = "Operating-system adapters for LiteNotch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSData"] }
+core-foundation = "0.10"

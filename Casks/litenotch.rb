@@ -3,7 +3,7 @@
 # tagged release, so edit the rest by hand and leave those two to CI.
 cask "litenotch" do
   version "0.2.0-beta.1"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "d7c364cb30bd1ffad095548484b792c44a525fcafab7267f9f75c22ad64fcabf"
 
   url "https://github.com/tangnatta/LiteNotch/releases/download/v#{version}/LiteNotch-#{version}-arm64.zip"
   name "LiteNotch"

@@ -101,6 +101,17 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   hash of their content. The runtime deletes any such file the history no
   longer refers to (`Core::clip_file_paths`). Copying a rich item back
   writes the text plus its formatting; `clip_copy_plain` writes text only.
+- **Click targets**: each notification in the view carries `open`
+  (`notify::OpenTarget`): another app by bundle id or name, or a tab and
+  pane. The core picks it from the source (`Core::open_target`). Agent
+  notifications and session rows open the session's terminal, whose bundle
+  id the CLI adds to each hook payload as `litenotch_app` (from
+  `__CFBundleIdentifier`). Other apps' banners get a unique group starting
+  with NUL, which the socket path strips, so nothing else can pose as one.
+- **Accessibility and ad-hoc signing**: an ad-hoc signed app's identity is
+  its cdhash, so every rebuild loses the Accessibility permission even
+  though System Settings still shows it on. "Reset and ask again" runs
+  `tccutil reset Accessibility dev.litenotch.app` and asks again.
 - **Usage history**: the transcript scanner reads the last 7 days of
   session transcripts off the core thread and passes only compact
   `UsageRecord`s (a transcript line can be hundreds of kilobytes). The core

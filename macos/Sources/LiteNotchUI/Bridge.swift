@@ -206,6 +206,12 @@ public final class AppModel: ObservableObject {
 
     /// What "Quit" does. Defaults to `NSApplication.terminate`.
     public var onQuit: () -> Void = { NSApplication.shared.terminate(nil) }
+    /// Brings another app forward. Tests replace it.
+    public var activateApp: (OpenTarget) -> Void = AppModel.activate
+    /// "Reset and ask again": clears a stale Accessibility entry and asks
+    /// again. Set by the app, which owns the permission check.
+    public var onResetAccessibility: () -> Void = {}
+
     /// What "Open Settings" (Accessibility permission) does.
     public var onOpenAccessibilitySettings: () -> Void = {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
@@ -216,6 +222,25 @@ public final class AppModel: ObservableObject {
     private let bridge: CoreBridge
     private let sampler: ColorSampling
     private var openPanels: Set<ObjectIdentifier> = []
+
+    /// Brings the app a target names to the front, launching it if needed.
+    public static func activate(_ target: OpenTarget) {
+        let ws = NSWorkspace.shared
+        switch target {
+        case .app(let id):
+            if let running = NSRunningApplication.runningApplications(withBundleIdentifier: id).first {
+                running.activate()
+            } else if let url = ws.urlForApplication(withBundleIdentifier: id) {
+                ws.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+            }
+        case .appNamed(let name):
+            if let running = ws.runningApplications.first(where: { $0.localizedName == name }) {
+                running.activate()
+            }
+        case .tab:
+            break
+        }
+    }
 
     public init(bridge: CoreBridge, sampler: ColorSampling = SystemColorSampler()) {
         self.bridge = bridge
@@ -402,6 +427,30 @@ public final class PanelState: ObservableObject {
     public func openTimer(_ pane: TimerPane) {
         timerPane = pane
         selectTab(.timer)
+    }
+
+    /// Follows a notification's (or session's) target: another app is
+    /// brought forward and the panel closes; a tab opens in this panel.
+    public func follow(_ target: OpenTarget?) {
+        switch target {
+        case .app, .appNamed:
+            if let target { app?.activateApp(target) }
+            requestKeyboard(false)
+            close()
+        case .tab(let t, let pane):
+            switch (t, pane) {
+            case (.timer, let p?): timerPane = TimerPane(rawValue: p) ?? timerPane
+            case (.agents, let p?): agentsPane = AgentsPane(rawValue: p) ?? agentsPane
+            case (.settings, "keep_awake"): settingsSection = .keepAwake
+            case (.settings, let p?): settingsSection = SettingsSection(rawValue: p) ?? settingsSection
+            default: break
+            }
+            selectTab(t)
+            open()
+        case nil:
+            selectTab(.inbox)
+            open()
+        }
     }
 
     /// The tab-bar eyedropper: the panel gets out of the way first.

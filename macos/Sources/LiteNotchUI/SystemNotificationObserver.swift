@@ -131,6 +131,16 @@ public final class SystemNotificationObserver {
     private var wanted = false
     private var running = false
     private var prompted = false
+    /// Removes the app's Accessibility entry. Tests replace it.
+    var resetEntry: (String) -> Void = { id in
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        p.arguments = ["reset", "Accessibility", id]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        try? p.run()
+        p.waitUntilExit()
+    }
     private var deduper = NotificationDeduper()
     private var timer: DispatchSourceTimer?
     private(set) var rechecksLeft = 0
@@ -204,6 +214,18 @@ public final class SystemNotificationObserver {
                 promptForTrust()
             }
         }
+    }
+
+    /// "Reset and ask again". macOS ties Accessibility permission to the
+    /// exact build of an ad-hoc signed app, so after a rebuild or upgrade the
+    /// switch in System Settings can be on while it no longer applies. This
+    /// removes LiteNotch's entry (`tccutil reset`, which needs no admin
+    /// rights for an app's own entry) and asks again.
+    public func resetPermission(bundleId: String = Bundle.main.bundleIdentifier ?? "dev.litenotch.app") {
+        resetEntry(bundleId)
+        prompted = false
+        refresh()
+        if wanted && !running { startTimer() }
     }
 
     /// One step of the bounded wait for permission.

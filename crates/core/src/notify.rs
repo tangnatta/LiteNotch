@@ -68,6 +68,21 @@ pub struct Notification {
     pub ttl_secs: Option<u32>,
     pub created_ms: u64,
     pub read: bool,
+    /// What clicking it opens; filled in by the core's view.
+    #[serde(default)]
+    pub open: Option<OpenTarget>,
+}
+
+/// Where a click on a notification or session takes the user.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OpenTarget {
+    /// Bring an app forward by bundle id (a session's terminal).
+    App { bundle_id: String },
+    /// Bring an app forward by its name (another app's notification).
+    AppNamed { name: String },
+    /// Open a tab in the notch; `pane` picks a sub-view where there is one.
+    Tab { tab: String, pane: Option<String> },
 }
 
 /// Notification center settings.
@@ -174,6 +189,7 @@ impl NotificationCenter {
             ttl_secs: input.ttl_secs,
             created_ms: now,
             read: false,
+            open: None,
         };
         let priority = item.priority;
         match existing {

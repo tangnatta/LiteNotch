@@ -179,6 +179,9 @@ struct SettingsTab: View {
                     model.app?.onOpenAccessibilitySettings()
                 }
             }
+            row("Already allowed? Each new build needs it again.", tint: NT.text2) {
+                TextPill(title: "Reset and ask again", height: 22) { model.app?.onResetAccessibility() }
+            }
         }
         stepper("Banner stays for", $draft.notify.bannerSecs, 2...30, unit: "s")
         toggle("Mute during focus", $draft.notify.dndDuringFocus)

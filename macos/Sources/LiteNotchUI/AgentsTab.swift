@@ -55,7 +55,11 @@ struct AgentsTab: View {
             } else {
                 NotchScroll {
                     ForEach(Array(vm.agents.sessions.enumerated()), id: \.element.id) { i, s in
-                        SessionRow(session: s, now: now)
+                        Button { if let app = s.app { model.follow(.app(bundleId: app)) } } label: {
+                            SessionRow(session: s, now: now)
+                        }
+                        .buttonStyle(.plain)
+                        .help(s.app == nil ? "Its terminal is not known yet" : "Show this session's window")
                         if i < vm.agents.sessions.count - 1 { Divider().overlay(NT.hairline) }
                     }
                 }
@@ -76,6 +80,10 @@ struct SessionRow: View {
                 Spacer(minLength: 0)
                 Text(verbatim: Format.relative(from: session.lastEventMs, nowMs: now))
                     .nfont(10.5).foregroundStyle(NT.text3)
+                if session.app != nil {
+                    Image(systemName: "arrow.up.forward").font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(NT.text3)
+                }
             }
             if let m = session.lastMessage, !m.isEmpty {
                 VText(m).nfont(11.5).foregroundStyle(NT.text2).lineLimit(1)
@@ -83,6 +91,7 @@ struct SessionRow: View {
         }
         .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 

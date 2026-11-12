@@ -20,7 +20,8 @@ use crate::countdown::{Countdown, TimerRun, TimerView};
 use crate::media::{Media, MediaCommand, NowPlaying};
 use crate::meeting::{AgendaInput, Meeting, MeetingEvent, MeetingRun, MeetingView, SavedAgenda};
 use crate::notify::{
-    Notification, NotificationCenter, NotificationInput, NotifyConfig, NotifyEvent, Priority,
+    Notification, NotificationCenter, NotificationInput, NotifyConfig, NotifyEvent, OpenTarget,
+    Priority,
 };
 use crate::pomodoro::{Phase, Pomodoro, PomodoroConfig, PomodoroEvent, PomodoroStats, RunState};
 use crate::usage::{local_day_start_ms, Usage, UsageRecord, UsageSnapshot};
@@ -39,6 +40,10 @@ const EXTERNAL_TITLE_CHARS: usize = 120;
 const EXTERNAL_BODY_CHARS: usize = 500;
 const EXTERNAL_SOURCE_CHARS: usize = 40;
 const EXTERNAL_MAX_TTL_SECS: u32 = 60;
+/// Prefix of the group given to notifications read from other apps'
+/// banners. Each gets a unique group, so none replaces another; the NUL
+/// keeps any other sender from imitating it.
+const SYSTEM_GROUP: &str = "\u{0}system-";
 /// Usage percentages that raise an alert, lowest first.
 const USAGE_ALERT_LEVELS: [u8; 2] = [80, 95];
 
@@ -442,6 +447,8 @@ pub struct Core {
     agents: Agents,
     usage: Usage,
     meeting: Meeting,
+    /// Makes each captured banner's group unique.
+    system_seq: u64,
     timer: Countdown,
     colors: Vec<String>,
     /// The lid is closed with no external display.
@@ -520,6 +527,7 @@ impl Core {
             usage: Usage::new(),
             meeting: Meeting::from_saved(meeting),
             timer: Countdown::new(timer_secs.unwrap_or(300)),
+            system_seq: 0,
             lid_shut: false,
             wanted_assertion: AwakeMode::Off,
             colors: colors
@@ -1162,6 +1170,19 @@ impl Core {
     /// sanitized and capped, and they can neither claim `Critical` nor pin a
     /// banner.
     fn external_notify(&mut self, mut input: NotificationInput, now: u64) {
+        // Only the core marks a notification as another app's banner.
+        if input
+            .group
+            .as_deref()
+            .is_some_and(|g| g.starts_with(SYSTEM_GROUP))
+        {
+            input.group = None;
+        }
+        self.post_capped(input, now);
+    }
+
+    /// Sanitizes and caps a notification whose text came from outside.
+    fn post_capped(&mut self, mut input: NotificationInput, now: u64) {
         input.source = truncate_chars(&sanitize(&input.source), EXTERNAL_SOURCE_CHARS);
         if input.source.is_empty() {
             input.source = "external".into();
@@ -1177,19 +1198,62 @@ impl Core {
         self.post(input, now);
     }
 
+    /// Where clicking a notification goes: the app it came from, the
+    /// session's terminal, or the tab that belongs to it.
+    fn open_target(&self, n: &Notification) -> Option<OpenTarget> {
+        let tab = |tab: &str, pane: Option<&str>| {
+            Some(OpenTarget::Tab {
+                tab: tab.into(),
+                pane: pane.map(str::to_owned),
+            })
+        };
+        if n.group
+            .as_deref()
+            .is_some_and(|g| g.starts_with(SYSTEM_GROUP))
+        {
+            return Some(OpenTarget::AppNamed {
+                name: n.source.clone(),
+            });
+        }
+        match n.source.as_str() {
+            "agent" => {
+                let session = n.group.as_deref()?.strip_prefix("agent-")?;
+                let app = self
+                    .agents
+                    .sessions()
+                    .iter()
+                    .find(|s| s.id == session)
+                    .and_then(|s| s.app.clone());
+                match app {
+                    Some(bundle_id) => Some(OpenTarget::App { bundle_id }),
+                    None => tab("agents", Some("sessions")),
+                }
+            }
+            "pomodoro" => tab("timer", Some("focus")),
+            "meeting" => tab("timer", Some("meeting")),
+            "timer" => tab("timer", Some("countdown")),
+            "usage" => tab("agents", Some("usage")),
+            "litenotch" => tab("agents", Some("sessions")),
+            "caffeine" => tab("settings", Some("keep_awake")),
+            "color" => tab("clipboard", None),
+            _ => None,
+        }
+    }
+
     /// A banner from another app. The text is whatever that app put on
     /// screen, so it gets the same treatment as a socket notification.
     fn system_notify(&mut self, app: String, title: String, body: String, now: u64) {
         if !self.settings.notify.system {
             return;
         }
-        self.external_notify(
+        self.system_seq = self.system_seq.wrapping_add(1);
+        self.post_capped(
             NotificationInput {
                 source: app,
                 title,
                 body,
                 priority: Priority::Normal,
-                group: None,
+                group: Some(format!("{SYSTEM_GROUP}{}", self.system_seq)),
                 ttl_secs: None,
             },
             now,
@@ -1287,14 +1351,18 @@ impl Core {
                 .collect(),
             query: self.clip_query.clone(),
         };
+        let with_target = |n: &Notification| Notification {
+            open: self.open_target(n),
+            ..n.clone()
+        };
         let inbox = InboxView {
-            banner: self.notify.current_banner().cloned(),
+            banner: self.notify.current_banner().map(with_target),
             history: self
                 .notify
                 .history()
                 .iter()
                 .take(HISTORY_VIEW_ITEMS)
-                .cloned()
+                .map(with_target)
                 .collect(),
             unread: self.notify.unread_count(),
             dnd: self.dnd,
@@ -2980,5 +3048,119 @@ mod tests {
     fn text_only(c: &mut Core) {
         c.apply(text("plain"), T0 + 1);
         assert!(!c.view(T0 + 1).clipboard.items[0].rich);
+    }
+
+    #[test]
+    fn notifications_say_where_a_click_goes() {
+        let mut c = core();
+        let mut s = c.view(T0).settings;
+        s.notify.system = true;
+        cmd(
+            &mut c,
+            Command::SetSettings {
+                settings: Box::new(s),
+            },
+            T0,
+        );
+        for title in ["one", "two"] {
+            cmd(
+                &mut c,
+                Command::NotifySystem {
+                    app: "Mail".into(),
+                    title: title.into(),
+                    body: String::new(),
+                },
+                T0,
+            );
+        }
+        let v = c.view(T0);
+        // Two banners from one app are both kept.
+        assert_eq!(
+            v.inbox
+                .history
+                .iter()
+                .filter(|n| n.source == "Mail")
+                .count(),
+            2
+        );
+        assert_eq!(
+            v.inbox.history[0].open,
+            Some(OpenTarget::AppNamed {
+                name: "Mail".into()
+            })
+        );
+
+        // An agent notification opens the session's terminal.
+        c.hook(
+            &json!({"hook_event_name":"Stop","session_id":"s9","cwd":"/w/api",
+                    "litenotch_app":"com.apple.Terminal"})
+            .to_string(),
+            T0 + 1,
+        );
+        let v = c.view(T0 + 1);
+        let agent = v
+            .inbox
+            .history
+            .iter()
+            .find(|n| n.source == "agent")
+            .unwrap();
+        assert_eq!(
+            agent.open,
+            Some(OpenTarget::App {
+                bundle_id: "com.apple.Terminal".into()
+            })
+        );
+        assert_eq!(
+            v.agents.sessions[0].app.as_deref(),
+            Some("com.apple.Terminal")
+        );
+
+        // Without a known terminal it opens the Agents tab; own ones open their tab.
+        c.hook(
+            &json!({"hook_event_name":"Stop","session_id":"s8","cwd":"/w/web"}).to_string(),
+            T0 + 2,
+        );
+        cmd(&mut c, Command::TimerSet { secs: 1 }, T0 + 2);
+        cmd(&mut c, Command::TimerToggle, T0 + 2);
+        c.apply(Input::Tick, T0 + 5_000);
+        let v = c.view(T0 + 5_000);
+        let by = |src: &str, title: &str| {
+            v.inbox
+                .history
+                .iter()
+                .find(|n| n.source == src && n.title.contains(title))
+                .unwrap()
+                .open
+                .clone()
+        };
+        assert_eq!(
+            by("agent", "web"),
+            Some(OpenTarget::Tab {
+                tab: "agents".into(),
+                pane: Some("sessions".into())
+            })
+        );
+        assert_eq!(
+            by("timer", "Timer"),
+            Some(OpenTarget::Tab {
+                tab: "timer".into(),
+                pane: Some("countdown".into())
+            })
+        );
+    }
+
+    #[test]
+    fn socket_notifications_cannot_pose_as_another_apps_banner() {
+        let mut c = core();
+        c.apply(
+            Input::ExternalNotify(NotificationInput {
+                group: Some(format!("{SYSTEM_GROUP}1")),
+                ..note("spoof", Priority::Normal)
+            }),
+            T0,
+        );
+        let v = c.view(T0);
+        assert_eq!(v.inbox.banner.as_ref().unwrap().title, "spoof");
+        assert_eq!(v.inbox.banner.unwrap().open, None);
     }
 }

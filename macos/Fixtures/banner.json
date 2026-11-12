@@ -94,7 +94,8 @@
       "group": null,
       "ttl_secs": null,
       "created_ms": 1794400000010,
-      "read": false
+      "read": false,
+      "open": null
     },
     "history": [
       {
@@ -106,7 +107,8 @@
         "group": null,
         "ttl_secs": null,
         "created_ms": 1794400000010,
-        "read": false
+        "read": false,
+        "open": null
       },
       {
         "id": 2,
@@ -117,7 +119,8 @@
         "group": null,
         "ttl_secs": null,
         "created_ms": 1794400000003,
-        "read": true
+        "read": true,
+        "open": null
       },
       {
         "id": 1,
@@ -128,7 +131,12 @@
         "group": "agent-s2",
         "ttl_secs": null,
         "created_ms": 1794400000001,
-        "read": true
+        "read": true,
+        "open": {
+          "kind": "tab",
+          "tab": "agents",
+          "pane": "sessions"
+        }
       }
     ],
     "unread": 1,
@@ -142,7 +150,8 @@
         "cwd": "/Users/me/Github/LiteNotch",
         "status": "working",
         "last_event_ms": 1794400000000,
-        "last_message": "add tests"
+        "last_message": "add tests",
+        "app": null
       },
       {
         "id": "s2",
@@ -150,7 +159,8 @@
         "cwd": "/Users/me/Github/api-server",
         "status": "idle",
         "last_event_ms": 1794400000001,
-        "last_message": "All 42 tests pass."
+        "last_message": "All 42 tests pass.",
+        "app": null
       }
     ],
     "pending": [],

@@ -182,11 +182,12 @@ struct ClipboardTab: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text(verbatim: "Copy: \(item.preview)"))
-            if item.rich && item.kind == .text {
-                IconButton(symbol: "textformat", label: "Copy as plain text", size: 11, tint: NT.text3, frame: 24) {
+            if item.kind == .text {
+                IconButton(symbol: "textformat", label: "Copy as plain text", size: 11,
+                           tint: item.rich ? NT.text2 : NT.text3, frame: 24) {
                     copyPlain(item)
                 }
-                .help("Copy as plain text")
+                .help(item.rich ? "Copy without formatting" : "Copy as plain text")
             }
             if source != nil {
                 IconButton(symbol: "eye", label: "Preview", size: 11, tint: NT.text3, frame: 24) {

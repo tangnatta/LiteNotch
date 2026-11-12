@@ -119,12 +119,23 @@ struct MeetingPresets: View {
     let m: MeetingView
     let send: (ShellCommand) -> Void
 
+    /// Short names so all presets fit beside the mode switch.
+    static func shortTitle(_ p: MeetingPreset) -> String {
+        switch p.id {
+        case "standup": return "Stand-up"
+        case "sprint_review": return "Review"
+        case "sprint_planning": return "Planning"
+        case "retro": return "Retro"
+        default: return p.title
+        }
+    }
+
     var body: some View {
         HStack(spacing: 4) {
             ForEach(Array(m.presets.enumerated()), id: \.offset) { _, p in
                 let on = p.title == m.title
                 Button { send(.meetingLoad(preset: p.id)) } label: {
-                    VText(p.title).nfont(11, on ? .semibold : .medium)
+                    VText(Self.shortTitle(p)).nfont(11, on ? .semibold : .medium)
                         .foregroundStyle(on ? NT.text1 : NT.text2)
                         .lineLimit(1).fixedSize()
                         .padding(.horizontal, 8).frame(height: 22)
@@ -132,7 +143,7 @@ struct MeetingPresets: View {
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .help("Load this agenda")
+                .help("Load the \(p.title) agenda")
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }

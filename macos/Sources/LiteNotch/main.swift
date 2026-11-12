@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in self?.sendUTCOffset() }
         panel.show()
+        model.onResetAccessibility = { [weak self] in self?.systemNotifications.resetPermission() }
         systemNotifications.start()
         quitCleanlyOnSignals()
     }

@@ -45,6 +45,10 @@ pub struct Env {
     pub claude_dir: Option<String>,
     /// Path of this executable, as registered in hooks.
     pub exe: String,
+    /// `__CFBundleIdentifier`: the app this process was started from (the
+    /// terminal or editor running Claude Code), so the notch can bring it
+    /// forward.
+    pub app: Option<String>,
 }
 
 impl Env {
@@ -60,6 +64,9 @@ impl Env {
             exe: std::env::current_exe()
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_else(|_| "litenotch".to_string()),
+            app: std::env::var("__CFBundleIdentifier")
+                .ok()
+                .filter(|s| !s.is_empty()),
         }
     }
 
@@ -160,9 +167,12 @@ pub fn run(
 }
 
 fn hook(env: &Env, stdin: &mut dyn Read, stdout: &mut dyn Write) -> i32 {
-    let Some(payload) = read_input(stdin) else {
+    let Some(mut payload) = read_input(stdin) else {
         return 0;
     };
+    if let (Some(app), Some(obj)) = (&env.app, payload.as_object_mut()) {
+        obj.insert("litenotch_app".into(), Value::String(app.clone()));
+    }
     let is_permission =
         payload.get("hook_event_name").and_then(Value::as_str) == Some("PermissionRequest");
     let wait = if is_permission {

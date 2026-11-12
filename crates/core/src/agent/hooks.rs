@@ -41,6 +41,19 @@ pub struct HookEvent {
     pub reason: Option<String>,
     pub last_assistant_message: Option<String>,
     pub prompt: Option<String>,
+    /// Bundle id of the app the session runs in (the terminal or editor),
+    /// added by the `litenotch` CLI; used to bring that app forward.
+    pub app: Option<String>,
+}
+
+/// A macOS bundle identifier such as `com.apple.Terminal`.
+pub fn valid_bundle_id(s: &str) -> bool {
+    (3..=128).contains(&s.len())
+        && s.contains('.')
+        && !s.starts_with('.')
+        && !s.ends_with('.')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
 }
 
 /// Why a payload could not be parsed.
@@ -107,6 +120,7 @@ impl HookEvent {
             reason: opt_str(obj, "reason"),
             last_assistant_message: opt_str(obj, "last_assistant_message"),
             prompt: opt_str(obj, "prompt"),
+            app: opt_str(obj, "litenotch_app").filter(|a| valid_bundle_id(a)),
         })
     }
 
@@ -794,5 +808,42 @@ mod tests {
         let e = ev(&json!({"hook_event_name":"Stop","session_id":big,"cwd":big}).to_string());
         assert_eq!(e.session_id.chars().count(), MAX_ID_CHARS);
         assert_eq!(e.cwd.chars().count(), MAX_ID_CHARS);
+    }
+
+    #[test]
+    fn the_terminal_app_is_read_only_when_it_looks_like_a_bundle_id() {
+        let ev = |app: &str| {
+            HookEvent::parse(
+                &serde_json::json!({"hook_event_name":"Stop","session_id":"s","litenotch_app":app})
+                    .to_string(),
+            )
+            .unwrap()
+            .app
+        };
+        assert_eq!(
+            ev("com.apple.Terminal").as_deref(),
+            Some("com.apple.Terminal")
+        );
+        assert_eq!(
+            ev("com.mitchellh.ghostty").as_deref(),
+            Some("com.mitchellh.ghostty")
+        );
+        for bad in [
+            "",
+            "Terminal",
+            ".a.b",
+            "a.b.",
+            "com.x;rm",
+            "com.x y",
+            &"a.".repeat(100),
+        ] {
+            assert_eq!(ev(bad), None, "{bad}");
+        }
+        assert_eq!(
+            HookEvent::parse(r#"{"hook_event_name":"Stop"}"#)
+                .unwrap()
+                .app,
+            None
+        );
     }
 }

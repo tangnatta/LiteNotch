@@ -58,6 +58,9 @@ struct InboxTab: View {
             notice(symbol: "lock",
                    text: "Allow LiteNotch in System Settings \u{203A} Privacy & Security \u{203A} Accessibility",
                    action: "Open Settings") { model.app?.onOpenAccessibilitySettings() }
+            notice(symbol: "arrow.clockwise",
+                   text: "Already allowed? Each new build needs it again.",
+                   action: "Reset and ask again") { model.app?.onResetAccessibility() }
         }
     }
 
@@ -79,6 +82,18 @@ struct InboxTab: View {
         HStack(alignment: .top, spacing: 9) {
             Circle().fill(n.read ? Color.clear : NT.accent).frame(width: 7, height: 7).padding(.top, 5)
                 .accessibilityLabel(Text(verbatim: n.read ? "Read" : "Unread"))
+            Button { model.follow(n.open) } label: { content(n, now: now) }
+                .buttonStyle(.plain)
+                .help(Format.openHelp(n.open))
+            IconButton(symbol: "xmark", label: "Dismiss", size: 10, tint: NT.text3, frame: 24) {
+                send(isBanner ? .notifyDismissBanner : .notifyDismiss(id: n.id))
+            }
+        }
+        .padding(.vertical, 7)
+    }
+
+    private func content(_ n: NotificationItem, now: Int) -> some View {
+        HStack(alignment: .top, spacing: 6) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     VText(n.source.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.6)
@@ -92,10 +107,11 @@ struct InboxTab: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            IconButton(symbol: "xmark", label: "Dismiss", size: 10, tint: NT.text3, frame: 24) {
-                send(isBanner ? .notifyDismissBanner : .notifyDismiss(id: n.id))
+            if n.open != nil {
+                Image(systemName: "arrow.up.forward").font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(NT.text3).padding(.top, 3)
             }
         }
-        .padding(.vertical, 7)
+        .contentShape(Rectangle())
     }
 }

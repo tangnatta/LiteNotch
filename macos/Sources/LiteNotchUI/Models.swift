@@ -333,6 +333,44 @@ public struct ClipboardView: Codable, Equatable {
     public var query: String
 }
 
+/// Where clicking a notification or session takes the user.
+public enum OpenTarget: Codable, Equatable {
+    /// Bring an app forward by bundle id (a session's terminal).
+    case app(bundleId: String)
+    /// Bring an app forward by name (another app's notification).
+    case appNamed(String)
+    /// A tab in the notch, and a sub-view of it where there is one.
+    case tab(Tab, pane: String?)
+
+    private enum Keys: String, CodingKey { case kind, bundleId, name, tab, pane }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        switch try c.decode(String.self, forKey: .kind) {
+        case "app": self = .app(bundleId: try c.decode(String.self, forKey: .bundleId))
+        case "app_named": self = .appNamed(try c.decode(String.self, forKey: .name))
+        case "tab":
+            guard let tab = Tab(rawValue: try c.decode(String.self, forKey: .tab)) else {
+                throw DecodingError.dataCorruptedError(forKey: .tab, in: c, debugDescription: "unknown tab")
+            }
+            self = .tab(tab, pane: try c.decodeIfPresent(String.self, forKey: .pane))
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown target")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Keys.self)
+        switch self {
+        case .app(let id): try c.encode("app", forKey: .kind); try c.encode(id, forKey: .bundleId)
+        case .appNamed(let n): try c.encode("app_named", forKey: .kind); try c.encode(n, forKey: .name)
+        case .tab(let t, let p):
+            try c.encode("tab", forKey: .kind); try c.encode(t.rawValue, forKey: .tab)
+            try c.encodeIfPresent(p, forKey: .pane)
+        }
+    }
+}
+
 public struct NotificationItem: Codable, Equatable, Identifiable {
     public var id: Int
     public var source: String
@@ -343,6 +381,29 @@ public struct NotificationItem: Codable, Equatable, Identifiable {
     public var ttlSecs: Int?
     public var createdMs: Int
     public var read: Bool
+    /// What a click opens; nil means it only opens the inbox.
+    public var open: OpenTarget?
+
+    public init(id: Int, source: String, title: String, body: String, priority: Priority, group: String?,
+                ttlSecs: Int?, createdMs: Int, read: Bool, open: OpenTarget? = nil) {
+        self.id = id; self.source = source; self.title = title; self.body = body; self.priority = priority
+        self.group = group; self.ttlSecs = ttlSecs; self.createdMs = createdMs; self.read = read; self.open = open
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        source = try c.decode(String.self, forKey: .source)
+        title = try c.decode(String.self, forKey: .title)
+        body = try c.decode(String.self, forKey: .body)
+        priority = try c.decode(Priority.self, forKey: .priority)
+        group = try c.decodeIfPresent(String.self, forKey: .group)
+        ttlSecs = try c.decodeIfPresent(Int.self, forKey: .ttlSecs)
+        createdMs = try c.decode(Int.self, forKey: .createdMs)
+        read = try c.decode(Bool.self, forKey: .read)
+        // A target this shell does not know just means "no target".
+        open = (try? c.decodeIfPresent(OpenTarget.self, forKey: .open)) ?? nil
+    }
 }
 
 public struct InboxView: Codable, Equatable {
@@ -359,6 +420,8 @@ public struct AgentSession: Codable, Equatable, Identifiable {
     public var status: AgentStatus
     public var lastEventMs: Int
     public var lastMessage: String?
+    /// Bundle id of the terminal or editor it runs in, when known.
+    public var app: String?
 }
 
 public struct PermissionRequest: Codable, Equatable, Identifiable {

@@ -72,6 +72,7 @@ fn run(fx: &Fixture, args: &[&str], stdin: &str) -> Output {
         .env("LITENOTCH_SOCKET", &fx.socket)
         .env("CLAUDE_CONFIG_DIR", fx.dir.join("claude"))
         .env("HOME", &fx.dir)
+        .env("__CFBundleIdentifier", "com.example.Terminal")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -482,4 +483,22 @@ fn the_default_socket_lives_under_application_support() {
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
     assert!(err(&output).contains("LiteNotch is not running"));
+}
+
+#[test]
+fn hooks_carry_the_app_the_session_runs_in() {
+    let fx = serve("cli-app", |_| Some(Response::Ok));
+    run(
+        &fx,
+        &["hook"],
+        r#"{"hook_event_name":"Stop","session_id":"s1"}"#,
+    );
+    let seen = fx.seen.lock().unwrap();
+    match &seen[0] {
+        Request::Hook { payload } => {
+            assert_eq!(payload["litenotch_app"], "com.example.Terminal");
+            assert_eq!(payload["hook_event_name"], "Stop");
+        }
+        other => panic!("{other:?}"),
+    }
 }

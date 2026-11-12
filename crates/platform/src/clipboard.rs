@@ -122,6 +122,8 @@ pub const MAX_RICH_BYTES: usize = 2 * 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RichFormat {
     Rtf,
+    /// RTF with attachments, as Pages and TextEdit copy it.
+    Rtfd,
     Html,
 }
 
@@ -129,6 +131,7 @@ impl RichFormat {
     pub fn extension(self) -> &'static str {
         match self {
             RichFormat::Rtf => "rtf",
+            RichFormat::Rtfd => "rtfd",
             RichFormat::Html => "html",
         }
     }
@@ -136,6 +139,7 @@ impl RichFormat {
     fn uti(self) -> &'static str {
         match self {
             RichFormat::Rtf => "public.rtf",
+            RichFormat::Rtfd => "com.apple.flat-rtfd",
             RichFormat::Html => "public.html",
         }
     }
@@ -143,6 +147,7 @@ impl RichFormat {
     pub fn from_extension(ext: &str) -> Option<RichFormat> {
         match ext.to_ascii_lowercase().as_str() {
             "rtf" => Some(RichFormat::Rtf),
+            "rtfd" => Some(RichFormat::Rtfd),
             "html" => Some(RichFormat::Html),
             _ => None,
         }
@@ -199,7 +204,20 @@ mod imp {
     const STRING_TYPE: &str = "public.utf8-plain-text";
     const FILENAMES_TYPE: &str = "NSFilenamesPboardType";
 
+    #[cfg(test)]
+    thread_local! {
+        /// Tests use a private named pasteboard instead of the user's.
+        pub static TEST_BOARD: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    }
+
     fn pasteboard() -> Option<Retained<AnyObject>> {
+        #[cfg(test)]
+        if let Some(name) = TEST_BOARD.with(|b| b.borrow().clone()) {
+            // SAFETY: +pasteboardWithName: takes an NSString and returns a pasteboard.
+            return unsafe {
+                msg_send![class!(NSPasteboard), pasteboardWithName: &*NSString::from_str(&name)]
+            };
+        }
         // SAFETY: +generalPasteboard takes no arguments and returns an object or nil.
         unsafe { msg_send![class!(NSPasteboard), generalPasteboard] }
     }
@@ -293,13 +311,13 @@ mod imp {
     pub fn read_rich() -> Option<(Vec<u8>, RichFormat)> {
         autoreleasepool(|_| {
             let pb = pasteboard()?;
-            for format in [RichFormat::Rtf, RichFormat::Html] {
+            for format in [RichFormat::Rtf, RichFormat::Rtfd, RichFormat::Html] {
                 // SAFETY: -dataForType: takes an NSString and returns NSData or nil.
                 let data: Option<Retained<NSData>> =
                     unsafe { msg_send![&*pb, dataForType: &*NSString::from_str(format.uti())] };
                 let Some(data) = data else { continue };
                 if data.is_empty() || data.len() > MAX_RICH_BYTES {
-                    return None;
+                    continue;
                 }
                 return Some((data.to_vec(), format));
             }
@@ -538,7 +556,7 @@ mod tests {
 
     #[test]
     fn rich_formats_map_to_extensions() {
-        for f in [RichFormat::Rtf, RichFormat::Html] {
+        for f in [RichFormat::Rtf, RichFormat::Rtfd, RichFormat::Html] {
             assert_eq!(RichFormat::from_extension(f.extension()), Some(f));
         }
         assert_eq!(RichFormat::from_extension("txt"), None);
@@ -551,5 +569,27 @@ mod tests {
         }
         assert_eq!(ImageFormat::from_extension("TIF"), Some(ImageFormat::Tiff));
         assert_eq!(ImageFormat::from_extension("jpg"), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn formatted_text_round_trips_through_a_private_pasteboard() {
+        imp::TEST_BOARD.with(|b| *b.borrow_mut() = Some("dev.litenotch.tests.rich".into()));
+        let rtf = br"{\rtf1\ansi{\fonttbl\f0 Helvetica;}\f0\b Bold\b0  words}";
+        assert!(write_rich("Bold words", rtf, RichFormat::Rtf));
+        let clip = read().expect("text on the test pasteboard");
+        assert_eq!(
+            (clip.kind, clip.text.as_str()),
+            (RawKind::Text, "Bold words")
+        );
+        assert_eq!(read_rich(), Some((rtf.to_vec(), RichFormat::Rtf)));
+
+        let html = b"<b>Bold</b> words";
+        assert!(write_rich("Bold words", html, RichFormat::Html));
+        assert_eq!(read_rich(), Some((html.to_vec(), RichFormat::Html)));
+
+        assert!(write_text("plain"));
+        assert_eq!(read_rich(), None);
+        imp::TEST_BOARD.with(|b| *b.borrow_mut() = None);
     }
 }

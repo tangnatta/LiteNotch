@@ -4,7 +4,8 @@ pub mod hooks;
 pub mod install;
 
 pub use hooks::{
-    decision_output, describe, sanitize, summarize, Description, HookError, HookEvent, HookKind,
+    decision_output, describe, sanitize, summarize, valid_bundle_id, Description, HookError,
+    HookEvent, HookKind,
 };
 pub use install::{install, is_installed, uninstall, InstallError};
 
@@ -39,6 +40,9 @@ pub struct AgentSession {
     pub status: AgentStatus,
     pub last_event_ms: u64,
     pub last_message: Option<String>,
+    /// Bundle id of the terminal or editor it runs in, when known.
+    #[serde(default)]
+    pub app: Option<String>,
 }
 
 /// A tool permission prompt waiting for the user.
@@ -254,6 +258,7 @@ impl Agents {
                     status: AgentStatus::Idle,
                     last_event_ms: now_ms,
                     last_message: None,
+                    app: None,
                 });
                 self.sessions.len() - 1
             }
@@ -262,6 +267,9 @@ impl Agents {
         if !ev.cwd.is_empty() && ev.cwd != s.cwd {
             s.cwd = ev.cwd.clone();
             s.project = project_of(&ev.cwd);
+        }
+        if ev.app.is_some() {
+            s.app = ev.app.clone();
         }
         if let Some(st) = ev.status() {
             s.status = st;

@@ -1236,3 +1236,83 @@ final class CountdownAndPlainCopyTests: XCTestCase {
         XCTAssertEqual(Format.timerPreset(5400), "1 h 30 min")
     }
 }
+
+final class FollowTargetTests: XCTestCase {
+    private var app: AppModel?
+
+    private func panel() throws -> (PanelState, [OpenTarget]) {
+        let model = AppModel(bridge: MockBridge())
+        app = model
+        model.apply(try loadFixture("idle"))
+        return (model.primary, [])
+    }
+
+    func testTabTargetsOpenTheRightTabAndPane() throws {
+        let (p, _) = try panel()
+        p.follow(.tab(.timer, pane: "countdown"))
+        XCTAssertTrue(p.expanded)
+        XCTAssertEqual(p.tab, .timer)
+        XCTAssertEqual(p.timerPane, .countdown)
+        p.follow(.tab(.agents, pane: "usage"))
+        XCTAssertEqual(p.tab, .agents); XCTAssertEqual(p.agentsPane, .usage)
+        p.follow(.tab(.settings, pane: "keep_awake"))
+        XCTAssertEqual(p.tab, .settings); XCTAssertEqual(p.settingsSection, .keepAwake)
+        p.follow(.tab(.timer, pane: "nonsense"))
+        XCTAssertEqual(p.timerPane, .countdown, "an unknown pane keeps the current one")
+        p.follow(nil)
+        XCTAssertEqual(p.tab, .inbox)
+    }
+
+    func testAppTargetsBringTheAppForwardAndClose() throws {
+        let (p, _) = try panel()
+        var activated: [OpenTarget] = []
+        app?.activateApp = { activated.append($0) }
+        p.open()
+        p.follow(.app(bundleId: "com.apple.Terminal"))
+        p.follow(.appNamed("Mail"))
+        XCTAssertEqual(activated, [.app(bundleId: "com.apple.Terminal"), .appNamed("Mail")])
+        XCTAssertFalse(p.expanded)
+    }
+
+    func testTargetsDecodeAndUnknownOnesAreIgnored() throws {
+        func item(_ open: String) throws -> NotificationItem {
+            let json = """
+            {"id":1,"source":"s","title":"t","body":"","priority":"normal","group":null,
+             "ttl_secs":null,"created_ms":0,"read":false,"open":\(open)}
+            """
+            let d = JSONDecoder(); d.keyDecodingStrategy = .convertFromSnakeCase
+            return try d.decode(NotificationItem.self, from: Data(json.utf8))
+        }
+        XCTAssertEqual(try item(#"{"kind":"app","bundle_id":"com.apple.Terminal"}"#).open,
+                       .app(bundleId: "com.apple.Terminal"))
+        XCTAssertEqual(try item(#"{"kind":"app_named","name":"Mail"}"#).open, .appNamed("Mail"))
+        XCTAssertEqual(try item(#"{"kind":"tab","tab":"timer","pane":"meeting"}"#).open,
+                       .tab(.timer, pane: "meeting"))
+        XCTAssertNil(try item(#"{"kind":"teleport"}"#).open)
+        XCTAssertNil(try item(#"{"kind":"tab","tab":"nowhere"}"#).open)
+        XCTAssertNil(try item("null").open)
+    }
+}
+
+final class PermissionResetTests: XCTestCase {
+    func testResetClearsTheEntryAndAsksAgain() throws {
+        let model = AppModel(bridge: MockBridge())
+        var vm = try loadFixture("idle")
+        vm.settings.notify.system = true
+        model.apply(vm)
+        var prompts = 0, resets: [String] = []
+        let o = SystemNotificationObserver(model: model, source: FakeBannerSource(),
+                                           isTrusted: { false }, promptForTrust: { prompts += 1 },
+                                           nowMs: { 0 })
+        o.resetEntry = { resets.append($0) }
+        o.start()
+        XCTAssertEqual(prompts, 1)
+        o.refresh()
+        XCTAssertEqual(prompts, 1, "asks once on its own")
+        o.resetPermission(bundleId: "dev.litenotch.app")
+        XCTAssertEqual(resets, ["dev.litenotch.app"])
+        XCTAssertEqual(prompts, 2, "and again after a reset")
+        XCTAssertTrue(o.isWaitingForPermission)
+        o.stop()
+    }
+}

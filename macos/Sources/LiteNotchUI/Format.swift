@@ -10,6 +10,15 @@ public enum Format {
         return m == 0 ? "\(h) h" : "\(h) h \(m) min"
     }
 
+    /// Tooltip for something clickable that goes to `target`.
+    public static func openHelp(_ target: OpenTarget?) -> String {
+        switch target {
+        case .app?, .appNamed?: return "Open the app"
+        case .tab(let t, _)?: return "Open \(t.rawValue.capitalized)"
+        case nil: return ""
+        }
+    }
+
     public static func countdown(seconds: Int) -> String {
         let s = max(0, seconds)
         return String(format: "%d:%02d", s / 60, s % 60)

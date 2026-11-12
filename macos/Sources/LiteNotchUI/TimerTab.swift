@@ -9,21 +9,11 @@ struct TimerTab: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                SegmentedPill(options: [(TimerPane.focus, "Focus"), (TimerPane.meeting, "Meeting"),
-                                        (TimerPane.countdown, "Timer")],
-                              selection: $model.timerPane, label: "Timer view")
-                Spacer(minLength: 4)
-                if model.timerPane == .meeting
-                    && (vm.meeting.runState == .stopped || vm.meeting.runState == .unknown) {
-                    MeetingPresets(m: vm.meeting, send: model.send)
-                }
-            }
-            .frame(height: 24)
+            TimerHeader(vm: vm, model: model)
             switch model.timerPane {
             case .focus: focus
             case .meeting: MeetingPane(vm: vm, model: model)
-            case .countdown: CountdownPane(t: vm.timer, send: model.send)
+            case .countdown: CountdownPane(t: vm.timer, model: model)
             }
         }
     }
@@ -80,6 +70,27 @@ struct TimerTab: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+/// The mode switch and, for a meeting that has not started, the presets.
+/// It must fit the panel's width in every mode (a test checks this).
+struct TimerHeader: View {
+    let vm: ViewModel
+    @ObservedObject var model: PanelState
+
+    var body: some View {
+        HStack(spacing: 8) {
+            SegmentedPill(options: [(TimerPane.focus, "Focus"), (TimerPane.meeting, "Meeting"),
+                                    (TimerPane.countdown, "Timer")],
+                          selection: $model.timerPane, label: "Timer view")
+            Spacer(minLength: 4)
+            if model.timerPane == .meeting
+                && (vm.meeting.runState == .stopped || vm.meeting.runState == .unknown) {
+                MeetingPresets(m: vm.meeting, send: model.send)
+            }
+        }
+        .frame(height: 24)
     }
 }
 
@@ -171,8 +182,12 @@ struct PomodoroCard: View {
 
 struct CountdownPane: View {
     let t: CountdownView
-    let send: (ShellCommand) -> Void
+    @ObservedObject var model: PanelState
+    /// The time being typed into the circle; nil when not typing.
+    @State private var typed: String?
+    @FocusState private var focused: Bool
 
+    private var send: (ShellCommand) -> Void { model.send }
     private var editable: Bool { !t.isActive }
 
     var body: some View {
@@ -203,11 +218,23 @@ struct CountdownPane: View {
                             .stroke(NT.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                         VStack(spacing: 1) {
-                            Text(verbatim: Format.countdown(seconds: l))
-                                .font(.system(size: 23, weight: .semibold)).monospacedDigit()
-                                .foregroundStyle(NT.text1)
-                            Text(verbatim: status).nfont(10.5, .medium)
-                                .foregroundStyle(t.runState == .done ? NT.accentText : NT.text2)
+                            if typed != nil {
+                                timeField
+                            } else {
+                                Button(action: beginTyping) {
+                                    Text(verbatim: Format.countdown(seconds: l))
+                                        .font(.system(size: 23, weight: .semibold)).monospacedDigit()
+                                        .foregroundStyle(NT.text1)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!editable)
+                                .help(editable ? "Click to type a time, e.g. 25, 1:30 or 1h 15m" : "")
+                                .accessibilityLabel(Text(verbatim: "Set the time"))
+                            }
+                            Text(verbatim: typed != nil ? typingHint : status).nfont(10.5, .medium)
+                                .foregroundStyle(typed != nil && invalid ? NT.deny
+                                                 : (t.runState == .done ? NT.accentText : NT.text2))
                         }
                     }
                     .frame(width: 104, height: 104)
@@ -233,6 +260,50 @@ struct CountdownPane: View {
             }
             .frame(maxWidth: .infinity)
         }
+    }
+
+    /// What was typed parses (empty means "keep the current length").
+    private var invalid: Bool {
+        guard let typed, !typed.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        return Format.parseDuration(typed) == nil
+    }
+
+    private var typingHint: String { invalid ? "e.g. 25 or 1:30" : "Return to set" }
+
+    private var timeField: some View {
+        TextField("", text: Binding(get: { typed ?? "" }, set: { typed = $0 }),
+                  prompt: Text(verbatim: Format.countdown(seconds: t.durationSecs)))
+            .textFieldStyle(.plain)
+            .multilineTextAlignment(.center)
+            .font(.system(size: 21, weight: .semibold)).monospacedDigit()
+            .foregroundStyle(invalid ? NT.deny : NT.text1)
+            .frame(width: 84)
+            .focused($focused)
+            .onSubmit(commitTyping)
+            .onExitCommand(perform: cancelTyping)
+            .onChange(of: focused) { _, f in if !f { cancelTyping() } }
+    }
+
+    private func beginTyping() {
+        guard editable else { return }
+        typed = ""
+        model.requestKeyboard(true)
+        DispatchQueue.main.async { focused = true }
+    }
+
+    private func commitTyping() {
+        if let text = typed, let secs = Format.parseDuration(text) {
+            send(.timerSet(secs: secs))
+        } else if invalid {
+            return
+        }
+        cancelTyping()
+    }
+
+    private func cancelTyping() {
+        typed = nil
+        focused = false
+        model.requestKeyboard(false)
     }
 
     private var status: String {

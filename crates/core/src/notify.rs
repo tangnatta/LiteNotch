@@ -285,6 +285,17 @@ impl NotificationCenter {
     }
 
     /// Marks every item read; the banner is left showing.
+    /// Marks one item read (it was clicked). Returns whether it exists.
+    pub fn mark_read(&mut self, id: u64) -> bool {
+        match self.history.iter_mut().find(|n| n.id == id) {
+            Some(n) => {
+                n.read = true;
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn mark_all_read(&mut self) {
         for n in &mut self.history {
             n.read = true;

@@ -82,7 +82,7 @@ struct InboxTab: View {
         HStack(alignment: .top, spacing: 9) {
             Circle().fill(n.read ? Color.clear : NT.accent).frame(width: 7, height: 7).padding(.top, 5)
                 .accessibilityLabel(Text(verbatim: n.read ? "Read" : "Unread"))
-            Button { model.follow(n.open) } label: { content(n, now: now) }
+            Button { model.openNotification(n, isBanner: isBanner) } label: { content(n, now: now) }
                 .buttonStyle(.plain)
                 .help(Format.openHelp(n.open))
             IconButton(symbol: "xmark", label: "Dismiss", size: 10, tint: NT.text3, frame: 24) {

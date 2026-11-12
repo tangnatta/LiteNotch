@@ -1316,3 +1316,98 @@ final class PermissionResetTests: XCTestCase {
         o.stop()
     }
 }
+
+/// One test per issue reported against the prototype, so none comes back.
+final class ReportedIssueTests: XCTestCase {
+    private var app: AppModel?
+
+    private func panel(_ fixture: String = "idle") throws -> PanelState {
+        let model = AppModel(bridge: MockBridge())
+        app = model
+        model.apply(try loadFixture(fixture))
+        return model.primary
+    }
+
+    /// "The meeting timer UI overflows left and right": the header (mode
+    /// switch + presets) must fit inside the open panel in every mode.
+    func testTimerHeaderFitsThePanelInEveryMode() throws {
+        let p = try panel("pomodoro")
+        let vm = try XCTUnwrap(p.view)
+        let available = NotchGeometry.expandedSize.width - 2 * (NotchGeometry.expandedEar + 14)
+        for pane in TimerPane.allCases {
+            p.timerPane = pane
+            let host = NSHostingView(rootView: TimerHeader(vm: vm, model: p).fixedSize())
+            XCTAssertLessThanOrEqual(host.fittingSize.width, available, "\(pane) header overflows")
+        }
+    }
+
+    /// "I can't see the Aa button": every text clip offers copy as plain
+    /// text, whether or not it was copied with formatting.
+    func testEveryTextClipOffersPlainCopy() {
+        func clip(_ kind: ClipKind, rich: Bool = false) -> ClipView {
+            ClipView(id: 1, kind: kind, preview: "x", sourceApp: nil, createdMs: 0, pinned: false, rich: rich)
+        }
+        XCTAssertEqual(ClipActions.of(clip(.text), hasPreview: false), [.copyPlain])
+        XCTAssertEqual(ClipActions.of(clip(.text, rich: true), hasPreview: false), [.copyPlain])
+        XCTAssertEqual(ClipActions.of(clip(.image), hasPreview: true), [.preview])
+        XCTAssertEqual(ClipActions.of(clip(.files), hasPreview: true), [.preview])
+        XCTAssertEqual(ClipActions.of(clip(.files), hasPreview: false), [])
+    }
+
+    /// "Notifications are not clickable": a click goes to the target, and a
+    /// clicked banner is dismissed (it stays in the inbox).
+    func testClickingANotificationGoesSomewhere() throws {
+        var activated: [OpenTarget] = []
+        let bridge = MockBridge()
+        let model = AppModel(bridge: bridge)
+        app = model
+        model.apply(try loadFixture("idle"))
+        model.activateApp = { activated.append($0) }
+        let q = model.primary
+        let mail = NotificationItem(id: 1, source: "Mail", title: "t", body: "", priority: .normal, group: nil,
+                                    ttlSecs: nil, createdMs: 0, read: false, open: .appNamed("Mail"))
+        q.openNotification(mail, isBanner: true)
+        XCTAssertEqual(activated, [.appNamed("Mail")])
+        // "When a notification is clicked, assume it has been read."
+        XCTAssertTrue(bridge.sent.contains { $0.contains(#""cmd":"notify_opened""#) && $0.contains(#""id":1"#) })
+        XCTAssertTrue(bridge.sent.contains { $0.contains("notify_dismiss_banner") })
+
+        let timer = NotificationItem(id: 2, source: "timer", title: "t", body: "", priority: .high, group: nil,
+                                     ttlSecs: nil, createdMs: 0, read: false,
+                                     open: .tab(.timer, pane: "countdown"))
+        q.openNotification(timer, isBanner: false)
+        XCTAssertEqual(q.tab, .timer)
+        XCTAssertEqual(q.timerPane, .countdown)
+        XCTAssertTrue(q.expanded)
+    }
+
+    /// "Agentic is not clickable": a session with a known terminal brings it
+    /// forward; one without does nothing.
+    func testClickingASessionBringsItsTerminalForward() throws {
+        let p = try panel()
+        var activated: [OpenTarget] = []
+        app?.activateApp = { activated.append($0) }
+        var s = AgentSession(id: "s", project: "api", cwd: "/w/api", status: .working, lastEventMs: 0,
+                             lastMessage: nil, app: nil)
+        p.openSession(s)
+        XCTAssertTrue(activated.isEmpty)
+        s.app = "com.apple.Terminal"
+        p.openSession(s)
+        XCTAssertEqual(activated, [.app(bundleId: "com.apple.Terminal")])
+    }
+}
+
+final class TypedTimerLengthTests: XCTestCase {
+    func testTypedLengthsParse() {
+        let cases: [(String, Int?)] = [
+            ("25", 1500), ("1:30", 90), ("0:45", 45), ("1:05:00", 3900),
+            ("90s", 90), ("45m", 2700), ("1h", 3600), ("1h 30m", 5400), ("1h30", 5400),
+            ("2m30s", 150), (" 10 ", 600), ("1H", 3600),
+            ("", nil), ("abc", nil), ("1:75", nil), ("0", nil), ("25:00:00", nil),
+            ("1m1m", nil), ("30x", nil), ("1:2:3:4", nil), ("m5", nil), ("5m30", nil), (":", nil),
+        ]
+        for (text, want) in cases {
+            XCTAssertEqual(Format.parseDuration(text), want, "\"\(text)\"")
+        }
+    }
+}

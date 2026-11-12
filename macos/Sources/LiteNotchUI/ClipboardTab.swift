@@ -182,14 +182,15 @@ struct ClipboardTab: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text(verbatim: "Copy: \(item.preview)"))
-            if item.kind == .text {
+            let actions = ClipActions.of(item, hasPreview: source != nil)
+            if actions.contains(.copyPlain) {
                 IconButton(symbol: "textformat", label: "Copy as plain text", size: 11,
                            tint: item.rich ? NT.text2 : NT.text3, frame: 24) {
                     copyPlain(item)
                 }
                 .help(item.rich ? "Copy without formatting" : "Copy as plain text")
             }
-            if source != nil {
+            if actions.contains(.preview) {
                 IconButton(symbol: "eye", label: "Preview", size: 11, tint: NT.text3, frame: 24) {
                     model.requestKeyboard(false)
                     model.clipPreview = item.id
@@ -211,5 +212,19 @@ struct ClipboardTab: View {
         let when = Format.relative(from: item.createdMs, nowMs: now)
         if let a = item.sourceApp, !a.isEmpty { return "\(a) \u{00B7} \(when)" }
         return when
+    }
+}
+
+/// The buttons a clipboard row offers besides copying, pin and delete.
+public enum ClipActions: Equatable {
+    case copyPlain, preview
+
+    /// Every text clip can be copied as plain text, formatted or not; a
+    /// clip with a thumbnail (image or files) can be previewed.
+    public static func of(_ item: ClipView, hasPreview: Bool) -> [ClipActions] {
+        var out: [ClipActions] = []
+        if item.kind == .text { out.append(.copyPlain) }
+        if hasPreview { out.append(.preview) }
+        return out
     }
 }

@@ -46,11 +46,7 @@ public struct NotchRootView: View {
             case .toast:
                 if let b = model.view?.inbox.banner {
                     ToastView(banner: b, notch: model.notch, ear: ear,
-                              open: {
-                                  // Going somewhere answers the banner; the inbox keeps it.
-                                  if b.open != nil { model.send(.notifyDismissBanner) }
-                                  model.follow(b.open)
-                              },
+                              open: { model.openNotification(b, isBanner: true) },
                               dismiss: { model.send(.notifyDismissBanner) })
                         .transition(.opacity)
                 }

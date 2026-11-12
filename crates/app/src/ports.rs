@@ -406,4 +406,35 @@ mod tests {
         assert!(!rich.exists() && a.exists());
         prune_images(&dir.join("missing"), &[]);
     }
+
+    /// Reported: "I can't see the Aa button". The cause to guard against is
+    /// a formatted copy being stored without its formatting.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_formatted_copy_is_captured_with_its_formatting_and_written_back() {
+        use litenotch_platform::clipboard::{use_test_pasteboard, write_rich, write_text};
+        use_test_pasteboard(Some("dev.litenotch.tests.ports"));
+        let dir = crate::store::temp_dir("ports-rich");
+        let mut ports = MacPorts::for_app(None, &dir);
+        let html = b"<b>Bold</b> words";
+        assert!(write_rich("Bold words", html, RichFormat::Html));
+        let capture = ports.poll_clipboard().expect("the copy is seen");
+        assert_eq!(capture.text, "Bold words");
+        let rich = capture.rich_path.expect("formatting is kept");
+        assert_eq!(std::fs::read(&rich).unwrap(), html);
+        assert!(ports.poll_clipboard().is_none(), "seen once");
+
+        assert!(write_text("plain"));
+        assert_eq!(ports.poll_clipboard().unwrap().rich_path, None);
+
+        ports.write_clipboard_rich("Bold words", &rich);
+        assert_eq!(
+            litenotch_platform::clipboard::read_rich(),
+            Some((html.to_vec(), RichFormat::Html))
+        );
+        // A path outside the app's own folder is written as plain text.
+        ports.write_clipboard_rich("x", "/etc/hosts");
+        assert_eq!(litenotch_platform::clipboard::read_rich(), None);
+        use_test_pasteboard(None);
+    }
 }

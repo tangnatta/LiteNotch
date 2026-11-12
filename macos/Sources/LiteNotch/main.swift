@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.show()
         model.onResetAccessibility = { [weak self] in self?.systemNotifications.resetPermission() }
         systemNotifications.start()
+        Bench.run(model: model)
         quitCleanlyOnSignals()
     }
 
@@ -72,6 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Development and benchmarking: keep state away from the real app's.
         if let dataDir = environment["LITENOTCH_DATA_DIR"], !dataDir.isEmpty {
             config["data_dir"] = dataDir
+            if let lib = Bench.nowPlayingLib { config["nowplaying_lib"] = lib }
         }
         guard let data = try? JSONSerialization.data(withJSONObject: config),
               let json = String(data: data, encoding: .utf8) else { return false }
@@ -95,6 +97,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let work = DispatchWorkItem { [weak self] in self?.sendUTCOffset() }
         dstWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + max(1, next.timeIntervalSinceNow + 1), execute: work)
+    }
+}
+
+/// Switches used by `scripts/bench.sh` to put the app in a known state.
+/// They are read only together with `LITENOTCH_DATA_DIR`, so a normal
+/// launch never sees them.
+enum Bench {
+    private static let env = ProcessInfo.processInfo.environment
+    private static var enabled: Bool { !(env["LITENOTCH_DATA_DIR"] ?? "").isEmpty }
+
+    /// A stand-in now-playing helper (the benchmark's "music is playing").
+    static var nowPlayingLib: String? {
+        enabled ? env["LITENOTCH_BENCH_NOWPLAYING_LIB"].flatMap { $0.isEmpty ? nil : $0 } : nil
+    }
+
+    /// Commands to send at start (JSON array) and whether to open the panel.
+    static func run(model: AppModel) {
+        guard enabled else { return }
+        if let json = env["LITENOTCH_BENCH_COMMANDS"],
+           let list = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]] {
+            for command in list {
+                if let data = try? JSONSerialization.data(withJSONObject: command),
+                   let text = String(data: data, encoding: .utf8) {
+                    _ = text.withCString { ln_send($0) }
+                }
+            }
+        }
+        if env["LITENOTCH_BENCH_OPEN"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { model.primary.open() }
+        }
     }
 }
 

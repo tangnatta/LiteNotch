@@ -3,6 +3,43 @@ import Foundation
 /// Text formatting shared by the views; pure so it can be unit tested.
 public enum Format {
     /// Same shape as the core's `mmss`: `0:00`, `1:05`, `60:00`.
+    /// A typed timer length in seconds, or nil if it makes no sense.
+    /// `25` is minutes; `1:30` is minutes and seconds; `1:05:00` adds hours;
+    /// units also work: `90s`, `45m`, `1h`, `1h 30m`, `2m30s`.
+    /// The result is between 1 second and 24 hours.
+    public static func parseDuration(_ text: String) -> Int? {
+        let s = text.lowercased().replacingOccurrences(of: " ", with: "")
+        guard !s.isEmpty else { return nil }
+        var total = 0
+        if s.allSatisfy({ $0.isNumber || $0 == ":" }) {
+            let parts = s.split(separator: ":", omittingEmptySubsequences: false).map { Int($0) }
+            guard !parts.contains(where: { $0 == nil }) else { return nil }
+            let n = parts.compactMap { $0 }
+            switch n.count {
+            case 1: total = n[0] * 60
+            case 2: guard n[1] < 60 else { return nil }; total = n[0] * 60 + n[1]
+            case 3: guard n[1] < 60, n[2] < 60 else { return nil }; total = n[0] * 3600 + n[1] * 60 + n[2]
+            default: return nil
+            }
+        } else {
+            var number = ""
+            var seen = Set<Character>()
+            for c in s {
+                if c.isNumber { number.append(c); continue }
+                guard let value = Int(number), "hms".contains(c), !seen.contains(c) else { return nil }
+                seen.insert(c)
+                total += value * (c == "h" ? 3600 : c == "m" ? 60 : 1)
+                number = ""
+            }
+            // A trailing bare number after hours means minutes: `1h30`.
+            if !number.isEmpty {
+                guard let value = Int(number), seen.contains("h"), !seen.contains("m") else { return nil }
+                total += value * 60
+            }
+        }
+        return (1...86_400).contains(total) ? total : nil
+    }
+
     /// `1 min`, `30 min`, `1 h`, `1 h 30 min`.
     public static func timerPreset(_ secs: Int) -> String {
         let h = secs / 3600, m = secs / 60 % 60

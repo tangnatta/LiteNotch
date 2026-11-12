@@ -174,6 +174,10 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   version re-rendered the notch every frame and cost 9 % CPU while music
   played. `scripts/bench.sh` only measures idle, so check by hand with
   something playing after touching the closed-notch views.
+- Read only pasteboard types the copying app declared (its first item's
+  `types`). Asking for another type (PNG when it copied TIFF, RTF when it
+  copied HTML) makes the system convert the data, which cost seconds of CPU
+  on large content.
 - The CLI must stay cheap and silent: it runs on every hook. It depends on
   `core` and `files` only (not `platform`/`app`, which link AppKit), exits 0
   and prints nothing on any failure in `hook`/`statusline`.
@@ -187,11 +191,29 @@ scripts/         build-app.sh, bench.sh, coverage.sh
 
 ## Budgets (checked by `scripts/bench.sh --check` and `scripts/coverage.sh`)
 
-Idle memory footprint ≤ 30 MB (measured 18), idle CPU ≤ 0.5 % (0.1; 0.07
-with a track playing), bundle ≤ 15 MB (3.8), Rust line coverage ≥ 90 % (97).
-RSS is about 65 MB but mostly shared system-framework pages, so the budget
-is on physical footprint. The now-playing helper is a separate perl process
-of about 4 MB that the benchmark does not count.
+`scripts/bench.sh` runs the app in fixed scenarios, each in its own empty
+data directory, measures CPU over a 20 s window after an 8 s settle, and
+the physical memory footprint:
+
+| Scenario | What runs | CPU | Memory |
+|---|---|---|---|
+| idle | nothing | ≤ 0.5 % | ≤ 30 MB |
+| timer | countdown running (digits redraw each second) | ≤ 1.0 % | ≤ 30 MB |
+| music | a stand-in track playing (`scripts/bench/nowplaying-fake.c`) | ≤ 1.0 % | ≤ 30 MB |
+| panel | the panel open on Home | ≤ 1.5 % | ≤ 40 MB |
+
+Bundle ≤ 15 MB; Rust line coverage ≥ 90 %. The app reads a few
+`LITENOTCH_BENCH_*` variables (start-up commands, open the panel, a stand-in
+now-playing library) only when `LITENOTCH_DATA_DIR` is set too; see `Bench`
+in `macos/Sources/LiteNotch/main.swift`. Add a scenario here when a feature
+adds steady work (a timer, an animation, a poll). RSS is about 65 MB but
+mostly shared framework pages, so the budget is on physical footprint.
+Single runs occasionally show a short burst (an outside event such as a
+copy landing in the window); a real regression repeats.
+
+A feature was removed for cost: bars that followed the music through a
+Core Audio tap cost about 3 % CPU and 7 MB while playing, against 0 % for
+the plain animation.
 
 ## Decisions and why
 

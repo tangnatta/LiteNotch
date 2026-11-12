@@ -175,6 +175,16 @@ pub fn write_image(bytes: &[u8], format: ImageFormat) -> bool {
     imp::write_image(bytes, format)
 }
 
+/// For tests in this and other crates: use the private pasteboard `name`
+/// on this thread instead of the user's (`None` goes back).
+#[doc(hidden)]
+pub fn use_test_pasteboard(name: Option<&str>) {
+    #[cfg(target_os = "macos")]
+    imp::TEST_BOARD.with(|b| *b.borrow_mut() = name.map(str::to_owned));
+    #[cfg(not(target_os = "macos"))]
+    let _ = name;
+}
+
 /// Changes every time any app writes to the pasteboard. Negative when the
 /// pasteboard is unavailable.
 pub fn change_count() -> i64 {
@@ -204,14 +214,12 @@ mod imp {
     const STRING_TYPE: &str = "public.utf8-plain-text";
     const FILENAMES_TYPE: &str = "NSFilenamesPboardType";
 
-    #[cfg(test)]
     thread_local! {
         /// Tests use a private named pasteboard instead of the user's.
         pub static TEST_BOARD: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
     }
 
     fn pasteboard() -> Option<Retained<AnyObject>> {
-        #[cfg(test)]
         if let Some(name) = TEST_BOARD.with(|b| b.borrow().clone()) {
             // SAFETY: +pasteboardWithName: takes an NSString and returns a pasteboard.
             return unsafe {
@@ -291,10 +299,35 @@ mod imp {
         }
     }
 
+    /// The types the copying app itself put on the pasteboard (its first
+    /// item), in its order of preference. Asking for any other type makes
+    /// the system convert the data first, which for a large image or a long
+    /// web page costs seconds of CPU and a lot of memory.
+    fn declared_types(pb: &AnyObject) -> Vec<String> {
+        // SAFETY: -pasteboardItems returns NSArray<NSPasteboardItem *> or
+        // nil; -types on an item returns NSArray<NSString *>.
+        unsafe {
+            let items: Option<Retained<NSArray<AnyObject>>> = msg_send![pb, pasteboardItems];
+            let Some(first) = items.and_then(|a| a.firstObject()) else {
+                return Vec::new();
+            };
+            let types: Option<Retained<NSArray<NSString>>> = msg_send![&*first, types];
+            types
+                .map(|a| a.iter().map(|t| t.to_string()).collect())
+                .unwrap_or_default()
+        }
+    }
+
     pub fn read_image() -> Option<(Vec<u8>, ImageFormat)> {
         autoreleasepool(|_| {
             let pb = pasteboard()?;
-            for format in [ImageFormat::Png, ImageFormat::Tiff] {
+            let declared = declared_types(&pb);
+            let formats = declared.iter().filter_map(|t| match t.as_str() {
+                "public.png" => Some(ImageFormat::Png),
+                "public.tiff" => Some(ImageFormat::Tiff),
+                _ => None,
+            });
+            for format in formats {
                 // SAFETY: -dataForType: takes an NSString and returns NSData or nil.
                 let data: Option<Retained<NSData>> =
                     unsafe { msg_send![&*pb, dataForType: &*NSString::from_str(format.uti())] };
@@ -311,7 +344,12 @@ mod imp {
     pub fn read_rich() -> Option<(Vec<u8>, RichFormat)> {
         autoreleasepool(|_| {
             let pb = pasteboard()?;
-            for format in [RichFormat::Rtf, RichFormat::Rtfd, RichFormat::Html] {
+            let declared = declared_types(&pb);
+            let order = [RichFormat::Rtf, RichFormat::Rtfd, RichFormat::Html];
+            for format in order
+                .into_iter()
+                .filter(|f| declared.iter().any(|t| t == f.uti()))
+            {
                 // SAFETY: -dataForType: takes an NSString and returns NSData or nil.
                 let data: Option<Retained<NSData>> =
                     unsafe { msg_send![&*pb, dataForType: &*NSString::from_str(format.uti())] };
@@ -529,6 +567,23 @@ mod tests {
         b.extend_from_slice(&h.to_be_bytes());
         b.resize(b.len() + extra, 0);
         b
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn only_types_the_copying_app_declared_are_read() {
+        use_test_pasteboard(Some("dev.litenotch.tests.declared"));
+        // HTML only: no RTF is requested (that would make the system convert).
+        assert!(write_rich("x", b"<i>x</i>", RichFormat::Html));
+        assert_eq!(read_rich().map(|r| r.1), Some(RichFormat::Html));
+        // A PNG only: no TIFF conversion either.
+        let png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR\0\0\0\x01\0\0\0\x01";
+        assert!(write_image(png, ImageFormat::Png));
+        assert_eq!(read_image(), Some((png.to_vec(), ImageFormat::Png)));
+        assert!(write_text("plain"));
+        assert_eq!(read_image(), None);
+        assert_eq!(read_rich(), None);
+        use_test_pasteboard(None);
     }
 
     #[test]

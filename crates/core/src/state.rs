@@ -196,6 +196,10 @@ pub enum Command {
         id: u64,
     },
     NotifyMarkRead,
+    /// One notification was opened, so it has been read.
+    NotifyOpened {
+        id: u64,
+    },
     NotifyClear,
     Media {
         action: MediaCommand,
@@ -786,6 +790,9 @@ impl Core {
                 self.notify_events(events, now);
             }
             Command::NotifyMarkRead => self.notify.mark_all_read(),
+            Command::NotifyOpened { id } => {
+                self.notify.mark_read(id);
+            }
             Command::NotifyClear => self.notify.clear_history(),
             Command::Media { action } => {
                 if self.media.active().is_some() {
@@ -3162,5 +3169,39 @@ mod tests {
         let v = c.view(T0);
         assert_eq!(v.inbox.banner.as_ref().unwrap().title, "spoof");
         assert_eq!(v.inbox.banner.unwrap().open, None);
+    }
+
+    #[test]
+    fn opening_a_notification_marks_only_it_read() {
+        let mut c = core();
+        // Both stay unread: the first shows as a banner, the second waits.
+        c.apply(Input::ExternalNotify(note("first", Priority::Normal)), T0);
+        c.apply(
+            Input::ExternalNotify(note("second", Priority::Normal)),
+            T0 + 1,
+        );
+        let v = c.view(T0 + 1);
+        assert_eq!(v.inbox.unread, 2);
+        let first = v
+            .inbox
+            .history
+            .iter()
+            .find(|n| n.title == "first")
+            .unwrap()
+            .id;
+        cmd(&mut c, Command::NotifyOpened { id: first }, T0 + 2);
+        let v = c.view(T0 + 2);
+        assert_eq!(v.inbox.unread, 1);
+        assert!(v.inbox.history.iter().find(|n| n.id == first).unwrap().read);
+        assert!(
+            !v.inbox
+                .history
+                .iter()
+                .find(|n| n.title == "second")
+                .unwrap()
+                .read
+        );
+        cmd(&mut c, Command::NotifyOpened { id: 9_999 }, T0 + 3);
+        assert_eq!(c.view(T0 + 3).inbox.unread, 1);
     }
 }

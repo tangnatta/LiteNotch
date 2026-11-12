@@ -55,7 +55,7 @@ struct AgentsTab: View {
             } else {
                 NotchScroll {
                     ForEach(Array(vm.agents.sessions.enumerated()), id: \.element.id) { i, s in
-                        Button { if let app = s.app { model.follow(.app(bundleId: app)) } } label: {
+                        Button { model.openSession(s) } label: {
                             SessionRow(session: s, now: now)
                         }
                         .buttonStyle(.plain)

@@ -56,6 +56,8 @@ public enum ShellCommand: Equatable {
     case notifyDismissBanner
     case notifyDismiss(id: Int)
     case notifyMarkRead
+    /// A notification was clicked, so it counts as read.
+    case notifyOpened(id: Int)
     case notifyClear
     case media(MediaAction)
     /// Another app's notification, captured by `SystemNotificationObserver`.
@@ -107,6 +109,7 @@ public enum ShellCommand: Equatable {
         case .notifyDismissBanner: return c("notify_dismiss_banner")
         case .notifyDismiss(let id): return c("notify_dismiss", ["id": id])
         case .notifyMarkRead: return c("notify_mark_read")
+        case .notifyOpened(let id): return c("notify_opened", ["id": id])
         case .notifyClear: return c("notify_clear")
         case .media(let a): return c("media", ["action": a.rawValue])
         case .notifySystem(let app, let title, let body):
@@ -451,6 +454,20 @@ public final class PanelState: ObservableObject {
             selectTab(.inbox)
             open()
         }
+    }
+
+    /// A click on a notification (inbox row or toast). Going somewhere
+    /// answers a showing banner; the inbox keeps the item.
+    public func openNotification(_ n: NotificationItem, isBanner: Bool) {
+        send(.notifyOpened(id: n.id))
+        if isBanner && n.open != nil { send(.notifyDismissBanner) }
+        follow(n.open)
+    }
+
+    /// A click on a session row: brings its terminal forward when known.
+    public func openSession(_ s: AgentSession) {
+        guard let app = s.app else { return }
+        follow(.app(bundleId: app))
     }
 
     /// The tab-bar eyedropper: the panel gets out of the way first.

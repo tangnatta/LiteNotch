@@ -46,6 +46,7 @@ pub enum Feature {
     MeetingStart,
     MeetingFinish,
     ColorPick,
+    TimerStart,
 }
 
 impl Feature {
@@ -80,6 +81,7 @@ impl Feature {
             Feature::MeetingStart => "meeting_start",
             Feature::MeetingFinish => "meeting_finish",
             Feature::ColorPick => "color_pick",
+            Feature::TimerStart => "timer_start",
         }
     }
 }
@@ -491,6 +493,7 @@ mod tests {
             Feature::MeetingStart,
             Feature::MeetingFinish,
             Feature::ColorPick,
+            Feature::TimerStart,
         ];
         let mut names = std::collections::BTreeSet::new();
         for f in all {

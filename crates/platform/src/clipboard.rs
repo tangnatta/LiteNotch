@@ -115,6 +115,51 @@ pub fn describe_image(bytes: &[u8], format: ImageFormat) -> String {
     parts.join(" \u{b7} ")
 }
 
+/// Largest formatting kept; bigger rich text is kept as plain text only.
+pub const MAX_RICH_BYTES: usize = 2 * 1024 * 1024;
+
+/// How copied text carries its formatting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RichFormat {
+    Rtf,
+    Html,
+}
+
+impl RichFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            RichFormat::Rtf => "rtf",
+            RichFormat::Html => "html",
+        }
+    }
+
+    fn uti(self) -> &'static str {
+        match self {
+            RichFormat::Rtf => "public.rtf",
+            RichFormat::Html => "public.html",
+        }
+    }
+
+    pub fn from_extension(ext: &str) -> Option<RichFormat> {
+        match ext.to_ascii_lowercase().as_str() {
+            "rtf" => Some(RichFormat::Rtf),
+            "html" => Some(RichFormat::Html),
+            _ => None,
+        }
+    }
+}
+
+/// The formatting of the text on the pasteboard, RTF preferred.
+pub fn read_rich() -> Option<(Vec<u8>, RichFormat)> {
+    imp::read_rich()
+}
+
+/// Replaces the pasteboard contents with text plus its formatting, so apps
+/// that paste plain text still get the text.
+pub fn write_rich(text: &str, bytes: &[u8], format: RichFormat) -> bool {
+    imp::write_rich(text, bytes, format)
+}
+
 /// The image on the pasteboard, PNG preferred, if it is not too large.
 pub fn read_image() -> Option<(Vec<u8>, ImageFormat)> {
     imp::read_image()
@@ -142,7 +187,7 @@ pub fn write_text(text: &str) -> bool {
 
 #[cfg(target_os = "macos")]
 mod imp {
-    use super::{classify, ImageFormat, RawClip, MAX_IMAGE_BYTES};
+    use super::{classify, ImageFormat, RawClip, RichFormat, MAX_IMAGE_BYTES, MAX_RICH_BYTES};
     use objc2::rc::{autoreleasepool, Retained};
     use objc2::runtime::AnyObject;
     use objc2::{class, msg_send};
@@ -245,6 +290,46 @@ mod imp {
         })
     }
 
+    pub fn read_rich() -> Option<(Vec<u8>, RichFormat)> {
+        autoreleasepool(|_| {
+            let pb = pasteboard()?;
+            for format in [RichFormat::Rtf, RichFormat::Html] {
+                // SAFETY: -dataForType: takes an NSString and returns NSData or nil.
+                let data: Option<Retained<NSData>> =
+                    unsafe { msg_send![&*pb, dataForType: &*NSString::from_str(format.uti())] };
+                let Some(data) = data else { continue };
+                if data.is_empty() || data.len() > MAX_RICH_BYTES {
+                    return None;
+                }
+                return Some((data.to_vec(), format));
+            }
+            None
+        })
+    }
+
+    pub fn write_rich(text: &str, bytes: &[u8], format: RichFormat) -> bool {
+        autoreleasepool(|_| {
+            let Some(pb) = pasteboard() else { return false };
+            let data = NSData::with_bytes(bytes);
+            // SAFETY: -clearContents returns NSInteger; -setString:forType: and
+            // -setData:forType: take an object and an NSString and return BOOL.
+            unsafe {
+                let _: isize = msg_send![&*pb, clearContents];
+                let string_ok: bool = msg_send![
+                    &*pb,
+                    setString: &*NSString::from_str(text),
+                    forType: &*NSString::from_str(STRING_TYPE)
+                ];
+                let data_ok: bool = msg_send![
+                    &*pb,
+                    setData: &*data,
+                    forType: &*NSString::from_str(format.uti())
+                ];
+                string_ok && data_ok
+            }
+        })
+    }
+
     pub fn write_image(bytes: &[u8], format: ImageFormat) -> bool {
         autoreleasepool(|_| {
             let Some(pb) = pasteboard() else { return false };
@@ -297,6 +382,14 @@ mod imp {
 
     pub fn read_image() -> Option<(Vec<u8>, super::ImageFormat)> {
         None
+    }
+
+    pub fn read_rich() -> Option<(Vec<u8>, super::RichFormat)> {
+        None
+    }
+
+    pub fn write_rich(_text: &str, _bytes: &[u8], _format: super::RichFormat) -> bool {
+        false
     }
 
     pub fn write_image(_bytes: &[u8], _format: super::ImageFormat) -> bool {
@@ -441,6 +534,14 @@ mod tests {
             describe_image(&[1, 2], ImageFormat::Png),
             "PNG image \u{b7} 1 KB"
         );
+    }
+
+    #[test]
+    fn rich_formats_map_to_extensions() {
+        for f in [RichFormat::Rtf, RichFormat::Html] {
+            assert_eq!(RichFormat::from_extension(f.extension()), Some(f));
+        }
+        assert_eq!(RichFormat::from_extension("txt"), None);
     }
 
     #[test]

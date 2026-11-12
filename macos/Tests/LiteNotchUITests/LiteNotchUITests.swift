@@ -1200,3 +1200,39 @@ final class ContrastTests: XCTestCase {
         XCTAssertLessThan(ColorMath.contrast(orange, ColorMath.RGB(r: 0.965, g: 0.965, b: 0.965)), 4.5)
     }
 }
+
+final class CountdownAndPlainCopyTests: XCTestCase {
+    func testCommandsEncodeToTheCoreNames() {
+        func obj(_ c: ShellCommand) -> [String: Any] {
+            (try? JSONSerialization.jsonObject(with: Data(c.encode().utf8))) as? [String: Any] ?? [:]
+        }
+        XCTAssertEqual(obj(.clipCopyPlain(id: 7))["cmd"] as? String, "clip_copy_plain")
+        XCTAssertEqual(obj(.clipCopyPlain(id: 7))["id"] as? Int, 7)
+        XCTAssertEqual(obj(.timerSet(secs: 90))["secs"] as? Int, 90)
+        XCTAssertEqual(obj(.timerSet(secs: 90))["cmd"] as? String, "timer_set")
+        XCTAssertEqual(obj(.timerToggle)["cmd"] as? String, "timer_toggle")
+        XCTAssertEqual(obj(.timerReset)["cmd"] as? String, "timer_reset")
+        XCTAssertEqual(obj(.timerAdd(secs: 60))["cmd"] as? String, "timer_add")
+    }
+
+    func testTimerAndRichFieldsDecodeAndDefault() throws {
+        let vm = try loadFixture("media")
+        XCTAssertEqual(vm.timer.runState, .stopped)
+        XCTAssertEqual(vm.timer.presets.count, 6)
+        XCTAssertFalse(vm.timer.isActive)
+        XCTAssertTrue(vm.clipboard.items.contains { $0.rich })
+        // An older core without these fields still decodes.
+        var json = try JSONSerialization.jsonObject(with: Data(contentsOf: fixtureURL("media"))) as? [String: Any] ?? [:]
+        json.removeValue(forKey: "timer")
+        let old = try ViewModel.decode(JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(old.timer, .empty)
+    }
+
+    func testPresetLabels() {
+        XCTAssertEqual(Format.timerPreset(45), "45 s")
+        XCTAssertEqual(Format.timerPreset(60), "1 min")
+        XCTAssertEqual(Format.timerPreset(1800), "30 min")
+        XCTAssertEqual(Format.timerPreset(3600), "1 h")
+        XCTAssertEqual(Format.timerPreset(5400), "1 h 30 min")
+    }
+}

@@ -19,6 +19,9 @@ fn clip(core: &mut Core, text: &str, app: &str, kind: ClipKind, at: u64) {
             source_app: Some(app.into()),
             concealed: false,
             image_path: (kind == ClipKind::Image).then(|| "/tmp/litenotch-fixture/clip.png".into()),
+            rich_path: text
+                .starts_with("https://")
+                .then(|| "/tmp/litenotch-fixture/rich.html".into()),
         }),
         at,
     );

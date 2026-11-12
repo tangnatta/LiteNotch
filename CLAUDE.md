@@ -96,6 +96,11 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   Off by default (`settings.notify.system`); needs the Accessibility
   permission, which for an ad-hoc signed build must be granted again after
   every rebuild.
+- **Clipboard files**: copied images (`img-*`) and the formatting of rich
+  text (`rich-*`, RTF or HTML) are saved in `<data dir>/clips`, named by a
+  hash of their content. The runtime deletes any such file the history no
+  longer refers to (`Core::clip_file_paths`). Copying a rich item back
+  writes the text plus its formatting; `clip_copy_plain` writes text only.
 - **Usage history**: the transcript scanner reads the last 7 days of
   session transcripts off the core thread and passes only compact
   `UsageRecord`s (a transcript line can be hundreds of kilobytes). The core

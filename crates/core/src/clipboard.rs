@@ -35,6 +35,9 @@ pub struct ClipCapture {
     /// For an image: the file the runtime saved it to.
     #[serde(default)]
     pub image_path: Option<String>,
+    /// For formatted text: the file holding the formatting (RTF or HTML).
+    #[serde(default)]
+    pub rich_path: Option<String>,
 }
 
 /// A stored history entry.
@@ -57,6 +60,9 @@ pub struct ClipItem {
     /// For an image: the file holding it.
     #[serde(default)]
     pub image_path: Option<String>,
+    /// For formatted text: the file holding the formatting.
+    #[serde(default)]
+    pub rich_path: Option<String>,
 }
 
 /// Clipboard settings.
@@ -199,6 +205,8 @@ impl ClipboardHistory {
             if c.source_app.is_some() {
                 item.source_app = c.source_app;
             }
+            // The latest copy of the same text decides its formatting.
+            item.rich_path = c.rich_path;
             let id = item.id;
             self.items.insert(0, item);
             return CaptureOutcome::Bumped(id);
@@ -217,6 +225,7 @@ impl ClipboardHistory {
                 pinned: false,
                 byte_len,
                 image_path: c.image_path,
+                rich_path: c.rich_path,
             },
         );
         self.evict();
@@ -251,11 +260,12 @@ impl ClipboardHistory {
     }
 
     /// Delete one item; false if the id is unknown.
-    /// Image files the history still refers to.
-    pub fn image_paths(&self) -> Vec<String> {
+    /// Files (images, formatting) the history still refers to.
+    pub fn file_paths(&self) -> Vec<String> {
         self.items
             .iter()
-            .filter_map(|i| i.image_path.clone())
+            .flat_map(|i| [i.image_path.clone(), i.rich_path.clone()])
+            .flatten()
             .collect()
     }
 
@@ -352,6 +362,7 @@ mod tests {
             source_app: None,
             concealed: false,
             image_path: None,
+            rich_path: None,
         }
     }
 
@@ -726,6 +737,7 @@ mod tests {
                 pinned: false,
                 byte_len: 2,
                 image_path: None,
+                rich_path: None,
             })
             .collect();
         let p = PersistedClipboard { items, next_id: 0 };
@@ -826,5 +838,29 @@ mod tests {
             h.set_pinned(ids[MAX_PINNED], true),
             "room again after unpinning"
         );
+    }
+
+    #[test]
+    fn formatting_follows_the_latest_copy_and_files_are_listed() {
+        let mut h = ClipboardHistory::new(ClipboardConfig::default());
+        let rich = |path: Option<&str>| ClipCapture {
+            rich_path: path.map(str::to_owned),
+            ..text("hello")
+        };
+        h.capture(rich(Some("/c/rich-1.rtf")), 1);
+        assert_eq!(h.file_paths(), ["/c/rich-1.rtf"]);
+        h.capture(rich(None), 2);
+        assert_eq!(h.items().len(), 1);
+        assert!(h.file_paths().is_empty());
+        h.capture(rich(Some("/c/rich-2.html")), 3);
+        h.capture(
+            ClipCapture {
+                kind: ClipKind::Image,
+                image_path: Some("/c/img-1.png".into()),
+                ..text("PNG image")
+            },
+            4,
+        );
+        assert_eq!(h.file_paths(), ["/c/img-1.png", "/c/rich-2.html"]);
     }
 }

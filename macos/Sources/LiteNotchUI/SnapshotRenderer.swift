@@ -41,6 +41,19 @@ public enum SnapshotRenderer {
             try add("\(name)-expanded-agents-usage", vm, tab: .agents, pane: .usage)
             if name == "pomodoro" {
                 try add("pomodoro-expanded-timer-meeting", vm, tab: .timer, timerPane: .meeting)
+                try add("timer-stopped-expanded-timer", vm, tab: .timer, timerPane: .countdown)
+                var running = vm
+                running.pomodoro = vm.pomodoro
+                running.timer.runState = .running
+                running.timer.endsAtMs = snapshotNowMs + 4 * 60_000 + 12_000
+                running.compact = CompactView(kind: .timer, title: "Timer", value: "",
+                                              endsAtMs: running.timer.endsAtMs, totalSecs: 300, count: 0)
+                try add("timer-running-expanded-timer", running, tab: .timer, timerPane: .countdown)
+                try add("timer-running-closed", running, expanded: false)
+                var done = vm
+                done.timer.runState = .done
+                done.timer.remainingSecs = 0
+                try add("timer-done-expanded-timer", done, tab: .timer, timerPane: .countdown)
                 for state in ["running", "over", "paused", "finished"] {
                     let m = meeting(vm, state)
                     try add("meeting-\(state)-expanded-timer", m, tab: .timer, timerPane: .meeting)

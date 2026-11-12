@@ -108,6 +108,8 @@ struct ClosedActivityView: View {
             Image(systemName: "cup.and.saucer.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.text1)
         case .agent:
             Image(systemName: "sparkles").font(.system(size: 12, weight: .semibold)).foregroundStyle(NT.accentText)
+        case .timer:
+            Image(systemName: "hourglass").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
         case .meeting:
             Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold)).foregroundStyle(NT.accentText)
         case .approval:
@@ -143,6 +145,15 @@ struct ClosedActivityView: View {
             }
         case .agent:
             VText(compact.title).wingText(mono: false)
+        case .timer:
+            if let end = compact.endsAtMs {
+                EverySecond { now in
+                    VText(Format.countdown(seconds: Format.secondsLeft(until: end, nowMs: now)))
+                        .wingText(mono: true)
+                }
+            } else {
+                VText(compact.value).wingText(mono: true)
+            }
         case .meeting:
             if let end = compact.endsAtMs {
                 EverySecond { now in

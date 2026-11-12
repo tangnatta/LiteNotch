@@ -30,6 +30,7 @@
         "created_ms": 1794400000000,
         "pinned": true,
         "image_path": null,
+        "rich": false,
         "files": []
       },
       {
@@ -40,6 +41,7 @@
         "created_ms": 1794400000004,
         "pinned": false,
         "image_path": "/tmp/litenotch-fixture/clip.png",
+        "rich": false,
         "files": []
       },
       {
@@ -50,6 +52,7 @@
         "created_ms": 1794400000003,
         "pinned": false,
         "image_path": null,
+        "rich": false,
         "files": []
       },
       {
@@ -60,6 +63,7 @@
         "created_ms": 1794400000002,
         "pinned": false,
         "image_path": null,
+        "rich": false,
         "files": [
           "/Users/me/Desktop/notch-mock.png",
           "/Users/me/Desktop/notch-mock@2x.png"
@@ -73,6 +77,7 @@
         "created_ms": 1794400000001,
         "pinned": false,
         "image_path": null,
+        "rich": true,
         "files": []
       }
     ],
@@ -302,6 +307,20 @@
         "id": "retro",
         "title": "Retrospective"
       }
+    ]
+  },
+  "timer": {
+    "duration_secs": 300,
+    "run_state": "stopped",
+    "ends_at_ms": null,
+    "remaining_secs": 300,
+    "presets": [
+      60,
+      180,
+      300,
+      600,
+      900,
+      1800
     ]
   },
   "colors": [],

@@ -3,6 +3,13 @@ import Foundation
 /// Text formatting shared by the views; pure so it can be unit tested.
 public enum Format {
     /// Same shape as the core's `mmss`: `0:00`, `1:05`, `60:00`.
+    /// `1 min`, `30 min`, `1 h`, `1 h 30 min`.
+    public static func timerPreset(_ secs: Int) -> String {
+        let h = secs / 3600, m = secs / 60 % 60
+        if h == 0 { return secs >= 60 ? "\(m) min" : "\(secs) s" }
+        return m == 0 ? "\(h) h" : "\(h) h \(m) min"
+    }
+
     public static func countdown(seconds: Int) -> String {
         let s = max(0, seconds)
         return String(format: "%d:%02d", s / 60, s % 60)

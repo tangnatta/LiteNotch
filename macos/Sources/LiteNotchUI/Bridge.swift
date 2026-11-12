@@ -47,6 +47,8 @@ public struct AgendaLine: Equatable {
 public enum ShellCommand: Equatable {
     case pomodoroToggle, pomodoroSkip, pomodoroReset
     case clipCopy(id: Int)
+    /// Copy without the formatting it was copied with.
+    case clipCopyPlain(id: Int)
     case clipPin(id: Int, pinned: Bool)
     case clipRemove(id: Int)
     case clipClear
@@ -72,6 +74,10 @@ public enum ShellCommand: Equatable {
     /// The whole agenda; the core honours it only while no meeting runs.
     case meetingSet(title: String, items: [AgendaLine])
     case meetingToggle, meetingNext, meetingReset
+    /// The plain countdown timer.
+    case timerSet(secs: Int)
+    case timerToggle, timerReset
+    case timerAdd(secs: Int)
     /// A colour from the screen sampler: the core copies and remembers it.
     case colorPicked(hex: String)
     /// Not part of the Rust `Command` enum: the app's bridge handles these
@@ -89,6 +95,11 @@ public enum ShellCommand: Equatable {
         case .pomodoroSkip: return c("pomodoro_skip")
         case .pomodoroReset: return c("pomodoro_reset")
         case .clipCopy(let id): return c("clip_copy", ["id": id])
+        case .clipCopyPlain(let id): return c("clip_copy_plain", ["id": id])
+        case .timerSet(let secs): return c("timer_set", ["secs": secs])
+        case .timerToggle: return c("timer_toggle")
+        case .timerReset: return c("timer_reset")
+        case .timerAdd(let secs): return c("timer_add", ["secs": secs])
         case .clipPin(let id, let pinned): return c("clip_pin", ["id": id, "pinned": pinned])
         case .clipRemove(let id): return c("clip_remove", ["id": id])
         case .clipClear: return c("clip_clear")
@@ -148,7 +159,7 @@ public enum AgentsPane: String, CaseIterable, Equatable {
 
 /// The two halves of the Timer tab.
 public enum TimerPane: String, CaseIterable, Equatable {
-    case focus, meeting
+    case focus, meeting, countdown
 }
 
 // MARK: - Screen colour sampler

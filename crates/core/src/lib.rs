@@ -9,6 +9,7 @@ pub mod agent;
 pub mod analytics;
 pub mod caffeine;
 pub mod clipboard;
+pub mod countdown;
 pub mod ipc;
 pub mod media;
 pub mod meeting;

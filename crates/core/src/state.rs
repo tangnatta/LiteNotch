@@ -16,6 +16,7 @@ use crate::caffeine::{AwakeMode, Caffeine, CaffeineConfig, CaffeineEffect, LidSt
 use crate::clipboard::{
     ClipCapture, ClipKind, ClipboardConfig, ClipboardHistory, PersistedClipboard,
 };
+use crate::countdown::{Countdown, TimerRun, TimerView};
 use crate::media::{Media, MediaCommand, NowPlaying};
 use crate::meeting::{AgendaInput, Meeting, MeetingEvent, MeetingRun, MeetingView, SavedAgenda};
 use crate::notify::{
@@ -144,6 +145,8 @@ pub struct Persisted {
     pub meeting: Option<SavedAgenda>,
     /// Colours picked from the screen, newest first.
     pub colors: Vec<String>,
+    /// The countdown timer's last length.
+    pub timer_secs: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -168,6 +171,10 @@ pub enum Command {
     ClipCopy {
         id: u64,
     },
+    /// Copy an item back without its formatting.
+    ClipCopyPlain {
+        id: u64,
+    },
     ClipPin {
         id: u64,
         pinned: bool,
@@ -187,6 +194,17 @@ pub enum Command {
     NotifyClear,
     Media {
         action: MediaCommand,
+    },
+    /// Sets the countdown timer's length (stops it).
+    TimerSet {
+        secs: u32,
+    },
+    /// Start, pause or resume the countdown.
+    TimerToggle,
+    TimerReset,
+    /// Adds time to the countdown.
+    TimerAdd {
+        secs: u32,
     },
     MeetingLoad {
         preset: String,
@@ -280,6 +298,11 @@ pub enum Effect {
     SleepDisplay,
     /// Put the image in this file back on the pasteboard.
     WriteClipboardImage(String),
+    /// Put text back with the formatting saved in `path`.
+    WriteClipboardRich {
+        text: String,
+        path: String,
+    },
     /// Send a transport command to whatever is playing.
     MediaCommand(MediaCommand),
     /// Answer the hook CLI waiting on this request.
@@ -297,6 +320,7 @@ pub enum ActivityKind {
     Caffeine,
     Agent,
     Meeting,
+    Timer,
 }
 
 /// What the closed notch shows.
@@ -351,6 +375,8 @@ pub struct ClipView {
     pub pinned: bool,
     /// For an image: the file holding it, for a thumbnail.
     pub image_path: Option<String>,
+    /// Text copied with formatting, which a plain copy leaves out.
+    pub rich: bool,
     /// For files: the first few paths.
     pub files: Vec<String>,
 }
@@ -399,6 +425,7 @@ pub struct ViewModel {
     pub usage: UsageSnapshot,
     pub caffeine: CaffeineView,
     pub meeting: MeetingView,
+    pub timer: TimerView,
     /// Colours picked from the screen, newest first.
     pub colors: Vec<String>,
     pub analytics: Vec<FeatureCount>,
@@ -415,6 +442,7 @@ pub struct Core {
     agents: Agents,
     usage: Usage,
     meeting: Meeting,
+    timer: Countdown,
     colors: Vec<String>,
     /// The lid is closed with no external display.
     lid_shut: bool,
@@ -434,6 +462,18 @@ pub struct Core {
 impl Default for Core {
     fn default() -> Self {
         Self::new(Persisted::default())
+    }
+}
+
+/// `5 min`, `1 h 30 min`, `45 s`.
+fn duration_label(secs: u32) -> String {
+    let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);
+    match (h, m, s) {
+        (0, 0, s) => format!("{s} s"),
+        (0, m, 0) => format!("{m} min"),
+        (0, m, s) => format!("{m} min {s} s"),
+        (h, 0, _) => format!("{h} h"),
+        (h, m, _) => format!("{h} h {m} min"),
     }
 }
 
@@ -460,6 +500,7 @@ impl Core {
             clipboard,
             meeting,
             colors,
+            timer_secs,
             ..
         } = saved;
         let mut pomodoro = Pomodoro::new(settings.pomodoro.clone());
@@ -478,6 +519,7 @@ impl Core {
             agents: Agents::new(settings.agent.clone()),
             usage: Usage::new(),
             meeting: Meeting::from_saved(meeting),
+            timer: Countdown::new(timer_secs.unwrap_or(300)),
             lid_shut: false,
             wanted_assertion: AwakeMode::Off,
             colors: colors
@@ -508,6 +550,7 @@ impl Core {
                 .then(|| self.clipboard.to_persisted()),
             meeting: Some(self.meeting.saved()),
             colors: self.colors.clone(),
+            timer_secs: Some(self.timer.duration_secs()),
         }
     }
 
@@ -516,9 +559,9 @@ impl Core {
         std::mem::take(&mut self.dirty)
     }
 
-    /// Image files the clipboard history refers to.
-    pub fn clip_image_paths(&self) -> Vec<String> {
-        self.clipboard.image_paths()
+    /// Files (images, formatting) the clipboard history refers to.
+    pub fn clip_file_paths(&self) -> Vec<String> {
+        self.clipboard.file_paths()
     }
 
     pub fn settings(&self) -> &Settings {
@@ -539,6 +582,7 @@ impl Core {
             self.notify.next_deadline(),
             self.agents.next_deadline(),
             self.meeting.next_deadline(),
+            self.timer.next_deadline(),
         ]
         .into_iter()
         .flatten()
@@ -695,9 +739,13 @@ impl Core {
                 if let Some(item) = self.clipboard.get(id) {
                     // Files are kept as their paths, so copying them back
                     // yields text; images come back from their saved file.
-                    fx.push(match &item.image_path {
-                        Some(path) => Effect::WriteClipboardImage(path.clone()),
-                        None => Effect::WriteClipboard(item.text.clone()),
+                    fx.push(match (&item.image_path, &item.rich_path) {
+                        (Some(path), _) => Effect::WriteClipboardImage(path.clone()),
+                        (None, Some(path)) => Effect::WriteClipboardRich {
+                            text: item.text.clone(),
+                            path: path.clone(),
+                        },
+                        (None, None) => Effect::WriteClipboard(item.text.clone()),
                     });
                     self.count(Feature::ClipboardCopy, now);
                 }
@@ -738,6 +786,24 @@ impl Core {
                 }
             }
             Command::NotifySystem { app, title, body } => self.system_notify(app, title, body, now),
+            Command::ClipCopyPlain { id } => {
+                if let Some(item) = self.clipboard.get(id).filter(|i| i.kind != ClipKind::Image) {
+                    fx.push(Effect::WriteClipboard(item.text.clone()));
+                    self.count(Feature::ClipboardCopy, now);
+                }
+            }
+            Command::TimerSet { secs } => self.dirty |= self.timer.set(secs),
+            Command::TimerToggle => {
+                if self.timer.toggle(now) {
+                    self.count(Feature::TimerStart, now);
+                }
+            }
+            Command::TimerReset => self.timer.reset(),
+            Command::TimerAdd { secs } => {
+                let before = self.timer.duration_secs();
+                self.timer.add(secs, now);
+                self.dirty |= self.timer.duration_secs() != before;
+            }
             Command::MeetingLoad { preset } => {
                 self.dirty |= self.meeting.load_preset(&preset);
             }
@@ -894,6 +960,19 @@ impl Core {
         }
         let events = self.meeting.tick(now);
         self.meeting_events(events, now);
+        if self.timer.tick(now) {
+            self.post(
+                NotificationInput {
+                    source: "timer".into(),
+                    title: "Timer done".into(),
+                    body: format!("{} is up.", duration_label(self.timer.duration_secs())),
+                    priority: Priority::High,
+                    group: Some("timer".into()),
+                    ttl_secs: None,
+                },
+                now,
+            );
+        }
         let offset = self.settings.pomodoro.utc_offset_secs;
         self.usage.set_day(local_day_start_ms(now, offset));
         self.sync_dnd(now);
@@ -1193,6 +1272,7 @@ impl Core {
                     created_ms: item.created_ms,
                     pinned: item.pinned,
                     image_path: item.image_path.clone(),
+                    rich: item.rich_path.is_some(),
                     files: match item.kind {
                         ClipKind::Files => item
                             .text
@@ -1252,6 +1332,7 @@ impl Core {
             },
             caffeine,
             meeting: self.meeting.view(),
+            timer: self.timer.view(),
             colors: self.colors.clone(),
             analytics: self
                 .analytics
@@ -1298,6 +1379,19 @@ impl Core {
             return CompactView {
                 ends_at_ms: m.ends_at_ms,
                 ..view(ActivityKind::Meeting, name, &value)
+            };
+        }
+        let timer = self.timer.view();
+        if matches!(timer.run_state, TimerRun::Running | TimerRun::Paused) {
+            let value = if timer.run_state == TimerRun::Paused {
+                mmss(timer.remaining_secs)
+            } else {
+                String::new()
+            };
+            return CompactView {
+                ends_at_ms: timer.ends_at_ms,
+                total_secs: Some(timer.duration_secs),
+                ..view(ActivityKind::Timer, "Timer", &value)
             };
         }
         if pomodoro.phase != Phase::Idle {
@@ -1380,6 +1474,7 @@ mod tests {
             source_app: Some("Notes".into()),
             concealed: false,
             image_path: None,
+            rich_path: None,
         })
     }
 
@@ -2669,6 +2764,7 @@ mod tests {
                 source_app: None,
                 concealed: false,
                 image_path: Some("/data/clips/img-1.png".into()),
+                rich_path: None,
             }),
             T0,
         );
@@ -2679,6 +2775,7 @@ mod tests {
                 source_app: None,
                 concealed: false,
                 image_path: None,
+                rich_path: None,
             }),
             T0 + 1,
         );
@@ -2803,5 +2900,85 @@ mod tests {
             ),
             vec![Effect::SleepDisplay]
         );
+    }
+
+    #[test]
+    fn the_countdown_timer_shows_in_the_notch_and_announces_the_end() {
+        let mut c = core();
+        cmd(&mut c, Command::TimerSet { secs: 90 }, T0);
+        assert!(c.take_dirty());
+        assert_eq!(c.view(T0).timer.duration_secs, 90);
+        cmd(&mut c, Command::TimerToggle, T0);
+        let v = c.view(T0);
+        assert_eq!(v.compact.kind, ActivityKind::Timer);
+        assert_eq!(v.compact.ends_at_ms, Some(T0 + 90_000));
+        assert_eq!(c.next_deadline(), Some(T0 + 90_000));
+        cmd(&mut c, Command::TimerToggle, T0 + 30_000);
+        assert_eq!(c.view(T0 + 30_000).compact.value, "1:00");
+        cmd(&mut c, Command::TimerAdd { secs: 60 }, T0 + 30_000);
+        cmd(&mut c, Command::TimerToggle, T0 + 40_000);
+        c.apply(Input::Tick, T0 + 160_000);
+        let v = c.view(T0 + 160_000);
+        assert_eq!(v.timer.run_state, TimerRun::Done);
+        let banner = v.inbox.banner.unwrap();
+        assert_eq!(
+            (banner.title.as_str(), banner.body.as_str()),
+            ("Timer done", "1 min 30 s is up.")
+        );
+        assert_ne!(v.compact.kind, ActivityKind::Timer);
+        assert_eq!(uses(&c, Feature::TimerStart), 1);
+        cmd(&mut c, Command::TimerReset, T0 + 161_000);
+        assert_eq!(c.view(T0 + 161_000).timer.remaining_secs, 90);
+        assert_eq!(Core::new(c.persisted()).view(T0).timer.duration_secs, 90);
+        assert_eq!(
+            Core::new(Persisted::default()).view(T0).timer.duration_secs,
+            300
+        );
+    }
+
+    #[test]
+    fn duration_labels_read_naturally() {
+        assert_eq!(duration_label(45), "45 s");
+        assert_eq!(duration_label(300), "5 min");
+        assert_eq!(duration_label(90), "1 min 30 s");
+        assert_eq!(duration_label(3600), "1 h");
+        assert_eq!(duration_label(5400), "1 h 30 min");
+    }
+
+    #[test]
+    fn formatted_text_copies_back_with_formatting_or_plain_on_request() {
+        let mut c = core();
+        c.apply(
+            Input::ClipCaptured(ClipCapture {
+                kind: ClipKind::Text,
+                text: "Bold words".into(),
+                source_app: None,
+                concealed: false,
+                image_path: None,
+                rich_path: Some("/data/clips/rich-1.rtf".into()),
+            }),
+            T0,
+        );
+        let item = c.view(T0).clipboard.items[0].clone();
+        assert!(item.rich);
+        assert_eq!(
+            cmd(&mut c, Command::ClipCopy { id: item.id }, T0),
+            vec![Effect::WriteClipboardRich {
+                text: "Bold words".into(),
+                path: "/data/clips/rich-1.rtf".into()
+            }]
+        );
+        assert_eq!(
+            cmd(&mut c, Command::ClipCopyPlain { id: item.id }, T0),
+            vec![Effect::WriteClipboard("Bold words".into())]
+        );
+        assert!(cmd(&mut c, Command::ClipCopyPlain { id: 999 }, T0).is_empty());
+        assert_eq!(c.clip_file_paths(), ["/data/clips/rich-1.rtf"]);
+        text_only(&mut c);
+    }
+
+    fn text_only(c: &mut Core) {
+        c.apply(text("plain"), T0 + 1);
+        assert!(!c.view(T0 + 1).clipboard.items[0].rich);
     }
 }

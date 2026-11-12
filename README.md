@@ -21,6 +21,10 @@ later. Ad-hoc signed, not notarized yet.
 - **Pomodoro.** Focus / break cycles with a live countdown in the notch.
   While a focus session runs, low-priority notifications are held and
   summarised afterwards.
+- **Timers.** Next to the pomodoro: a meeting timer that runs an agenda item
+  by item (sprint review, planning, stand-up, retro, or your own) and shows
+  planned against actual time, and a plain countdown timer with quick
+  presets.
 - **Agent approvals.** When Claude Code asks for permission to run a tool,
   the notch opens with the complete tool input and Allow / Deny / "Answer in
   terminal". Sessions show as working, waiting, or done.
@@ -32,8 +36,10 @@ later. Ad-hoc signed, not notarized yet.
   minor one, never the other way round. Anything can post with
   `litenotch notify`. Optionally also shows other apps' banners (see
   below).
-- **Clipboard history.** Search, pin, copy back. Skips password-manager
-  entries. In memory only unless you turn persistence on.
+- **Clipboard history.** Search, pin, copy back. Text copied with
+  formatting keeps it, with a button to copy it as plain text instead.
+  Images and files show a preview. Skips password-manager entries. In
+  memory only unless you turn persistence on.
 - **Music.** Whatever macOS reports as playing, from any app including
   browser tabs: artwork in the closed notch, and a page with artwork,
   progress, and play/pause/skip.

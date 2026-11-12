@@ -108,8 +108,17 @@ struct ClipboardTab: View {
         }
     }
 
+    private func copyPlain(_ item: ClipView) {
+        model.send(.clipCopyPlain(id: item.id))
+        flashCopied(item)
+    }
+
     private func copy(_ item: ClipView) {
         model.send(.clipCopy(id: item.id))
+        flashCopied(item)
+    }
+
+    private func flashCopied(_ item: ClipView) {
         copiedId = item.id
         let id = item.id
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { if copiedId == id { copiedId = nil } }
@@ -173,6 +182,12 @@ struct ClipboardTab: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text(verbatim: "Copy: \(item.preview)"))
+            if item.rich && item.kind == .text {
+                IconButton(symbol: "textformat", label: "Copy as plain text", size: 11, tint: NT.text3, frame: 24) {
+                    copyPlain(item)
+                }
+                .help("Copy as plain text")
+            }
             if source != nil {
                 IconButton(symbol: "eye", label: "Preview", size: 11, tint: NT.text3, frame: 24) {
                     model.requestKeyboard(false)

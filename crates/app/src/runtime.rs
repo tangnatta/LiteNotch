@@ -128,7 +128,7 @@ impl Runtime {
             scan_wanted: true,
             scanned_day: 0,
             now_playing_on: false,
-            kept_images: None,
+            kept_files: None,
         };
         let thread = std::thread::Builder::new()
             .name("litenotch-core".into())
@@ -204,9 +204,9 @@ struct Loop {
     scanned_day: u64,
     /// The now-playing helper has been asked to run.
     now_playing_on: bool,
-    /// Clipboard images last known to be referenced; `None` before the first
+    /// Clipboard files last known to be referenced; `None` before the first
     /// check, so leftovers from an earlier run are removed at start.
-    kept_images: Option<Vec<String>>,
+    kept_files: Option<Vec<String>>,
 }
 
 impl Loop {
@@ -563,6 +563,9 @@ impl Loop {
                 Effect::DisableLid => self.ports.disable_lid(),
                 Effect::WriteClipboard(text) => self.ports.write_clipboard(&text),
                 Effect::WriteClipboardImage(path) => self.ports.write_clipboard_image(&path),
+                Effect::WriteClipboardRich { text, path } => {
+                    self.ports.write_clipboard_rich(&text, &path)
+                }
                 Effect::SleepDisplay => self.ports.sleep_display(),
                 Effect::MediaCommand(command) => self.ports.media_command(command.code()),
                 Effect::Resolve(resolved) => {
@@ -581,10 +584,10 @@ impl Loop {
         self.apply(Input::Tick, now);
         self.sync_now_playing(now);
         self.sync_lid_watch();
-        let images = self.core.clip_image_paths();
-        if self.kept_images.as_ref() != Some(&images) {
-            self.ports.prune_clip_images(&images);
-            self.kept_images = Some(images);
+        let files = self.core.clip_file_paths();
+        if self.kept_files.as_ref() != Some(&files) {
+            self.ports.prune_clip_files(&files);
+            self.kept_files = Some(files);
         }
         if let Ok(json) = serde_json::to_string(&self.core.view(now)) {
             if json != self.last_view {
@@ -621,7 +624,7 @@ pub(crate) mod testing {
         /// Call this to play the part of the now-playing helper.
         pub now_playing: Option<Box<dyn Fn(String) + Send>>,
         pub now_playing_switches: Vec<bool>,
-        /// Each `prune_clip_images` call's keep list.
+        /// Each `prune_clip_files` call's keep list.
         pub pruned: Vec<Vec<String>>,
         /// `Some(closed)` plays a laptop lid: its state when watching starts.
         pub lid_closed: Option<bool>,
@@ -668,7 +671,14 @@ pub(crate) mod testing {
         fn write_clipboard_image(&mut self, path: &str) {
             self.0.lock().unwrap().calls.push(format!("image:{path}"));
         }
-        fn prune_clip_images(&mut self, keep: &[String]) {
+        fn write_clipboard_rich(&mut self, text: &str, path: &str) {
+            self.0
+                .lock()
+                .unwrap()
+                .calls
+                .push(format!("rich:{text}|{path}"));
+        }
+        fn prune_clip_files(&mut self, keep: &[String]) {
             self.0.lock().unwrap().pruned.push(keep.to_vec());
         }
         fn watch_lid(
@@ -704,6 +714,7 @@ pub(crate) mod testing {
                     source_app: Some("Test".into()),
                     concealed: false,
                     image_path: None,
+                    rich_path: None,
                 })
         }
     }

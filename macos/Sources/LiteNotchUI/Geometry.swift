@@ -67,6 +67,7 @@ public enum NotchGeometry {
         case .caffeine: value = 62
         // `+12:34` over time, or `Paused`.
         case .meeting: value = 66
+        case .timer: value = 62
         case .approval:
             let extra: CGFloat = compact.count > 1 ? 22 : 0
             value = textWidth(compact.value) + extra + 18

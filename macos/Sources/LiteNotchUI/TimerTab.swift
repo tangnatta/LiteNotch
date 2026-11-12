@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Focus: the pomodoro timer, today's totals and the schedule in use.
 /// Meeting: an agenda with a time box per item.
+/// Timer: a plain countdown.
 struct TimerTab: View {
     let vm: ViewModel
     @ObservedObject var model: PanelState
@@ -9,7 +10,8 @@ struct TimerTab: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                SegmentedPill(options: [(TimerPane.focus, "Focus"), (TimerPane.meeting, "Meeting")],
+                SegmentedPill(options: [(TimerPane.focus, "Focus"), (TimerPane.meeting, "Meeting"),
+                                        (TimerPane.countdown, "Timer")],
                               selection: $model.timerPane, label: "Timer view")
                 Spacer(minLength: 4)
                 if model.timerPane == .meeting
@@ -21,6 +23,7 @@ struct TimerTab: View {
             switch model.timerPane {
             case .focus: focus
             case .meeting: MeetingPane(vm: vm, model: model)
+            case .countdown: CountdownPane(t: vm.timer, send: model.send)
             }
         }
     }
@@ -151,6 +154,143 @@ struct PomodoroCard: View {
 
     private func circleButton(_ symbol: String, label: String, size: CGFloat, fill: Color,
                               tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: size * 0.38, weight: .bold))
+                .foregroundStyle(tint)
+                .frame(width: size, height: size)
+                .background(fill, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: label))
+    }
+}
+
+// MARK: - Countdown
+
+struct CountdownPane: View {
+    let t: CountdownView
+    let send: (ShellCommand) -> Void
+
+    private var editable: Bool { !t.isActive }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            clock.frame(width: 226)
+            VStack(spacing: 10) {
+                presets
+                length
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func left(_ now: Int) -> Int {
+        if t.runState == .running, let end = t.endsAtMs { return Format.secondsLeft(until: end, nowMs: now) }
+        return t.remainingSecs
+    }
+
+    private var clock: some View {
+        Card(padding: 10, expand: true) {
+            VStack(spacing: 10) {
+                EverySecond { now in
+                    let l = left(now)
+                    let progress = t.durationSecs > 0 ? 1 - Double(l) / Double(t.durationSecs) : 0
+                    ZStack {
+                        Circle().stroke(NT.fillHi, lineWidth: 5)
+                        Circle().trim(from: 0, to: max(0, min(1, progress)))
+                            .stroke(NT.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                        VStack(spacing: 1) {
+                            Text(verbatim: Format.countdown(seconds: l))
+                                .font(.system(size: 23, weight: .semibold)).monospacedDigit()
+                                .foregroundStyle(NT.text1)
+                            Text(verbatim: status).nfont(10.5, .medium)
+                                .foregroundStyle(t.runState == .done ? NT.accentText : NT.text2)
+                        }
+                    }
+                    .frame(width: 104, height: 104)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Text(verbatim: "Timer, \(Format.countdown(seconds: l)) left, \(status)"))
+                }
+                HStack(spacing: 10) {
+                    round("arrow.counterclockwise", "Reset", 28, NT.fill, NT.text2) { send(.timerReset) }
+                    round(t.runState == .running ? "pause.fill" : "play.fill",
+                          t.runState == .running ? "Pause" : "Start", 36, NT.accent, NT.onAccent) {
+                        send(.timerToggle)
+                    }
+                    Button { send(.timerAdd(secs: 60)) } label: {
+                        Text(verbatim: "+1m").nfont(11, .semibold).foregroundStyle(NT.text2)
+                            .frame(width: 28, height: 28)
+                            .background(NT.fill, in: Circle())
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(verbatim: "Add one minute"))
+                    .help("Add one minute")
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var status: String {
+        switch t.runState {
+        case .running: return "Running"
+        case .paused: return "Paused"
+        case .done: return "Done"
+        case .stopped, .unknown: return "Timer"
+        }
+    }
+
+    private var presets: some View {
+        Card(padding: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                SectionLabel(text: "Quick set")
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                    ForEach(t.presets, id: \.self) { secs in
+                        let selected = secs == t.durationSecs
+                        Button { send(.timerSet(secs: secs)) } label: {
+                            Text(verbatim: Format.timerPreset(secs))
+                                .nfont(12, .semibold)
+                                .foregroundStyle(selected ? NT.onAccent : NT.text1)
+                                .frame(maxWidth: .infinity, minHeight: 26)
+                                .background(selected ? NT.accent : NT.fill, in: Capsule())
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!editable)
+                        .opacity(editable ? 1 : 0.45)
+                        .accessibilityLabel(Text(verbatim: "Set timer to \(Format.timerPreset(secs))"))
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var length: some View {
+        Card(padding: 12, expand: true) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    SectionLabel(text: "Length")
+                    Text(verbatim: editable ? "Minutes" : "Stop the timer to change it")
+                        .nfont(11).foregroundStyle(NT.text3).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                MiniStepper(value: Binding(get: { max(1, t.durationSecs / 60) },
+                                           set: { send(.timerSet(secs: $0 * 60)) }),
+                            range: 1...240, label: "Timer minutes")
+                    .disabled(!editable)
+                    .opacity(editable ? 1 : 0.45)
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+        }
+    }
+
+    private func round(_ symbol: String, _ label: String, _ size: CGFloat, _ fill: Color, _ tint: Color,
+                       action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size * 0.38, weight: .bold))

@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 
 use litenotch_core::caffeine::{AwakeMode, PowerStatus};
 use litenotch_core::clipboard::{ClipCapture, ClipKind};
-use litenotch_platform::clipboard::{self as pasteboard, ImageFormat, RawClip, RawKind};
+use litenotch_platform::clipboard::{
+    self as pasteboard, ImageFormat, RawClip, RawKind, RichFormat,
+};
 use litenotch_platform::lid::LidGuard;
 use litenotch_platform::nowplaying::{self, NowPlayingStream};
 use litenotch_platform::power::{Awake, PowerAssertion};
@@ -31,8 +33,10 @@ pub trait Ports: Send {
     fn poll_clipboard(&mut self) -> Option<ClipCapture>;
     /// Puts the image saved in `path` back on the pasteboard.
     fn write_clipboard_image(&mut self, path: &str);
-    /// Deletes saved clipboard images other than `keep`.
-    fn prune_clip_images(&mut self, keep: &[String]);
+    /// Puts text back with the formatting saved in `path`.
+    fn write_clipboard_rich(&mut self, text: &str, path: &str);
+    /// Deletes saved clipboard files (images, formatting) other than `keep`.
+    fn prune_clip_files(&mut self, keep: &[String]);
     /// `Some`: report the lid's state now and on every change, from another
     /// thread. `None`: stop.
     fn watch_lid(&mut self, sink: Option<Box<dyn Fn(display::Clamshell) + Send>>);
@@ -50,19 +54,21 @@ pub fn capture_from(raw: RawClip) -> ClipCapture {
         source_app: raw.source_app,
         concealed: raw.concealed,
         image_path: None,
+        rich_path: None,
     }
 }
 
 /// Saves a copied image as `img-<hash>.<ext>` in `dir` (once per distinct
 /// image) and returns the path.
 pub fn save_clip_image(dir: &Path, bytes: &[u8], format: ImageFormat) -> Option<PathBuf> {
+    save_clip_file(dir, "img", bytes, format.extension())
+}
+
+/// Saves `bytes` as `<prefix>-<hash>.<ext>` in `dir`, once per content.
+fn save_clip_file(dir: &Path, prefix: &str, bytes: &[u8], ext: &str) -> Option<PathBuf> {
     let mut hasher = DefaultHasher::new();
     bytes.hash(&mut hasher);
-    let path = dir.join(format!(
-        "img-{:016x}.{}",
-        hasher.finish(),
-        format.extension()
-    ));
+    let path = dir.join(format!("{prefix}-{:016x}.{ext}", hasher.finish()));
     if !path.exists() {
         crate::store::ensure_dir(dir).ok()?;
         crate::store::write_atomic(&path, bytes).ok()?;
@@ -70,7 +76,7 @@ pub fn save_clip_image(dir: &Path, bytes: &[u8], format: ImageFormat) -> Option<
     Some(path)
 }
 
-/// Deletes `img-*` files in `dir` that are not in `keep`.
+/// Deletes `img-*` and `rich-*` files in `dir` that are not in `keep`.
 pub fn prune_images(dir: &Path, keep: &[String]) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -78,7 +84,9 @@ pub fn prune_images(dir: &Path, keep: &[String]) {
     for entry in entries.flatten() {
         let path = entry.path();
         let name = entry.file_name();
-        if name.to_string_lossy().starts_with("img-") && !keep.iter().any(|k| Path::new(k) == path)
+        let name = name.to_string_lossy();
+        if (name.starts_with("img-") || name.starts_with("rich-"))
+            && !keep.iter().any(|k| Path::new(k) == path)
         {
             let _ = std::fs::remove_file(&path);
         }
@@ -249,12 +257,25 @@ impl Ports for MacPorts {
         }
         self.last_change = count;
         let mut capture = pasteboard::read().map(capture_from)?;
-        if capture.kind == ClipKind::Image && !self.clips_dir.as_os_str().is_empty() {
-            if let Some((bytes, format)) = pasteboard::read_image() {
-                capture.text = pasteboard::describe_image(&bytes, format);
-                capture.image_path = save_clip_image(&self.clips_dir, &bytes, format)
-                    .map(|p| p.to_string_lossy().into_owned());
+        if self.clips_dir.as_os_str().is_empty() || capture.concealed {
+            return Some(capture);
+        }
+        match capture.kind {
+            ClipKind::Image => {
+                if let Some((bytes, format)) = pasteboard::read_image() {
+                    capture.text = pasteboard::describe_image(&bytes, format);
+                    capture.image_path = save_clip_image(&self.clips_dir, &bytes, format)
+                        .map(|p| p.to_string_lossy().into_owned());
+                }
             }
+            ClipKind::Text => {
+                if let Some((bytes, format)) = pasteboard::read_rich() {
+                    capture.rich_path =
+                        save_clip_file(&self.clips_dir, "rich", &bytes, format.extension())
+                            .map(|p| p.to_string_lossy().into_owned());
+                }
+            }
+            ClipKind::Files => {}
         }
         Some(capture)
     }
@@ -282,7 +303,25 @@ impl Ports for MacPorts {
         std::thread::spawn(display::sleep_display);
     }
 
-    fn prune_clip_images(&mut self, keep: &[String]) {
+    fn write_clipboard_rich(&mut self, text: &str, path: &str) {
+        let path = Path::new(path);
+        let format = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .and_then(RichFormat::from_extension);
+        // Only files this app saved are read back; anything else is plain.
+        let saved = path.parent() == Some(self.clips_dir.as_path());
+        match (format, std::fs::read(path).ok().filter(|_| saved)) {
+            (Some(format), Some(bytes)) => {
+                pasteboard::write_rich(text, &bytes, format);
+            }
+            _ => {
+                pasteboard::write_text(text);
+            }
+        }
+    }
+
+    fn prune_clip_files(&mut self, keep: &[String]) {
         if !self.clips_dir.as_os_str().is_empty() {
             prune_images(&self.clips_dir, keep);
         }
@@ -314,6 +353,7 @@ mod tests {
                     source_app: Some("App".into()),
                     concealed: true,
                     image_path: None,
+                    rich_path: None,
                 }
             );
         }
@@ -354,8 +394,16 @@ mod tests {
         assert!(a.exists() && !b.exists());
         assert!(
             clips.join("other.txt").exists(),
-            "only img-* files are touched"
+            "only img-* and rich-* files are touched"
         );
+        let rich = save_clip_file(&clips, "rich", b"{\\rtf1}", "rtf").unwrap();
+        assert!(rich
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("rich-"));
+        prune_images(&clips, &[a.to_string_lossy().into_owned()]);
+        assert!(!rich.exists() && a.exists());
         prune_images(&dir.join("missing"), &[]);
     }
 }

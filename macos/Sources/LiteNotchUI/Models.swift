@@ -17,7 +17,7 @@ private func decodeLenient<E: LenientEnum>(_ decoder: Decoder) throws -> E {
 }
 
 public enum ActivityKind: String, LenientEnum {
-    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, unknown
+    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, unknown
     static var unknownCase: ActivityKind { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
@@ -303,11 +303,14 @@ public struct ClipView: Codable, Equatable, Identifiable {
     public var imagePath: String?
     /// For files: up to four absolute paths.
     public var files: [String]
+    /// Text copied with formatting; "copy as plain text" leaves it out.
+    public var rich: Bool
 
     public init(id: Int, kind: ClipKind, preview: String, sourceApp: String?, createdMs: Int,
-                pinned: Bool, imagePath: String? = nil, files: [String] = []) {
+                pinned: Bool, imagePath: String? = nil, files: [String] = [], rich: Bool = false) {
         self.id = id; self.kind = kind; self.preview = preview; self.sourceApp = sourceApp
         self.createdMs = createdMs; self.pinned = pinned; self.imagePath = imagePath; self.files = files
+        self.rich = rich
     }
 
     public init(from decoder: Decoder) throws {
@@ -320,6 +323,7 @@ public struct ClipView: Codable, Equatable, Identifiable {
         pinned = try c.decode(Bool.self, forKey: .pinned)
         imagePath = (try? c.decodeIfPresent(String.self, forKey: .imagePath)) ?? nil
         files = (try? c.decodeIfPresent([String].self, forKey: .files)) ?? []
+        rich = (try? c.decodeIfPresent(Bool.self, forKey: .rich)) ?? false
     }
 }
 
@@ -501,6 +505,33 @@ public struct MeetingPreset: Codable, Equatable {
     public var title: String
 }
 
+public enum TimerRunState: String, LenientEnum {
+    case stopped, running, paused, done, unknown
+    static var unknownCase: TimerRunState { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
+/// The plain countdown timer.
+public struct CountdownView: Codable, Equatable {
+    public var durationSecs: Int
+    public var runState: TimerRunState
+    /// Only while running.
+    public var endsAtMs: Int?
+    /// Time left when not running.
+    public var remainingSecs: Int
+    public var presets: [Int]
+
+    public static let empty = CountdownView(durationSecs: 300, runState: .stopped, endsAtMs: nil,
+                                            remainingSecs: 300, presets: [60, 180, 300, 600, 900, 1800])
+
+    public init(durationSecs: Int, runState: TimerRunState, endsAtMs: Int?, remainingSecs: Int, presets: [Int]) {
+        self.durationSecs = durationSecs; self.runState = runState; self.endsAtMs = endsAtMs
+        self.remainingSecs = remainingSecs; self.presets = presets
+    }
+
+    public var isActive: Bool { runState == .running || runState == .paused }
+}
+
 public struct MeetingView: Codable, Equatable {
     public var title: String
     public var items: [MeetingItem]
@@ -561,6 +592,7 @@ public struct ViewModel: Codable, Equatable {
     public var usage: UsageSnapshot
     public var caffeine: CaffeineView
     public var meeting: MeetingView
+    public var timer: CountdownView
     /// Colours picked from the screen, newest first.
     public var colors: [String]
     public var analytics: [FeatureCount]
@@ -581,6 +613,7 @@ extension ViewModel {
         usage = try c.decode(UsageSnapshot.self, forKey: .usage)
         caffeine = try c.decode(CaffeineView.self, forKey: .caffeine)
         meeting = (try? c.decodeIfPresent(MeetingView.self, forKey: .meeting)) ?? .empty
+        timer = (try? c.decodeIfPresent(CountdownView.self, forKey: .timer)) ?? .empty
         colors = (try? c.decodeIfPresent([String].self, forKey: .colors)) ?? []
         analytics = try c.decode([FeatureCount].self, forKey: .analytics)
         settings = try c.decode(Settings.self, forKey: .settings)

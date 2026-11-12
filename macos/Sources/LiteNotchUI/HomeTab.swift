@@ -72,9 +72,39 @@ struct HomeTab: View {
     @ViewBuilder private var timerRow: some View {
         if MeetingMath.isActive(vm.meeting) {
             meetingRow
+        } else if vm.timer.isActive {
+            countdownRow
         } else {
             pomodoroRow
         }
+    }
+
+    /// Replaces the pomodoro while the plain timer is running or paused.
+    private var countdownRow: some View {
+        let t = vm.timer
+        let running = t.runState == .running
+        return HomeRow(symbol: "hourglass", tint: NT.accent) {
+            EverySecond { now in
+                let left = running && t.endsAtMs != nil
+                    ? Format.secondsLeft(until: t.endsAtMs ?? now, nowMs: now) : t.remainingSecs
+                Text(verbatim: Format.countdown(seconds: left))
+                    .font(.system(size: 15, weight: .semibold)).monospacedDigit()
+                    .foregroundStyle(NT.text1)
+            }
+            Text(verbatim: running ? "Timer" : "Timer paused")
+                .nfont(11).foregroundStyle(NT.text2).lineLimit(1)
+        } trailing: {
+            Button { model.send(.timerToggle) } label: {
+                Image(systemName: running ? "pause.fill" : "play.fill")
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(NT.onAccent)
+                    .frame(width: 28, height: 28)
+                    .background(NT.accent, in: Circle())
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: running ? "Pause timer" : "Resume timer"))
+        }
+        .opens("Timer", model) { model.openTimer(.countdown) }
     }
 
     /// Replaces the pomodoro while a meeting is running or paused.

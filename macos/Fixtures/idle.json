@@ -157,6 +157,20 @@
       }
     ]
   },
+  "timer": {
+    "duration_secs": 300,
+    "run_state": "stopped",
+    "ends_at_ms": null,
+    "remaining_secs": 300,
+    "presets": [
+      60,
+      180,
+      300,
+      600,
+      900,
+      1800
+    ]
+  },
   "colors": [],
   "analytics": [],
   "settings": {

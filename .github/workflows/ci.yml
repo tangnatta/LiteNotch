@@ -3,8 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    # The release workflow's own cask commit needs no second run.
-    paths-ignore: ["Casks/**"]
   pull_request:
 
 permissions:
@@ -51,12 +49,3 @@ jobs:
           name: LiteNotch-app
           path: dist/LiteNotch-ci.zip
           retention-days: 14
-
-  cask:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-      - name: Cask syntax
-        run: ruby -c Casks/litenotch.rb

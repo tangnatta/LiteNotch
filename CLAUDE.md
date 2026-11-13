@@ -133,12 +133,18 @@ scripts/         build-app.sh, bench.sh, coverage.sh
 - `.github/workflows/release.yml` runs on a `v*` tag. The tag must equal the
   `version` in the root `Cargo.toml`. It tests, builds, zips
   `LiteNotch-<version>-arm64.zip`, publishes a GitHub pre-release, then
-  rewrites `version` and `sha256` in `Casks/litenotch.rb` and pushes that to
-  `main`.
-- To release: bump `version` in `Cargo.toml`, commit, then
-  `git tag v<version> && git push origin main v<version>`.
-- The cask lives in this repository, so users tap it with an explicit URL
-  (`brew tap tangnatta/litenotch https://github.com/tangnatta/LiteNotch`).
+  rewrites `version` and `sha256` in `Casks/litenotch.rb` of the tap
+  repository `tangnatta/homebrew-litenotch` and pushes that.
+- `main` is protected: every change goes through a branch and a pull request
+  that passes CI (`rust`, `app`) and is reviewed; never push to `main`.
+- To release: bump `version` in `Cargo.toml` in a pull request, merge it,
+  then tag the merged commit:
+  `git fetch origin && git tag v<version> origin/main && git push origin v<version>`.
+- The cask lives in the tap repository (`brew install --cask
+  tangnatta/litenotch/litenotch`). The release job writes to it with a
+  deploy key that can reach only that repository (secret `TAP_DEPLOY_KEY`;
+  to rotate it, add a new write deploy key to the tap and replace the
+  secret). Edit the cask there by hand except `version` and `sha256`.
   It removes the quarantine flag in `postflight` because the app is not
   notarized; notarization needs a Developer ID certificate.
 - Only Apple silicon is built: every Mac with a notch is Apple silicon.

@@ -1,8 +1,8 @@
 name: Release
 
 # Push a tag such as v0.2.0-beta.1 to build, publish a GitHub (pre-)release,
-# and update the Homebrew cask in Casks/litenotch.rb. The tag must match the
-# version in Cargo.toml.
+# and update the Homebrew cask in tangnatta/homebrew-litenotch. The tag must
+# match the version in Cargo.toml.
 #
 # Two jobs, so the write token never meets build code: `build` compiles and
 # tests with read-only access and no stored credentials, and `publish` only
@@ -99,8 +99,7 @@ jobs:
           
           Homebrew:
 
-              brew tap tangnatta/litenotch https://github.com/tangnatta/LiteNotch
-              brew install --cask litenotch
+              brew install --cask tangnatta/litenotch/litenotch
 
           SHA-256 of the zip: $SHA"
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -110,18 +109,29 @@ jobs:
               --title "LiteNotch $VERSION" --notes "$NOTES" $PRE
           fi
 
-      # Only the cask file is edited, through the API: no checkout, no build.
-      - name: Update the Homebrew cask
+      # The tap is its own repository. The deploy key in TAP_DEPLOY_KEY can
+      # write to that repository only; GitHub's host key is pinned, not fetched.
+      # Only the cask's version and sha256 lines change: no build code runs here.
+      - name: Update the Homebrew tap
+        env:
+          TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
         run: |
-          PATH_IN_REPO=Casks/litenotch.rb
-          gh api "repos/$GH_REPO/contents/$PATH_IN_REPO?ref=main" > cask.json
-          BLOB=$(jq -r .sha cask.json)
-          jq -r .content cask.json | base64 -d > litenotch.rb
-          sed -i -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" litenotch.rb
-          if [ "$(jq -r .content cask.json | base64 -d)" = "$(cat litenotch.rb)" ]; then
-            echo "cask already up to date"; exit 0
+          KEYS="$RUNNER_TEMP/tap-ssh"
+          install -m 700 -d "$KEYS"
+          printf '%s\n' "$TAP_DEPLOY_KEY" > "$KEYS/key"
+          chmod 600 "$KEYS/key"
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$KEYS/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $KEYS/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$KEYS/known_hosts -o StrictHostKeyChecking=yes"
+          git clone -q --depth 1 git@github.com:tangnatta/homebrew-litenotch.git tap
+          cd tap
+          sed -i -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" Casks/litenotch.rb
+          ruby -c Casks/litenotch.rb
+          if git diff --quiet; then
+            echo "cask already up to date"
+          else
+            git -c user.name="github-actions[bot]" \
+                -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                commit -q -am "litenotch $VERSION"
+            git push -q origin HEAD:main
           fi
-          gh api -X PUT "repos/$GH_REPO/contents/$PATH_IN_REPO" \
-            -f message="Cask: litenotch $VERSION" \
-            -f content="$(base64 -w0 litenotch.rb)" \
-            -f sha="$BLOB" -f branch=main >/dev/null
+          rm -rf "$KEYS"

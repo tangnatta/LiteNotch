@@ -26,15 +26,27 @@ brew install --cask tangnatta/litenotch/litenotch
 open -a LiteNotch
 ```
 
-Update with `brew upgrade --cask litenotch`. Uninstall with
-`brew uninstall --cask litenotch` (add `--zap` to also delete settings and
-history).
+To update to the latest release:
+
+```sh
+brew update
+brew upgrade --cask litenotch
+```
+
+`brew update` fetches the newest version from the tap first; without it,
+Homebrew may still think the version you have is the latest. After an
+update, macOS forgets LiteNotch's Accessibility permission: if you read other
+apps' notifications, use **Reset and ask again** in the inbox once.
+
+Uninstall with `brew uninstall --cask litenotch` (add `--zap` to also delete
+settings and history).
 
 Because this beta isn't notarized by Apple, the cask removes macOS's
 "downloaded from the internet" flag after installing, so Gatekeeper doesn't
 check the app. If you'd rather check it yourself, compare
 `shasum -a 256` of the zip with the `.sha256` file on the release page, or
-build from source.
+build from source. Recent Homebrew versions print a warning that the cask's
+`postflight` is deprecated; that is this step, and it still works.
 
 ### Download
 

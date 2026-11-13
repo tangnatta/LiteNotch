@@ -20,8 +20,7 @@ battery.
 ### With Homebrew
 
 ```sh
-brew tap tangnatta/litenotch https://github.com/tangnatta/LiteNotch
-brew install --cask litenotch
+brew install --cask tangnatta/litenotch/litenotch
 open -a LiteNotch
 ```
 

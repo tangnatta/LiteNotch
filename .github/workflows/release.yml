@@ -95,7 +95,9 @@ jobs:
 
           Install: download the zip, unzip, move LiteNotch to Applications. The app is
           ad-hoc signed and not notarized, so the first time, allow it under
-          System Settings > Privacy & Security > Open Anyway. Homebrew:
+          System Settings > Privacy & Security > Open Anyway. 
+          
+          Homebrew:
 
               brew tap tangnatta/litenotch https://github.com/tangnatta/LiteNotch
               brew install --cask litenotch

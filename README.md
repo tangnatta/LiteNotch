@@ -1,3 +1,5 @@
+<img src="macos/Icon/icon-256.png" width="128" alt="LiteNotch icon: a feather inside a screen with a notch">
+
 # LiteNotch
 
 LiteNotch turns the notch on your MacBook into a small control centre: what's

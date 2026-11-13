@@ -42,6 +42,7 @@ crates/cli       litenotch (bin)     hook | statusline | notify | status | hooks
 macos/           SwiftPM package     LiteNotchUI (views, panel, models), LiteNotch (app), LiteNotchSnapshot
 macos/NowPlayingHelper  nowplaying.m, built into Contents/Helpers/libnowplaying.dylib
 macos/Fixtures   generated view-model JSON used by shell tests and snapshots
+macos/Icon       AppIcon.png: 1024 px full-bleed master (macOS applies the rounded mask; transparent corners get a grey frame on macOS 26+); build-app.sh makes AppIcon.icns from it
 scripts/         build-app.sh, bench.sh, coverage.sh
 ```
 

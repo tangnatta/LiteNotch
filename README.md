@@ -144,3 +144,9 @@ open dist/LiteNotch.app
 Developers: [CLAUDE.md](CLAUDE.md) covers the architecture, commands,
 tests, performance budgets (`scripts/bench.sh`) and the release process.
 Tests: `cargo test --workspace` and `swift test --package-path macos`.
+
+## License
+
+LiteNotch is free software under the [GNU General Public License v3.0](LICENSE).
+You can use, change and share it; if you distribute a modified version, you
+must share its source under the same license.

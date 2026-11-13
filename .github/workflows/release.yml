@@ -101,6 +101,10 @@ jobs:
 
               brew install --cask tangnatta/litenotch/litenotch
 
+          Update an existing Homebrew install:
+
+              brew update && brew upgrade --cask litenotch
+
           SHA-256 of the zip: $SHA"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "dist/$ZIP" "dist/$ZIP.sha256" --clobber

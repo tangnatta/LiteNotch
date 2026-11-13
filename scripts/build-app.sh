@@ -41,6 +41,15 @@ cp "target/$PROFILE/litenotch" "$APP/Contents/Helpers/litenotch"
 # comment at the top of the source file).
 clang -dynamiclib -fobjc-arc -Os -fvisibility=hidden -framework Foundation \
     -o "$APP/Contents/Helpers/libnowplaying.dylib" macos/NowPlayingHelper/nowplaying.m
+# The app icon: every size macOS asks for, from one 1024 px master.
+ICONSET=$(mktemp -d)/AppIcon.iconset
+mkdir -p "$ICONSET"
+for SIZE in 16 32 128 256 512; do
+    sips -z $SIZE $SIZE macos/Icon/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}.png" >/dev/null
+    sips -z $((SIZE * 2)) $((SIZE * 2)) macos/Icon/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+rm -rf "$(dirname "$ICONSET")"
 # macOS wants plain numbers in the bundle version; a pre-release suffix such
 # as -beta.1 stays in the release name and the Homebrew cask.
 BUNDLE_VERSION=${VERSION%%-*}

@@ -57,7 +57,7 @@ checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "litenotch"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "litenotch-app",
  "litenotch-core",
@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "litenotch-app"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "litenotch-core",
  "litenotch-files",
@@ -78,7 +78,7 @@ dependencies = [
 
 [[package]]
 name = "litenotch-core"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -86,7 +86,7 @@ dependencies = [
 
 [[package]]
 name = "litenotch-files"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "litenotch-core",
  "serde_json",
@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "litenotch-platform"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 dependencies = [
  "core-foundation",
  "objc2",

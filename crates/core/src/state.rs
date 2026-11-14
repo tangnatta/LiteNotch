@@ -342,6 +342,8 @@ pub enum Input {
         closed: bool,
         external_display: bool,
     },
+    /// Closed-lid mode is on but the Mac is no longer kept awake for it.
+    LidLost,
     UtcOffset(i32),
     HooksInstalled(Option<bool>),
     StatuslineInstalled(Option<bool>),
@@ -693,6 +695,10 @@ impl Core {
             }
             Input::LidResult { ok } => {
                 let effects = self.caffeine.lid_result(ok, now);
+                self.caffeine_effects(effects, now, &mut fx);
+            }
+            Input::LidLost => {
+                let effects = self.caffeine.lid_lost();
                 self.caffeine_effects(effects, now, &mut fx);
             }
             Input::Statusline(json) => {

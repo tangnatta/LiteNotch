@@ -108,12 +108,19 @@ pub struct CaffeineSnapshot {
     pub guard: Option<String>,
 }
 
+/// Closed-lid mode turns itself off after this long in one stretch, so a
+/// Mac left in a bag does not stay awake until its battery is flat. The
+/// platform's root helper has its own, slightly longer cap as a backstop.
+pub const LID_MAX_HOURS: u64 = 12;
+
 /// The keep-awake state machine.
 #[derive(Debug, Clone)]
 pub struct Caffeine {
     cfg: CaffeineConfig,
     mode: AwakeMode,
     lid: LidState,
+    /// When closed-lid mode last came on; meaningful only while it is on.
+    lid_since_ms: u64,
     until_ms: Option<u64>,
     guard: Option<String>,
     power: PowerStatus,
@@ -141,6 +148,7 @@ impl Caffeine {
             cfg: Self::clamp(cfg),
             mode: AwakeMode::Off,
             lid: LidState::Off,
+            lid_since_ms: 0,
             until_ms: None,
             guard: None,
             power: PowerStatus::default(),
@@ -262,7 +270,7 @@ impl Caffeine {
     /// Platform reports whether the privileged lid step worked. A success that
     /// arrives after lid mode was cancelled (the password prompt can stay open
     /// for minutes) is answered with `DisableLid` so the platform reverts it.
-    pub fn lid_result(&mut self, ok: bool, _now_ms: u64) -> Vec<CaffeineEffect> {
+    pub fn lid_result(&mut self, ok: bool, now_ms: u64) -> Vec<CaffeineEffect> {
         if self.lid == LidState::Off && ok {
             return vec![CaffeineEffect::DisableLid];
         }
@@ -271,6 +279,7 @@ impl Caffeine {
         }
         if ok {
             self.lid = LidState::On;
+            self.lid_since_ms = now_ms;
             Vec::new()
         } else {
             self.lid = LidState::Off;
@@ -279,6 +288,30 @@ impl Caffeine {
                 "The privileged step did not complete.".to_string(),
             )]
         }
+    }
+
+    /// The platform found that the Mac is no longer kept awake with the lid
+    /// closed although the mode is on (its helper stopped). Says so instead
+    /// of leaving the mode shown as on.
+    pub fn lid_lost(&mut self) -> Vec<CaffeineEffect> {
+        if self.lid != LidState::On {
+            return Vec::new();
+        }
+        self.lid = LidState::Off;
+        vec![
+            CaffeineEffect::DisableLid,
+            notice(
+                "Lid mode stopped",
+                "The Mac is no longer kept awake with the lid closed. Turn it on again if you need it."
+                    .to_string(),
+            ),
+        ]
+    }
+
+    /// When closed-lid mode turns itself off, while it is on.
+    fn lid_deadline(&self) -> Option<u64> {
+        (self.lid == LidState::On)
+            .then(|| self.lid_since_ms.saturating_add(LID_MAX_HOURS * 3_600_000))
     }
 
     /// Feed a power reading and apply the battery guards.
@@ -312,12 +345,22 @@ impl Caffeine {
         }
     }
 
-    /// Expire the timer if due; idempotent for the same `now_ms`.
+    /// Expire the timer and the closed-lid limit if due; idempotent for the
+    /// same `now_ms`.
     pub fn tick(&mut self, now_ms: u64) -> Vec<CaffeineEffect> {
-        match self.until_ms {
+        let mut fx = match self.until_ms {
             Some(u) if now_ms >= u => self.shut_down(),
             _ => Vec::new(),
+        };
+        if self.lid_deadline().is_some_and(|d| now_ms >= d) {
+            self.lid = LidState::Off;
+            fx.push(CaffeineEffect::DisableLid);
+            fx.push(notice(
+                "Lid mode turned off",
+                format!("It had been on for {LID_MAX_HOURS} hours. Turn it on again if you still need it."),
+            ));
         }
+        fx
     }
 
     /// View model; `remaining_secs` is derived from `now_ms` (clock going backwards just
@@ -338,7 +381,10 @@ impl Caffeine {
 
     /// When `tick` next needs to run.
     pub fn next_deadline(&self) -> Option<u64> {
-        self.until_ms
+        [self.until_ms, self.lid_deadline()]
+            .into_iter()
+            .flatten()
+            .min()
     }
 }
 
@@ -592,6 +638,71 @@ mod tests {
         k.set_lid(true, 2);
         k.lid_result(true, 3);
         assert_eq!(k.set_lid(false, 4), vec![CaffeineEffect::DisableLid]);
+    }
+
+    /// From review: the root helper stops after its cap, and the mode kept
+    /// showing as on. The core now ends the mode itself, first, and says so.
+    #[test]
+    fn lid_mode_turns_itself_off_after_twelve_hours() {
+        const H: u64 = 3_600_000;
+        let mut k = c();
+        k.set_lid(true, 0);
+        assert_eq!(
+            k.next_deadline(),
+            None,
+            "not while the password prompt is open"
+        );
+        k.lid_result(true, 1_000);
+        assert_eq!(k.next_deadline(), Some(1_000 + 12 * H));
+        assert!(k.tick(1_000 + 12 * H - 1).is_empty());
+        let fx = k.tick(1_000 + 12 * H);
+        assert_eq!(fx[0], CaffeineEffect::DisableLid);
+        assert!(is_notice(&fx[1]));
+        assert_eq!(k.snapshot(0).lid, LidState::Off);
+        // Keep-awake itself stays on; only the lid part ended.
+        assert_ne!(k.snapshot(0).mode, AwakeMode::Off);
+        assert_eq!(k.next_deadline(), None);
+        assert!(k.tick(1_000 + 13 * H).is_empty(), "once");
+
+        // Turning it off and on again starts a new stretch.
+        k.set_lid(true, 20 * H);
+        k.lid_result(true, 20 * H);
+        assert_eq!(k.next_deadline(), Some(32 * H));
+        k.set_lid(false, 21 * H);
+        assert_eq!(k.next_deadline(), None);
+        assert!(k.tick(40 * H).is_empty());
+
+        // With a keep-awake timer, whichever comes first.
+        let mut k = c();
+        k.activate(AwakeMode::System, Some(3600), 0);
+        k.set_lid(true, 0);
+        k.lid_result(true, 0);
+        assert_eq!(k.next_deadline(), Some(H));
+        let fx = k.tick(H);
+        assert!(fx.contains(&CaffeineEffect::DisableLid));
+        assert_eq!(k.snapshot(H).lid, LidState::Off);
+        assert_eq!(
+            fx.iter().filter(|e| is_notice(e)).count(),
+            0,
+            "the timer ending needs no lid notice"
+        );
+    }
+
+    #[test]
+    fn a_lost_helper_ends_lid_mode_with_a_notice() {
+        let mut k = c();
+        assert!(k.lid_lost().is_empty());
+        k.set_lid(true, 0);
+        assert!(
+            k.lid_lost().is_empty(),
+            "nothing to lose while the prompt is open"
+        );
+        k.lid_result(true, 1);
+        let fx = k.lid_lost();
+        assert_eq!(fx[0], CaffeineEffect::DisableLid);
+        assert!(is_notice(&fx[1]));
+        assert_eq!(k.snapshot(2).lid, LidState::Off);
+        assert!(k.lid_lost().is_empty());
     }
 
     #[test]

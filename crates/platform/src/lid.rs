@@ -76,8 +76,10 @@ fn is_safe_path(path: &Path) -> bool {
     }
 }
 
-/// Hard cap on one stretch with sleep disabled.
-const MAX_HOURS: u32 = 12;
+/// The helper's own cap on one stretch with sleep disabled. LiteNotch turns
+/// the mode off itself after `caffeine::LID_MAX_HOURS` (12); this is the
+/// backstop for a LiteNotch that does not, so it is a little longer.
+const MAX_MINUTES: u32 = 12 * 60 + 10;
 /// How often the helper wakes from `read` to check on LiteNotch.
 const TICK_SECS: u32 = 30;
 
@@ -88,8 +90,10 @@ const TICK_SECS: u32 = 30;
 /// and compares what it read with `0` and `1`; anything else ends the
 /// helper with sleep restored. `read` reports end-of-file and a timeout the
 /// same way in this shell, so the two are told apart by how long it took:
-/// end-of-file returns at once. `restore_to` is the flag's value before lid
-/// mode (normally 0).
+/// end-of-file returns at once. The cap is measured on the shell's clock
+/// from the moment the mode last went from off to on, so neither repeating
+/// `1` nor writing often enough to keep `read` from timing out stretches it.
+/// `restore_to` is the flag's value before lid mode (normally 0).
 pub fn helper_command(pid: u32, pipe: &Path, restore_to: bool) -> Result<String, LidError> {
     if !is_safe_path(pipe) {
         return Err(LidError::UnsafePath);
@@ -98,21 +102,23 @@ pub fn helper_command(pid: u32, pipe: &Path, restore_to: bool) -> Result<String,
     let restore = u8::from(restore_to);
     let tick = TICK_SECS;
     let tick_min = TICK_SECS - 1;
-    let max_ticks = MAX_HOURS * 3600 / TICK_SECS;
+    let max_secs = MAX_MINUTES * 60;
+    // The pipe is opened before the flag is touched: if that fails, nothing
+    // has been changed and nothing needs restoring. The loop inherits it.
     Ok(format!(
         "S=$(/bin/ps -o lstart= -p {pid}); [ -n \"$S\" ] || exit 1; \
-         [ -p {f} ] || exit 1; \
+         [ -p {f} ] || exit 1; exec 3<{f} || exit 1; \
          /usr/bin/pmset -a disablesleep 1; \
-         (exec 3<{f} || exit 1; ON=1; N=0; \
+         (ON=1; B=$SECONDS; \
          while [ \"$(/bin/ps -o lstart= -p {pid} 2>/dev/null)\" = \"$S\" ]; do \
+         [ $ON = 0 ] || [ $((SECONDS-B)) -lt {max_secs} ] || break; \
          T=$SECONDS; \
          if IFS= read -r -n 4 -t {tick} L <&3; then \
          case \"$L\" in \
-         1) /usr/bin/pmset -a disablesleep 1; ON=1; N=0;; \
+         1) [ $ON = 1 ] || B=$SECONDS; /usr/bin/pmset -a disablesleep 1; ON=1;; \
          0) /usr/bin/pmset -a disablesleep {restore}; ON=0;; \
          *) break;; esac; \
          else [ $((SECONDS-T)) -ge {tick_min} ] || break; \
-         if [ $ON = 1 ]; then N=$((N+1)); [ $N -lt {max_ticks} ] || break; fi; \
          fi; done; \
          /usr/bin/pmset -a disablesleep {restore}) >/dev/null 2>&1 &"
     ))
@@ -319,14 +325,21 @@ mod tests {
             helper_command(77, Path::new("/private/tmp/litenotch-lid-501-77"), false).unwrap();
         assert!(cmd.contains("/bin/ps -o lstart= -p 77"));
         assert!(cmd.contains("[ -p /private/tmp/litenotch-lid-501-77 ] || exit 1"));
-        assert!(cmd.contains("exec 3</private/tmp/litenotch-lid-501-77"));
-        assert!(cmd.contains("1) /usr/bin/pmset -a disablesleep 1; ON=1; N=0;;"));
+        // The pipe is opened before the flag is first set, so a failure
+        // there leaves nothing to restore.
+        let open = cmd
+            .find("exec 3</private/tmp/litenotch-lid-501-77 || exit 1")
+            .unwrap();
+        assert!(open < cmd.find("/usr/bin/pmset").unwrap());
+        assert!(
+            cmd.contains("1) [ $ON = 1 ] || B=$SECONDS; /usr/bin/pmset -a disablesleep 1; ON=1;;")
+        );
         assert!(cmd.contains("0) /usr/bin/pmset -a disablesleep 0; ON=0;;"));
         assert!(cmd.contains("*) break;;"), "anything else ends the helper");
         assert!(cmd.contains("read -r -n 4 -t 30 L <&3"), "bounded reads");
         assert!(
-            cmd.contains("[ $N -lt 1440 ] || break"),
-            "one stretch is capped at 12 hours"
+            cmd.contains("[ $ON = 0 ] || [ $((SECONDS-B)) -lt 43800 ] || break"),
+            "one stretch is capped at 12 hours and 10 minutes"
         );
         assert!(cmd
             .trim_end()
@@ -417,7 +430,7 @@ mod tests {
         }
 
         /// The helper command for `pid`, made runnable without root.
-        fn command(&self, pid: u32, max_ticks: u32) -> String {
+        fn command(&self, pid: u32, max_secs: u32) -> String {
             let log = self.log.to_str().unwrap();
             helper_command(pid, Path::new("/private/tmp/PIPE"), false)
                 .unwrap()
@@ -432,11 +445,11 @@ mod tests {
                 )
                 .replace("-t 30 ", "-t 2 ")
                 .replace("-ge 29 ]", "-ge 1 ]")
-                .replace("[ $N -lt 1440 ]", &format!("[ $N -lt {max_ticks} ]"))
+                .replace("-lt 43800 ]", &format!("-lt {max_secs} ]"))
         }
 
         fn start(&self, pid: u32) {
-            let cmd = self.command(pid, 1440);
+            let cmd = self.command(pid, 43800);
             crate::script::run("/bin/sh", &["-c", &cmd], Duration::from_secs(5)).unwrap();
         }
 
@@ -530,11 +543,11 @@ mod tests {
                 Err(crate::script::ScriptError::Failed { code: Some(1), .. })
             )
         };
-        assert!(failed(&fx.command(pid, 1440)));
+        assert!(failed(&fx.command(pid, 43800)));
         // A plain file where the pipe should be is not read.
         let plain = Fixture::new("plain");
         std::fs::write(&plain.pipe, b"1\n1\n1\n").unwrap();
-        assert!(failed(&plain.command(std::process::id(), 1440)));
+        assert!(failed(&plain.command(std::process::id(), 43800)));
         assert!(fx.log().is_empty() && plain.log().is_empty());
     }
 
@@ -564,13 +577,55 @@ mod tests {
     fn a_stretch_with_sleep_disabled_is_capped() {
         let fx = Fixture::new("cap");
         let _helper = Helper::create(fx.pipe.clone()).unwrap();
-        // Two ticks of 2 s instead of 1440 of 30 s.
-        let cmd = fx.command(std::process::id(), 2);
+        // Four seconds instead of 12 hours and 10 minutes.
+        let cmd = fx.command(std::process::id(), 4);
         crate::script::run("/bin/sh", &["-c", &cmd], Duration::from_secs(5)).unwrap();
         fx.expect(&["on"]);
         std::thread::sleep(Duration::from_millis(1500));
         assert_eq!(fx.log(), ["on"], "not before the cap");
         fx.expect(&["on", "off"]);
+    }
+
+    /// From review: every `1` restarted the count, so a process repeating it
+    /// could keep sleep disabled past the cap.
+    #[test]
+    fn repeating_the_on_command_does_not_stretch_the_cap() {
+        let fx = Fixture::new("cap-repeat");
+        let helper = Helper::create(fx.pipe.clone()).unwrap();
+        // A cap of six seconds.
+        let cmd = fx.command(std::process::id(), 6);
+        crate::script::run("/bin/sh", &["-c", &cmd], Duration::from_secs(5)).unwrap();
+        fx.expect(&["on"]);
+        let started = std::time::Instant::now();
+        // A `1` every 1.5 s, more often than the 2 s tick, so `read` never
+        // times out. Each is acted on (logged) but none restarts the clock.
+        while fx.log().last().map(String::as_str) != Some("off")
+            && started.elapsed() < Duration::from_secs(20)
+        {
+            helper.send(true).unwrap();
+            std::thread::sleep(Duration::from_millis(1500));
+        }
+        assert_eq!(fx.log().last().map(String::as_str), Some("off"));
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "the helper must stop by itself: {:?}",
+            fx.log()
+        );
+    }
+
+    /// From review: the flag was set before the pipe was opened, so a pipe
+    /// that vanished in between left sleep disabled with no helper.
+    #[test]
+    fn a_pipe_that_cannot_be_opened_changes_nothing() {
+        let fx = Fixture::new("no-open");
+        let _held = Helper::create(fx.pipe.clone()).unwrap();
+        // The check passes, then the pipe is gone when it is opened.
+        let cmd = fx.command(std::process::id(), 43800).replace(
+            "|| exit 1; exec 3<",
+            &format!("|| exit 1; /bin/rm {}; exec 3<", fx.pipe.display()),
+        );
+        assert!(crate::script::run("/bin/sh", &["-c", &cmd], Duration::from_secs(5)).is_err());
+        fx.stays(&[]);
     }
 
     #[test]

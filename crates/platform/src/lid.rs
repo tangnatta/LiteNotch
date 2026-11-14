@@ -690,7 +690,12 @@ mod tests {
         if cfg!(target_os = "macos") {
             let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
             assert_eq!(mode, 0o700, "{dir:?} must not be writable by other users");
-            assert!(helper_command(1, &pipe, false).is_ok(), "{pipe:?}");
+            // No path in the message: it contains the user id, which code
+            // scanning counts as sensitive when it is written out.
+            assert!(
+                helper_command(1, &pipe, false).is_ok(),
+                "the pipe path in the temporary directory must be safe for the root shell"
+            );
         }
     }
 

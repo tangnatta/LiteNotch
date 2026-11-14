@@ -106,6 +106,28 @@ pub enum ThemeChoice {
     Light,
 }
 
+/// How the notch is drawn. `Attached` hangs from the top edge in the
+/// notch's own silhouette; `Floating` is a capsule inside the menu bar, and
+/// the toast and the open panel float just below it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NotchStyle {
+    #[default]
+    Attached,
+    Floating,
+}
+
+/// How the closed notch and the toast are drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ClosedNotch {
+    /// Black in every theme, so it reads as part of the hardware notch.
+    #[default]
+    Dark,
+    /// Follows `theme`, like the open panel.
+    Theme,
+}
+
 /// What the open panel is drawn with. Glass is the macOS 26 Liquid Glass
 /// material; the shell falls back to Solid where the system (or the SDK it
 /// was built with) lacks it. The closed notch and the toast stay black in
@@ -126,6 +148,8 @@ pub struct Appearance {
     pub theme: ThemeChoice,
     /// `#RRGGBB`, upper case.
     pub accent: String,
+    pub notch_style: NotchStyle,
+    pub closed_notch: ClosedNotch,
     pub material: Material,
 }
 
@@ -134,6 +158,8 @@ impl Default for Appearance {
         Self {
             theme: ThemeChoice::System,
             accent: DEFAULT_ACCENT.into(),
+            notch_style: NotchStyle::Attached,
+            closed_notch: ClosedNotch::Dark,
             material: Material::Solid,
         }
     }
@@ -2848,9 +2874,11 @@ mod tests {
         let mut s = c.view(T0).settings;
         assert_eq!(s.appearance.theme, ThemeChoice::System);
         assert_eq!(s.appearance.accent, DEFAULT_ACCENT);
+        assert_eq!(s.appearance.notch_style, NotchStyle::Attached);
         assert!(!s.general.all_screens);
         s.appearance.theme = ThemeChoice::Light;
         s.appearance.accent = "3366ff".into();
+        s.appearance.notch_style = NotchStyle::Floating;
         s.general.all_screens = true;
         cmd(
             &mut c,
@@ -2862,6 +2890,7 @@ mod tests {
         let v = c.view(T0).settings;
         assert_eq!(v.appearance.theme, ThemeChoice::Light);
         assert_eq!(v.appearance.accent, "#3366FF");
+        assert_eq!(v.appearance.notch_style, NotchStyle::Floating);
         assert!(v.general.all_screens);
         s.appearance.accent = "not a colour".into();
         cmd(
@@ -2875,8 +2904,34 @@ mod tests {
         let json = serde_json::to_value(c.view(T0).settings.appearance).unwrap();
         assert_eq!(
             json,
-            json!({"theme":"light","accent":DEFAULT_ACCENT,"material":"solid"})
+            json!({"theme":"light","accent":DEFAULT_ACCENT,"notch_style":"floating","closed_notch":"dark","material":"solid"})
         );
+        // Settings saved before the field existed load as the original look.
+        let old: Appearance =
+            serde_json::from_value(json!({"theme":"dark","accent":"#000000"})).unwrap();
+        assert_eq!(old.notch_style, NotchStyle::Attached);
+    }
+
+    #[test]
+    fn closed_notch_defaults_to_dark_and_can_follow_the_theme() {
+        // Settings saved before the option existed keep the black notch.
+        let old: Appearance =
+            serde_json::from_value(json!({"theme":"light","accent":"#FF9E0A"})).unwrap();
+        assert_eq!(old.closed_notch, ClosedNotch::Dark);
+        assert_eq!(Appearance::default().closed_notch, ClosedNotch::Dark);
+        let mut c = core();
+        let mut s = c.view(T0).settings;
+        s.appearance.closed_notch = ClosedNotch::Theme;
+        cmd(
+            &mut c,
+            Command::SetSettings {
+                settings: Box::new(s),
+            },
+            T0,
+        );
+        let v = c.view(T0).settings.appearance;
+        assert_eq!(v.closed_notch, ClosedNotch::Theme);
+        assert_eq!(serde_json::to_value(v).unwrap()["closed_notch"], "theme");
     }
 
     #[test]

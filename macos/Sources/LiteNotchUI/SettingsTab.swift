@@ -131,6 +131,22 @@ struct SettingsTab: View {
                                              set: { draft.appearance.theme = $0 }),
                           label: "Theme", height: 22)
         }
+        row("Notch") {
+            SegmentedPill(options: [(NotchStyle.attached, "Attached"), (NotchStyle.floating, "Floating")],
+                          selection: Binding(get: { draft.appearance.notchStyle == .floating ? .floating : .attached },
+                                             set: { draft.appearance.notchStyle = $0 }),
+                          label: "Notch style", height: 22)
+        }
+        // A display with a camera housing always draws the closed notch black,
+        // so the choice is offered only on one without.
+        if !model.hasNotch {
+            row("Closed notch") {
+                SegmentedPill(options: [(ClosedNotchChoice.dark, "Always dark"), (ClosedNotchChoice.theme, "Match theme")],
+                              selection: Binding(get: { draft.appearance.closedNotch == .unknown ? .dark : draft.appearance.closedNotch },
+                                                 set: { draft.appearance.closedNotch = $0 }),
+                              label: "Closed notch", height: 22)
+            }
+        }
         materialRow
         row("Accent") {
             HStack(spacing: 5) {

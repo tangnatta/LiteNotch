@@ -344,6 +344,8 @@
     "appearance": {
       "theme": "system",
       "accent": "#FF9E0A",
+      "notch_style": "attached",
+      "closed_notch": "dark",
       "material": "solid"
     },
     "media": {

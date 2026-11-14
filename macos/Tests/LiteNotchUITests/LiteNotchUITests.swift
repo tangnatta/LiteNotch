@@ -244,7 +244,9 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(Set(inner.allKeys as! [String]),
                        ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics"])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
-        XCTAssertEqual(inner["appearance"] as? NSDictionary, ["theme": "system", "accent": "#FF9E0A", "material": "solid"])
+        XCTAssertEqual(inner["appearance"] as? NSDictionary,
+                       ["theme": "system", "accent": "#FF9E0A", "notch_style": "attached", "closed_notch": "dark",
+                        "material": "solid"])
         XCTAssertEqual((inner["media"] as! NSDictionary)["enabled"] as? Bool, true)
         XCTAssertEqual((inner["notify"] as! NSDictionary)["system"] as? Bool, false)
         XCTAssertEqual(Tab.allCases.map(\.rawValue), ["home", "music", "timer", "clipboard", "agents", "inbox", "settings"])
@@ -319,6 +321,68 @@ final class GeometryTests: XCTestCase {
         let longName = CompactView(kind: .agent, title: String(repeating: "x", count: 80), value: "", endsAtMs: nil, totalSecs: nil, count: 1)
         XCTAssertLessThanOrEqual(NotchGeometry.wingWidth(for: longName), 130)
         XCTAssertEqual(NotchGeometry.wingWidth(for: CompactView(kind: .idle, title: "", value: "", endsAtMs: nil, totalSecs: nil, count: 0)), 0)
+    }
+
+    func testAttachedLayoutIsTheOriginalGeometry() {
+        let notch = CGSize(width: 183, height: 32)
+        let layout = NotchLayout(style: .attached, notch: notch)
+        let pomo = CompactView(kind: .pomodoro, title: "Focus", value: "", endsAtMs: 1, totalSecs: 1500, count: 0)
+        for mode in [NotchMode.closed, .toast, .expanded] {
+            XCTAssertEqual(layout.size(for: mode, compact: pomo), NotchGeometry.size(for: mode, compact: pomo, notch: notch))
+            XCTAssertEqual(layout.top(for: mode), 0)
+            XCTAssertTrue(layout.contains(CGPoint(x: 1, y: 0), mode: mode, in: layout.size(for: mode, compact: pomo)))
+        }
+        XCTAssertEqual(layout.wingWidth(for: pomo), NotchGeometry.wingWidth(for: pomo))
+    }
+
+    func testFloatingLayoutSitsInsideTheMenuBar() {
+        let pomo = CompactView(kind: .pomodoro, title: "Focus", value: "", endsAtMs: 1, totalSecs: 1500, count: 0)
+        // No notch, 24 pt menu bar: a capsule 3 pt in from top and bottom.
+        let bare = NotchLayout(style: .floating, notch: NotchGeometry.fallbackSize, hasNotch: false, menuBarHeight: 24)
+        XCTAssertEqual(bare.bar, 24)
+        XCTAssertEqual(bare.capsuleHeight, 18)
+        XCTAssertEqual(bare.top(for: .closed), 3)
+        XCTAssertEqual(bare.size(for: .closed, compact: nil), CGSize(width: NotchGeometry.floatingCenterWidth, height: 21))
+        XCTAssertEqual(bare.size(for: .closed, compact: pomo).width,
+                       NotchGeometry.floatingCenterWidth + 2 * NotchGeometry.floatingWingWidth(for: pomo))
+        // The toast overlaps the menu bar; the panel starts below it.
+        XCTAssertEqual(bare.top(for: .toast), 24 - NotchGeometry.floatingToastLift)
+        XCTAssertEqual(bare.top(for: .expanded), 24)
+        XCTAssertEqual(bare.size(for: .expanded, compact: pomo).height, 24 + NotchGeometry.expandedSize.height)
+        // A hidden menu bar falls back to the stand-in's height.
+        XCTAssertEqual(NotchLayout(style: .floating, notch: NotchGeometry.fallbackSize, hasNotch: false).bar, 32)
+        // With a notch the capsule keeps the notch's width and height band.
+        let notched = NotchLayout(style: .floating, notch: CGSize(width: 185, height: 38), hasNotch: true, menuBarHeight: 38)
+        XCTAssertEqual(notched.centerWidth, 185)
+        XCTAssertEqual(notched.capsuleHeight, 32)
+        XCTAssertEqual(notched.top(for: .expanded), 38)
+        // Above the open panel only the column under the notch takes the pointer.
+        let open = bare.size(for: .expanded, compact: nil)
+        XCTAssertFalse(bare.contains(CGPoint(x: 10, y: 5), mode: .expanded, in: open))
+        XCTAssertTrue(bare.contains(CGPoint(x: open.width / 2, y: 5), mode: .expanded, in: open))
+        XCTAssertTrue(bare.contains(CGPoint(x: 10, y: 30), mode: .expanded, in: open))
+        // The window has room for the floating panel.
+        let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let notch = NotchGeometry.notchRect(screenFrame: frame, safeAreaTop: 0, leftAux: nil, rightAux: nil)
+        XCTAssertGreaterThanOrEqual(NotchGeometry.panelFrame(screenFrame: frame, notch: notch).height,
+                                    bare.size(for: .expanded, compact: nil).height)
+    }
+
+    func testNotchStyleDecodesLenientlyAndDefaultsToAttached() throws {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        let old = try d.decode(AppearanceConfig.self, from: Data(##"{"theme":"dark","accent":"#000000"}"##.utf8))
+        XCTAssertEqual(old.notchStyle, .attached)
+        let floating = try d.decode(AppearanceConfig.self, from: Data(##"{"theme":"dark","accent":"#000000","notch_style":"floating"}"##.utf8))
+        XCTAssertEqual(floating.notchStyle, .floating)
+        let future = try d.decode(AppearanceConfig.self, from: Data(##"{"theme":"dark","accent":"#000000","notch_style":"orbit"}"##.utf8))
+        XCTAssertEqual(future.notchStyle, .unknown)
+        // An unknown style is not sent back, so the core keeps its own.
+        let e = JSONEncoder()
+        e.keyEncodingStrategy = .convertToSnakeCase
+        let json = String(decoding: try e.encode(future), as: UTF8.self)
+        XCTAssertFalse(json.contains("notch_style"))
+        XCTAssertTrue(String(decoding: try e.encode(floating), as: UTF8.self).contains(#""notch_style":"floating""#))
     }
 
     func testHitRectIsCentredAndTopAligned() {
@@ -893,6 +957,9 @@ final class NewFieldsDecodingTests: XCTestCase {
         let v = try ViewModel.decode(Data(json.utf8))
         XCTAssertEqual(v.settings.appearance.material, .glass)
         XCTAssertEqual(v.settings.appearance.usesGlass, GlassSupport.available)
+        // An approval is always read on the solid panel.
+        XCTAssertEqual(v.settings.appearance.drawsGlass(approvalPending: false), GlassSupport.available)
+        XCTAssertFalse(v.settings.appearance.drawsGlass(approvalPending: true))
         XCTAssertFalse(try loadFixture("media").settings.appearance.usesGlass)
         // Settings go back with the choice even where glass cannot be drawn,
         // so a newer build on a newer system shows it.
@@ -932,10 +999,45 @@ final class NewCommandTests: XCTestCase {
     func testSettingsCarryTheNewFields() throws {
         var s = try loadFixture("idle").settings
         s.general.allScreens = true
-        s.appearance = AppearanceConfig(theme: .light, accent: "#30D158")
+        s.appearance = AppearanceConfig(theme: .light, accent: "#30D158", notchStyle: .floating)
         let inner = try obj(ShellCommand.setSettings(s).encode())["settings"] as! NSDictionary
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, true)
-        XCTAssertEqual(inner["appearance"] as? NSDictionary, ["theme": "light", "accent": "#30D158", "material": "solid"])
+        XCTAssertEqual(inner["appearance"] as? NSDictionary,
+                       ["theme": "light", "accent": "#30D158", "notch_style": "floating", "closed_notch": "dark",
+                        "material": "solid"])
+    }
+
+    func testClosedNotchFollowsTheThemeOnlyWhenAsked() throws {
+        // The same key strategies as the bridge: the core's snake_case JSON.
+        let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let encoder = JSONEncoder(); encoder.keyEncodingStrategy = .convertToSnakeCase
+        let matched = try decoder.decode(AppearanceConfig.self, from: Data(##"{"theme":"light","accent":"#FF9E0A","closed_notch":"theme"}"##.utf8))
+        XCTAssertEqual(matched.closedNotch, .theme)
+        XCTAssertEqual(matched.closedScheme(system: .dark), .light)
+        // A hardware notch keeps it black whatever the setting says.
+        XCTAssertFalse(matched.closedFollowsTheme(hardwareNotch: true))
+        XCTAssertEqual(matched.closedScheme(system: .light, hardwareNotch: true), .dark)
+        XCTAssertTrue(matched.closedFollowsTheme(hardwareNotch: false))
+        // Older settings and older cores: no field means the black notch.
+        let old = try decoder.decode(AppearanceConfig.self, from: Data(##"{"theme":"light","accent":"#FF9E0A"}"##.utf8))
+        XCTAssertEqual(old.closedNotch, .dark)
+        XCTAssertEqual(old.closedScheme(system: .light), .dark)
+        let odd = try decoder.decode(AppearanceConfig.self, from: Data(##"{"theme":"light","accent":"#FF9E0A","closed_notch":"glass"}"##.utf8))
+        XCTAssertEqual(odd.closedNotch, .unknown)
+        XCTAssertEqual(odd.closedScheme(system: .light), .dark)
+        // An unknown value is left out so the core keeps its own.
+        let sent = try JSONSerialization.jsonObject(with: encoder.encode(odd)) as! NSDictionary
+        XCTAssertNil(sent["closed_notch"])
+
+        var a = AppearanceConfig(theme: .light, accent: "#FF9E0A", closedNotch: .theme)
+        XCTAssertEqual(a.closedScheme(system: .dark), .light)
+        a.theme = .dark
+        XCTAssertEqual(a.closedScheme(system: .light), .dark)
+        a.theme = .system
+        XCTAssertEqual(a.closedScheme(system: .light), .light)
+        XCTAssertEqual(a.closedScheme(system: .dark), .dark)
+        let inner = try JSONSerialization.jsonObject(with: encoder.encode(a)) as! NSDictionary
+        XCTAssertEqual(inner["closed_notch"] as? String, "theme")
     }
 }
 
@@ -1471,11 +1573,11 @@ final class TextContrastTests: XCTestCase {
         XCTAssertEqual(ColorMath.over(w, alpha: 0, b), b)
     }
 
-    func testTheClosedNotchAndToastAreBlackInEveryTheme() throws {
+    func testTheClosedNotchAndToastAreBlackUnlessAskedToMatchTheTheme() throws {
         let src = try String(contentsOf: URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/LiteNotchUI/NotchRootView.swift"), encoding: .utf8)
-        XCTAssertTrue(src.contains("shape.fill(mode == .expanded ? NT.panel : Color.black)"))
+        XCTAssertTrue(src.contains("shape.fill(mode == .expanded || appearance.closedFollowsTheme(hardwareNotch: model.hasNotch) ? NT.panel : Color.black)"))
     }
 }
 

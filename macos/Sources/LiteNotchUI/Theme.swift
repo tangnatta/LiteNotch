@@ -79,8 +79,9 @@ enum NT {
     /// Selected and hovered controls.
     static let fillHi = dynamic(.fillHi)
     static let hairline = dynamic(.hairline)
-    /// Background of the open panel and the toast. The closed notch is
-    /// always `Color.black`.
+    /// Background of the open panel, and of the closed notch and the toast
+    /// when they follow the theme (`ClosedNotchChoice.theme`); otherwise
+    /// those are `Color.black`.
     static let panel = dynamic(.panel)
     /// Knob of a switched-off toggle.
     static let knob = dynamic(dark: NSColor(white: 1, alpha: 0.85), light: .white)
@@ -147,6 +148,21 @@ extension ThemeChoice {
     }
 }
 
+extension AppearanceConfig {
+    /// Whether the closed notch and the toast follow the theme. Never on a
+    /// display with a hardware notch: the camera housing stays black, so a
+    /// light shape around it would read as two white wings.
+    func closedFollowsTheme(hardwareNotch: Bool) -> Bool {
+        closedNotch == .theme && !hardwareNotch
+    }
+
+    /// The scheme of the closed notch and the toast: dark unless the user
+    /// asked for them to follow the theme and the display has no notch.
+    func closedScheme(system: ColorScheme, hardwareNotch: Bool = false) -> ColorScheme {
+        closedFollowsTheme(hardwareNotch: hardwareNotch) ? theme.scheme(system: system) : .dark
+    }
+}
+
 // MARK: - Environment
 
 private struct SnapshotKey: EnvironmentKey { static let defaultValue = false }
@@ -209,23 +225,44 @@ struct NotchScroll<Content: View>: View {
 
 // MARK: - Shape
 
-/// The notch silhouette: flush top edge with small concave ears, convex
-/// rounded bottom corners. `rect.width` includes the ears.
+/// The notch silhouette: flush top edge with small concave ears
+/// (`topRadius`), convex rounded bottom corners. With `topCorner` > 0 and no
+/// ears the top corners are convex too, which makes the closed activity
+/// shape a capsule. Both are animatable so the shape morphs between them.
+/// `rect.width` includes the ears.
 struct NotchShape: Shape {
     var topRadius: CGFloat
     var bottomRadius: CGFloat
+    var topCorner: CGFloat = 0
+    /// Space left empty above the shape (the floating capsule sits below
+    /// the hardware notch).
+    var topInset: CGFloat = 0
 
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(topRadius, bottomRadius) }
-        set { topRadius = newValue.first; bottomRadius = newValue.second }
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get { AnimatablePair(AnimatablePair(topRadius, bottomRadius), AnimatablePair(topCorner, topInset)) }
+        set {
+            topRadius = newValue.first.first
+            bottomRadius = newValue.first.second
+            topCorner = newValue.second.first
+            topInset = newValue.second.second
+        }
     }
 
-    func path(in r: CGRect) -> Path {
-        let t = min(topRadius, r.height / 2)
-        let b = min(bottomRadius, max(0, r.height - t), (r.width - 2 * t) / 2)
+    func path(in rect: CGRect) -> Path {
+        var r = rect
+        let inset = max(0, min(topInset, r.height))
+        r.origin.y += inset
+        r.size.height -= inset
+        let t = max(0, min(topRadius, r.height / 2))
+        let body = max(0, r.width - 2 * t)
+        let c = max(0, min(topCorner, body / 2, r.height / 2))
+        let b = max(0, min(bottomRadius, r.height - t - c, body / 2))
+        // Top corner: a concave ear (start at the edge, end inside), a convex
+        // corner (start inside on the top edge, end on the side), or a blend
+        // of the two while animating.
         var p = Path()
-        p.move(to: CGPoint(x: r.minX, y: r.minY))
-        p.addQuadCurve(to: CGPoint(x: r.minX + t, y: r.minY + t),
+        p.move(to: CGPoint(x: r.minX + c, y: r.minY))
+        p.addQuadCurve(to: CGPoint(x: r.minX + t, y: r.minY + t + c),
                        control: CGPoint(x: r.minX + t, y: r.minY))
         p.addLine(to: CGPoint(x: r.minX + t, y: r.maxY - b))
         p.addQuadCurve(to: CGPoint(x: r.minX + t + b, y: r.maxY),
@@ -233,10 +270,26 @@ struct NotchShape: Shape {
         p.addLine(to: CGPoint(x: r.maxX - t - b, y: r.maxY))
         p.addQuadCurve(to: CGPoint(x: r.maxX - t, y: r.maxY - b),
                        control: CGPoint(x: r.maxX - t, y: r.maxY))
-        p.addLine(to: CGPoint(x: r.maxX - t, y: r.minY + t))
-        p.addQuadCurve(to: CGPoint(x: r.maxX, y: r.minY),
+        p.addLine(to: CGPoint(x: r.maxX - t, y: r.minY + t + c))
+        p.addQuadCurve(to: CGPoint(x: r.maxX - c, y: r.minY),
                        control: CGPoint(x: r.maxX - t, y: r.minY))
         p.closeSubpath()
+        return p
+    }
+}
+
+/// The area that takes the pointer: the shape, plus, above a floating
+/// shape, the column under the notch so the pointer can travel between them.
+struct PointerShape: Shape {
+    var shape: NotchShape
+    var top: CGFloat
+    var column: CGFloat
+
+    func path(in r: CGRect) -> Path {
+        var p = shape.path(in: r)
+        if top > 0 {
+            p.addRect(CGRect(x: r.midX - column / 2, y: r.minY, width: column, height: min(top, r.height)))
+        }
         return p
     }
 }

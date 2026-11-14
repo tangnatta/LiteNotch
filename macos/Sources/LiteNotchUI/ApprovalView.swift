@@ -5,7 +5,8 @@ import SwiftUI
 struct ApprovalHeader: View {
     let index: Int
     let total: Int
-    let notch: CGSize
+    /// Room left for the notch between the two sides (0 when floating).
+    let gap: CGFloat
     let ear: CGFloat
     var step: (Int) -> Void = { _ in }
 
@@ -15,7 +16,7 @@ struct ApprovalHeader: View {
                 Circle().fill(NT.accent).frame(width: 8, height: 8)
                 Text(verbatim: "Approval needed").nfont(.emphasis).foregroundStyle(NT.text1)
             }
-            Spacer(minLength: notch.width + 24)
+            Spacer(minLength: gap)
             if total > 1 {
                 HStack(spacing: 0) {
                     IconButton(symbol: "chevron.left", label: "Previous request", size: NGlyph.small,

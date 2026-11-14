@@ -31,6 +31,8 @@ final class NotchPanel: NSPanel {
 /// shape, so the large transparent window never blocks apps underneath.
 final class NotchHostingView: NSHostingView<NotchRootView> {
     var shapeSize: () -> CGSize = { .zero }
+    /// Takes a point from the top-left of the shape's area.
+    var shapeContains: (CGPoint) -> Bool = { _ in true }
 
     required init(rootView: NotchRootView) {
         super.init(rootView: rootView)
@@ -44,7 +46,9 @@ final class NotchHostingView: NSHostingView<NotchRootView> {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = superview.map { convert(point, from: $0) } ?? point
         let rect = NotchGeometry.shapeRect(in: bounds.size, shape: shapeSize(), flipped: isFlipped)
-        return rect.contains(local) ? super.hitTest(point) : nil
+        guard rect.contains(local) else { return nil }
+        let p = CGPoint(x: local.x - rect.minX, y: isFlipped ? local.y - rect.minY : rect.maxY - local.y)
+        return shapeContains(p) ? super.hitTest(point) : nil
     }
 }
 
@@ -170,6 +174,7 @@ public final class NotchPanelController {
         let window = NotchPanel(contentRect: NSRect(x: 0, y: 0, width: 600, height: 300))
         let host = NotchHostingView(rootView: NotchRootView(model: state))
         host.shapeSize = { [weak state] in state?.targetSize ?? .zero }
+        host.shapeContains = { [weak state] p in state?.shapeContains(p) ?? false }
         host.autoresizingMask = [.width, .height]
         window.contentView = host
         let entry = PanelEntry(window: window, state: state)
@@ -209,6 +214,11 @@ public final class NotchPanelController {
             leftAux: screen.auxiliaryTopLeftArea,
             rightAux: screen.auxiliaryTopRightArea)
         if e.state.notch != notch.size { e.state.notch = notch.size }
+        let hasNotch = screen.safeAreaInsets.top > 0
+        if e.state.hasNotch != hasNotch { e.state.hasNotch = hasNotch }
+        // Zero on a screen whose menu bar hides itself.
+        let menuBar = max(0, screen.frame.maxY - screen.visibleFrame.maxY)
+        if e.state.menuBarHeight != menuBar { e.state.menuBarHeight = menuBar }
         e.window.setFrame(NotchGeometry.panelFrame(screenFrame: screen.frame, notch: notch), display: true)
     }
 }

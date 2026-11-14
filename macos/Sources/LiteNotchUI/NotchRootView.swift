@@ -12,10 +12,11 @@ extension NotchPresentation {
 }
 
 /// The SwiftUI root hosted by one panel. The window never resizes; the
-/// shape grows inside it. Closed, the shape is black with dark content in
-/// every theme so it blends with the hardware notch; open it follows the
-/// chosen theme (solid or Liquid Glass, see `GlassSupport`), and the fill
-/// fades with the spring.
+/// shape grows inside it. Closed and as a toast, the shape is black with dark
+/// content by default so it blends with the hardware notch, or follows the
+/// theme when "Closed notch: Match theme" is set; open it follows the chosen
+/// theme (solid or Liquid Glass, see `GlassSupport`), and the fill fades
+/// with the spring.
 public struct NotchRootView: View {
     @ObservedObject var model: PanelState
     /// The window's scheme, which follows the system setting live.
@@ -32,48 +33,73 @@ public struct NotchRootView: View {
         let size = model.targetSize
         let appearance = model.view?.settings.appearance ?? .default
         let scheme = appearance.theme.scheme(system: systemScheme)
+        let layout = model.layout
+        let top = layout.top(for: mode)
+        let closedScheme = appearance.closedScheme(system: systemScheme, hardwareNotch: model.hasNotch)
         let ear = mode == .expanded ? NotchGeometry.expandedEar : NotchGeometry.closedEar
         let bottom: CGFloat = {
             switch mode {
-            case .closed: return NotchGeometry.closedBottomRadius
+            case .closed: return layout.floating ? layout.capsuleHeight / 2 : NotchGeometry.closedBottomRadius
             case .toast: return NotchGeometry.toastBottomRadius
             case .expanded: return NotchGeometry.expandedBottomRadius
             }
         }()
-        let shape = NotchShape(topRadius: ear, bottomRadius: bottom)
+        // Attached: the notch silhouette with concave ears. Floating: all
+        // four corners rounded, `top` below the top of the screen.
+        let shape = layout.floating
+            ? NotchShape(topRadius: 0, bottomRadius: bottom, topCorner: bottom, topInset: top)
+            : NotchShape(topRadius: ear, bottomRadius: bottom)
 
         ZStack(alignment: .top) {
-            // Closed and as a toast the shape is black in every theme, so it
-            // reads as part of the hardware notch; only the open panel follows
-            // the theme. With Liquid Glass chosen (and drawable) the open
-            // panel is glass tinted with the theme; the black fades out
-            // under it.
-            if appearance.usesGlass {
-                shape.fill(Color.black).opacity(mode == .expanded ? 0 : 1)
+            // Closed and as a toast the shape is black by default, so it reads
+            // as part of the hardware notch; the open panel follows the theme.
+            // `NT.panel` is black in the dark scheme, so "Match theme" with a
+            // dark theme draws exactly what the default does.
+            // With Liquid Glass chosen (and drawable) the open panel is glass and
+            // the closed fill fades out under it. Not while an approval waits:
+            // its text is contrast-tested against the solid colour only.
+            if appearance.drawsGlass(approvalPending: !(model.view?.agents.pending.isEmpty ?? true)) {
+                shape.fill(appearance.closedFollowsTheme(hardwareNotch: model.hasNotch) ? NT.panel : Color.black)
+                    .opacity(mode == .expanded ? 0 : 1)
                 if mode == .expanded {
                     PanelFill(shape: shape, glass: true).transition(.opacity)
                 }
             } else {
-                shape.fill(mode == .expanded ? NT.panel : Color.black)
+                shape.fill(mode == .expanded || appearance.closedFollowsTheme(hardwareNotch: model.hasNotch) ? NT.panel : Color.black)
             }
             switch mode {
             case .closed:
                 if let c = model.view?.compact, c.kind != .idle, c.kind != .unknown {
-                    ClosedActivityView(compact: c, notchWidth: model.notch.width, ear: ear,
-                                       artworkPath: model.view?.media?.artworkPath)
-                        .environment(\.colorScheme, .dark)
+                    Group {
+                        if layout.floating {
+                            ClosedActivityView(compact: c, notchWidth: layout.centerWidth, ear: 0,
+                                               wing: layout.wingWidth(for: c),
+                                               edgePadding: NotchGeometry.floatingWingPadding,
+                                               artworkSize: min(20, layout.capsuleHeight - 4),
+                                               artworkPath: model.view?.media?.artworkPath)
+                                .frame(height: layout.capsuleHeight)
+                                .padding(.top, top)
+                        } else {
+                            ClosedActivityView(compact: c, notchWidth: model.notch.width, ear: ear,
+                                               wing: layout.wingWidth(for: c),
+                                               artworkPath: model.view?.media?.artworkPath)
+                        }
+                    }
+                        .environment(\.colorScheme, closedScheme)
                         .transition(.opacity)
                 }
             case .toast:
                 if let b = model.view?.inbox.banner {
-                    ToastView(banner: b, notch: model.notch, ear: ear,
+                    ToastView(banner: b, top: layout.floating ? top : model.notch.height,
+                              rowHeight: NotchGeometry.toastExtraHeight - (layout.floating ? 0 : 6), ear: ear,
                               open: { model.openNotification(b, isBanner: true) },
                               dismiss: { model.send(.notifyDismissBanner) })
-                        .environment(\.colorScheme, .dark)
+                        .environment(\.colorScheme, closedScheme)
                         .transition(.opacity)
                 }
             case .expanded:
                 ExpandedView(model: model, ear: ear)
+                    .padding(.top, top)
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
         }
@@ -83,7 +109,7 @@ public struct NotchRootView: View {
         .id(NT.accentHex)
         .frame(width: size.width, height: size.height, alignment: .top)
         .clipShape(shape)
-        .contentShape(shape)
+        .contentShape(PointerShape(shape: shape, top: top, column: layout.centerWidth))
         .onHover { model.hoverChanged($0) }
         // Clicking the closed notch (or a toast) opens it at once, with or
         // without "hover to expand". Buttons inside take their own clicks,
@@ -101,17 +127,20 @@ struct ClosedActivityView: View {
     let compact: CompactView
     let notchWidth: CGFloat
     let ear: CGFloat
+    let wing: CGFloat
+    /// Space between the content and the outer end of each wing.
+    var edgePadding: CGFloat = 12
+    var artworkSize: CGFloat = 20
     var artworkPath: String?
 
     var body: some View {
-        let wing = NotchGeometry.wingWidth(for: compact)
         HStack(spacing: 0) {
             leftIcon
-                .padding(.leading, 12)
+                .padding(.leading, edgePadding)
                 .frame(width: wing, alignment: .leading)
             Color.clear.frame(width: notchWidth)
             rightValue
-                .padding(.trailing, 12)
+                .padding(.trailing, edgePadding)
                 .frame(width: wing, alignment: .trailing)
         }
         .padding(.horizontal, ear)
@@ -125,7 +154,7 @@ struct ClosedActivityView: View {
         case .pomodoro:
             Image(systemName: "timer").font(.system(size: 12, weight: .semibold)).foregroundStyle(NT.accentText)
         case .media:
-            ArtworkView(path: artworkPath, size: 20, radius: 5)
+            ArtworkView(path: artworkPath, size: artworkSize, radius: artworkSize / 4)
         case .caffeine:
             Image(systemName: "cup.and.heat.waves.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.text1)
         case .agent:
@@ -135,7 +164,7 @@ struct ClosedActivityView: View {
         case .meeting:
             Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold)).foregroundStyle(NT.accentText)
         case .approval:
-            Circle().fill(NT.accent).frame(width: 9, height: 9)
+            Circle().fill(NT.accentText).frame(width: 9, height: 9)
         case .banner:
             Image(systemName: "bell.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
         case .idle, .unknown:
@@ -220,15 +249,19 @@ private extension Text {
 struct MediaBars: View {
     var active: Bool
     @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.colorScheme) private var scheme
     static let base: [CGFloat] = [6, 11, 8, 12]
 
     var body: some View {
+        // `accentText`: the accent, darkened on a light surface until it
+        // reads (a pale accent on white would all but vanish).
         if active && !snapshot {
-            AnimatedBars().frame(width: 16, height: 14)
+            AnimatedBars(color: NSColor(NT.accentText).resolved(dark: scheme == .dark))
+                .frame(width: 16, height: 14)
         } else {
             HStack(alignment: .center, spacing: 2) {
                 ForEach(0..<4, id: \.self) { i in
-                    Capsule().fill(NT.accent).frame(width: 2.5, height: Self.base[i])
+                    Capsule().fill(NT.accentText).frame(width: 2.5, height: Self.base[i])
                 }
             }
             .frame(height: 14)
@@ -237,6 +270,10 @@ struct MediaBars: View {
 }
 
 private struct AnimatedBars: NSViewRepresentable {
+    /// Already resolved for the scheme: a layer's `CGColor` does not follow
+    /// SwiftUI's environment.
+    let color: CGColor
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 16, height: 14))
         view.wantsLayer = true
@@ -245,7 +282,7 @@ private struct AnimatedBars: NSViewRepresentable {
         let durations: [CFTimeInterval] = [0.42, 0.34, 0.50, 0.38]
         for i in 0..<4 {
             let bar = CALayer()
-            bar.backgroundColor = NSColor(NT.accent).cgColor
+            bar.backgroundColor = color
             bar.cornerRadius = 1.25
             bar.bounds = CGRect(x: 0, y: 0, width: 2.5, height: MediaBars.base[i])
             bar.position = CGPoint(x: 1.25 + CGFloat(i) * 4.5, y: 7)
@@ -264,21 +301,39 @@ private struct AnimatedBars: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    /// Only the colour changes (a theme switch); the running animations
+    /// are left alone.
+    func updateNSView(_ nsView: NSView, context: Context) {
+        for bar in nsView.layer?.sublayers ?? [] where bar.backgroundColor != color {
+            bar.backgroundColor = color
+        }
+    }
+}
+
+extension NSColor {
+    /// This (dynamic) colour as it draws in the dark or the light appearance.
+    func resolved(dark: Bool) -> CGColor {
+        var out = cgColor
+        let appearance = NSAppearance(named: dark ? .darkAqua : .aqua) ?? NSAppearance.currentDrawing()
+        appearance.performAsCurrentDrawingAppearance { out = self.cgColor }
+        return out
+    }
 }
 
 // MARK: - Toast
 
 struct ToastView: View {
     let banner: NotificationItem
-    let notch: CGSize
+    /// Empty space above the row: the notch, or the gap above a floating toast.
+    let top: CGFloat
+    let rowHeight: CGFloat
     let ear: CGFloat
     let open: () -> Void
     let dismiss: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            Color.clear.frame(height: notch.height)
+            Color.clear.frame(height: top)
             HStack(spacing: 10) {
                 Image(systemName: "bell.fill")
                     .glyph(NGlyph.regular)
@@ -300,7 +355,7 @@ struct ToastView: View {
                 IconButton(symbol: "xmark", label: "Dismiss", size: NGlyph.small, action: dismiss)
             }
             .padding(.horizontal, ear + 14)
-            .frame(height: NotchGeometry.toastExtraHeight - 6)
+            .frame(height: rowHeight)
             Spacer(minLength: 0)
         }
     }
@@ -314,6 +369,13 @@ struct ExpandedView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shownApproval: String?
 
+    /// Attached, the header row shares the notch's height and steps around
+    /// it; the floating panel sits below the notch and needs neither.
+    private var headerHeight: CGFloat {
+        model.layout.floating ? NotchGeometry.floatingHeaderHeight : model.notch.height
+    }
+    private var headerGap: CGFloat { model.layout.floating ? 0 : model.notch.width + 24 }
+
     var body: some View {
         let vm = model.view
         let pending = vm?.agents.pending ?? []
@@ -323,11 +385,11 @@ struct ExpandedView: View {
                 // none was picked.
                 let i = pending.firstIndex { $0.id == shownApproval } ?? 0
                 let request = pending[i]
-                ApprovalHeader(index: i + 1, total: pending.count, notch: model.notch, ear: ear) { d in
+                ApprovalHeader(index: i + 1, total: pending.count, gap: headerGap, ear: ear) { d in
                     let j = min(max(i + d, 0), pending.count - 1)
                     shownApproval = pending[j].id
                 }
-                .frame(height: model.notch.height)
+                .frame(height: headerHeight)
                 // A new id re-arms Allow (see ApprovalView.armDelay).
                 ApprovalView(request: request, send: model.send)
                     .id(request.id)
@@ -336,7 +398,7 @@ struct ExpandedView: View {
                     .padding(.bottom, 18)
             } else {
                 TabBar(model: model, ear: ear)
-                    .frame(height: model.notch.height)
+                    .frame(height: headerHeight)
                 if let vm {
                     Group {
                         switch model.tab {
@@ -415,7 +477,7 @@ struct TabBar: View {
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Self.left, id: \.self) { tabButton($0) }
-            Spacer(minLength: model.notch.width + 24)
+            Spacer(minLength: model.layout.floating ? 0 : model.notch.width + 24)
             pickerButton
             keepAwakeButton
             ForEach(Self.right, id: \.self) { tabButton($0) }

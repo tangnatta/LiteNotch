@@ -110,6 +110,23 @@ public enum ThemeChoice: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// How the notch is drawn: hanging from the top edge in the notch's own
+/// silhouette (the original look), or as a capsule floating inside the
+/// menu bar with the toast and the open panel just below it.
+public enum NotchStyle: String, LenientEnum {
+    case attached, floating, unknown
+    static var unknownCase: NotchStyle { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
+/// How the closed notch and the toast are drawn: black in every theme
+/// (the default, it reads as part of the hardware notch) or like the panel.
+public enum ClosedNotchChoice: String, LenientEnum {
+    case dark, theme, unknown
+    static var unknownCase: ClosedNotchChoice { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
 /// What the open panel is drawn with (`appearance.material`). Glass is the
 /// macOS 26 Liquid Glass material; see `GlassSupport`.
 public enum MaterialChoice: String, LenientEnum {
@@ -122,37 +139,55 @@ public struct AppearanceConfig: Codable, Equatable {
     public var theme: ThemeChoice
     /// `#RRGGBB`; anything unparsable falls back to the default accent.
     public var accent: String
+    public var notchStyle: NotchStyle
+    public var closedNotch: ClosedNotchChoice
     public var material: MaterialChoice
 
-    enum CodingKeys: String, CodingKey { case theme, accent, material }
+    // Plain names: the view model is decoded with `.convertFromSnakeCase` and
+    // settings are encoded with `.convertToSnakeCase`, which map them to snake_case.
+    enum CodingKeys: String, CodingKey { case theme, accent, notchStyle, closedNotch, material }
 
     public static let defaultAccent = "#FF9E0A"
     public static let `default` = AppearanceConfig(theme: .system, accent: defaultAccent)
 
-    public init(theme: ThemeChoice, accent: String, material: MaterialChoice = .solid) {
+    public init(theme: ThemeChoice, accent: String, notchStyle: NotchStyle = .attached,
+                closedNotch: ClosedNotchChoice = .dark, material: MaterialChoice = .solid) {
         self.theme = theme
         self.accent = accent
+        self.notchStyle = notchStyle
+        self.closedNotch = closedNotch
         self.material = material
     }
 
+    // `notch_style` is newer than the rest; a missing or unknown one draws
+    // the original look.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         theme = (try? c.decodeIfPresent(ThemeChoice.self, forKey: .theme)) ?? .system
         accent = (try? c.decodeIfPresent(String.self, forKey: .accent)) ?? Self.defaultAccent
+        notchStyle = (try? c.decodeIfPresent(NotchStyle.self, forKey: .notchStyle)) ?? .attached
+        closedNotch = (try? c.decodeIfPresent(ClosedNotchChoice.self, forKey: .closedNotch)) ?? .dark
         material = (try? c.decodeIfPresent(MaterialChoice.self, forKey: .material)) ?? .solid
     }
 
-    // An unknown theme or material is left out so the core keeps its own value.
+    // An unknown value is left out so the core keeps its own.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         if theme != .unknown { try c.encode(theme, forKey: .theme) }
         try c.encode(accent, forKey: .accent)
+        if notchStyle != .unknown { try c.encode(notchStyle, forKey: .notchStyle) }
+        if closedNotch != .unknown { try c.encode(closedNotch, forKey: .closedNotch) }
         if material != .unknown { try c.encode(material, forKey: .material) }
     }
 
     /// Whether the open panel is drawn with Liquid Glass: chosen, and this
     /// build and system can draw it.
     public var usesGlass: Bool { material == .glass && GlassSupport.available }
+
+    /// Whether to draw the open panel as glass right now. Never while an
+    /// approval is waiting: that text has to read over any wallpaper, and it
+    /// is contrast-tested against the solid panel colour only.
+    public func drawsGlass(approvalPending: Bool) -> Bool { usesGlass && !approvalPending }
 }
 
 public struct PomodoroConfig: Codable, Equatable {

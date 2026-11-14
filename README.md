@@ -13,9 +13,9 @@ battery.
 
 | | LiteNotch |
 |---|---|
-| App size | 4 MB |
+| App size | 6 MB |
 | Memory while idle | 15 MB |
-| CPU while idle | under 0.1 % |
+| CPU while idle | under 0.5 % |
 
 ## Install
 
@@ -71,11 +71,11 @@ switch views; the icons on the right are quick controls.
 |---|---|
 | **Home** | Everything at a glance: what's playing, your timer, your AI sessions and the latest notification. Click any of them to go there. |
 | **Music** | Artwork, progress and play / pause / skip for whatever is playing, in any app: Music, Spotify, or a browser tab. While something plays, the closed notch shows its artwork. |
-| **Timer** | Three timers. **Focus** is a pomodoro: work, short break, repeat. **Meeting** runs an agenda item by item (stand-up, sprint review, planning, retro, or your own) and shows when an item runs over. **Timer** is a plain countdown: click the time in the circle and type `25`, `1:30` or `1h 30m`. |
+| **Timer** | Three timers. **Focus** is a pomodoro: work, short break, repeat. **Meeting** runs an agenda item by item (stand-up, sprint review, planning, retro, or your own) and shows when an item runs over. **Timer** is a plain countdown: click the time in the circle and type `25`, `1:30` or `1h 30m`. Any `− 12 +` number (an agenda item's minutes, a timer length) can be clicked and typed too. |
 | **Clipboard** | Everything you copy, searchable. Click an item to copy it again. Text copied with formatting keeps it; the **Aa** button copies it as plain text. Images and files show a preview. Pin what you want to keep. Password-manager copies are skipped. |
 | **Agents** | For Claude Code users: see each session's status, approve or deny its requests without switching windows, and see your usage limits and a 7-day summary. See [Claude Code](#claude-code). |
 | **Inbox** | Notifications from LiteNotch, Claude Code, and, if you allow it, other apps. Click one to open where it came from. |
-| **Settings** | Everything adjustable, by feature: appearance (light, dark or automatic, plus your accent colour), timer lengths, clipboard size, keep-awake options, and more. |
+| **Settings** | Everything adjustable, by feature: how the notch looks (see [Appearance](#appearance)), timer lengths, clipboard size, keep-awake options, and more. |
 
 Quick controls on the right of the bar:
 
@@ -85,6 +85,18 @@ Quick controls on the right of the bar:
   timer, a battery limit, and staying awake with the lid closed (asks for your
   password once; turns itself off when LiteNotch quits).
 - **Bell:** the inbox. **Gear:** settings.
+
+### Appearance
+
+All under **Settings › General**. The defaults are the original look.
+
+| Setting | Choices |
+|---|---|
+| **Theme** | System, Dark or Light, for the open panel. |
+| **Accent** | A preset colour or any colour you pick. |
+| **Notch** | **Attached** hangs from the top edge in the notch's own shape. **Floating** is a small capsule inside the menu bar, with notifications and the open panel just below it; it suits a Mac or an external display without a notch. |
+| **Closed notch** | **Always dark**, or **Match theme** so the closed notch and notifications turn white in the light theme. Offered only on a display without a notch: around a real notch, which is always black, it stays dark. |
+| **Panel** | **Solid**, or **Glass** to draw the open panel with macOS 26's Liquid Glass. Approval requests are always shown on the solid panel so they stay readable. |
 
 ### What macOS may ask for
 

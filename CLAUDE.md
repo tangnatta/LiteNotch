@@ -268,6 +268,8 @@ the physical memory footprint:
 | timer | countdown running (digits redraw each second) | ≤ 1.0 % | ≤ 30 MB |
 | music | a stand-in track playing (`scripts/bench/nowplaying-fake.c`) | ≤ 1.0 % | ≤ 30 MB |
 | panel | the panel open on Home | ≤ 1.5 % | ≤ 40 MB |
+| floating | the Floating style with a countdown running | ≤ 1.0 % | ≤ 30 MB |
+| glass | the panel open on Home, drawn with Liquid Glass | ≤ 1.5 % | ≤ 40 MB |
 
 Bundle ≤ 15 MB; Rust line coverage ≥ 90 %. The app reads a few
 `LITENOTCH_BENCH_*` variables (start-up commands, open the panel, a stand-in
@@ -276,7 +278,12 @@ in `macos/Sources/LiteNotch/main.swift`. Add a scenario here when a feature
 adds steady work (a timer, an animation, a poll). RSS is about 65 MB but
 mostly shared framework pages, so the budget is on physical footprint.
 Single runs occasionally show a short burst (an outside event such as a
-copy landing in the window); a real regression repeats.
+copy landing in the window); a real regression repeats. Measured Nov 2026
+on an M-series MacBook: idle 0.05–0.30 % and 15–16 MB, timer 0.15–0.35 %,
+music 0.45 %, panel 0.70 % and 22 MB, floating 0.35 %, glass 0.25 % and
+28 MB, bundle 6.3 MB. (One run right after a build showed idle at 2.9 % and
+timer at 5.5 %; two repeats of each did not.) Glass is measured over a
+still desktop only, not over moving content.
 
 A feature was removed for cost: bars that followed the music through a
 Core Audio tap cost about 3 % CPU and 7 MB while playing, against 0 % for

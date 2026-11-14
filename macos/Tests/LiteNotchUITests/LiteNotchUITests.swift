@@ -1822,3 +1822,183 @@ final class RoundTwoTests: XCTestCase {
         }
     }
 }
+
+// MARK: - Notch style, closed-notch theme and panel material together
+
+/// The three appearance options that arrived as separate changes (Floating
+/// notch, closed notch following the theme, Liquid Glass), and how they
+/// meet in one panel.
+final class AppearanceOptionsTests: XCTestCase {
+    private var app: AppModel?
+
+    private func panel(_ change: (inout LiteNotchUI.Settings) -> Void = { _ in }) throws -> PanelState {
+        let model = AppModel(bridge: MockBridge())
+        app = model
+        var vm = try loadFixture("pomodoro")
+        change(&vm.settings)
+        model.apply(vm)
+        return model.primary
+    }
+
+    /// The silhouette as it was drawn before the shape learned about
+    /// floating: Attached must stay exactly this.
+    private func originalNotchPath(in r: CGRect, top: CGFloat, bottom: CGFloat) -> Path {
+        let t = min(top, r.height / 2)
+        let b = min(bottom, max(0, r.height - t), (r.width - 2 * t) / 2)
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.minY))
+        p.addQuadCurve(to: CGPoint(x: r.minX + t, y: r.minY + t), control: CGPoint(x: r.minX + t, y: r.minY))
+        p.addLine(to: CGPoint(x: r.minX + t, y: r.maxY - b))
+        p.addQuadCurve(to: CGPoint(x: r.minX + t + b, y: r.maxY), control: CGPoint(x: r.minX + t, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.maxX - t - b, y: r.maxY))
+        p.addQuadCurve(to: CGPoint(x: r.maxX - t, y: r.maxY - b), control: CGPoint(x: r.maxX - t, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.maxX - t, y: r.minY + t))
+        p.addQuadCurve(to: CGPoint(x: r.maxX, y: r.minY), control: CGPoint(x: r.maxX - t, y: r.minY))
+        p.closeSubpath()
+        return p
+    }
+
+    func testTheAttachedShapeIsTheOriginalSilhouette() {
+        let cases: [(CGSize, CGFloat, CGFloat)] = [
+            (CGSize(width: 195, height: 32), NotchGeometry.closedEar, NotchGeometry.closedBottomRadius),
+            (CGSize(width: 420, height: 78), NotchGeometry.closedEar, NotchGeometry.toastBottomRadius),
+            (NotchGeometry.expandedSize, NotchGeometry.expandedEar, NotchGeometry.expandedBottomRadius),
+            (CGSize(width: 20, height: 6), 8, 30),
+        ]
+        for (size, ear, bottom) in cases {
+            let rect = CGRect(origin: .zero, size: size)
+            XCTAssertEqual(NotchShape(topRadius: ear, bottomRadius: bottom).path(in: rect),
+                           originalNotchPath(in: rect, top: ear, bottom: bottom), "\(size)")
+        }
+    }
+
+    func testTheFloatingShapeIsACapsuleBelowItsInset() {
+        // 21 pt tall area: 3 pt left empty, then an 18 pt capsule.
+        let rect = CGRect(x: 0, y: 0, width: 120, height: 21)
+        let path = NotchShape(topRadius: 0, bottomRadius: 9, topCorner: 9, topInset: 3).path(in: rect)
+        XCTAssertEqual(path.boundingRect.minY, 3, accuracy: 0.01)
+        XCTAssertEqual(path.boundingRect.maxY, 21, accuracy: 0.01)
+        XCTAssertFalse(path.contains(CGPoint(x: 60, y: 1.5)), "the inset is empty")
+        XCTAssertTrue(path.contains(CGPoint(x: 60, y: 12)))
+        // All four corners are rounded: the corner points of the capsule's box are outside it.
+        for corner in [CGPoint(x: 0.5, y: 3.5), CGPoint(x: 119.5, y: 3.5),
+                       CGPoint(x: 0.5, y: 20.5), CGPoint(x: 119.5, y: 20.5)] {
+            XCTAssertFalse(path.contains(corner), "\(corner)")
+        }
+        // Odd sizes never produce a negative radius or a path outside the rect.
+        for size in [CGSize(width: 4, height: 2), CGSize(width: 0, height: 0), CGSize(width: 50, height: 3)] {
+            let r = CGRect(origin: .zero, size: size)
+            let p = NotchShape(topRadius: 0, bottomRadius: 40, topCorner: 40, topInset: 10).path(in: r)
+            XCTAssertTrue(p.isEmpty || r.insetBy(dx: -0.01, dy: -0.01).contains(p.boundingRect), "\(size)")
+        }
+    }
+
+    func testThePointerAreaAddsOnlyTheColumnUnderTheNotch() {
+        let rect = CGRect(x: 0, y: 0, width: 600, height: 312)
+        let shape = NotchShape(topRadius: 0, bottomRadius: 20, topCorner: 20, topInset: 32)
+        let pointer = PointerShape(shape: shape, top: 32, column: 50).path(in: rect)
+        XCTAssertTrue(pointer.contains(CGPoint(x: 300, y: 10)), "under the notch")
+        XCTAssertFalse(pointer.contains(CGPoint(x: 100, y: 10)), "the rest of the menu bar is not ours")
+        XCTAssertTrue(pointer.contains(CGPoint(x: 100, y: 150)))
+        // Attached (no inset): just the shape.
+        let attached = NotchShape(topRadius: 8, bottomRadius: 20)
+        XCTAssertEqual(PointerShape(shape: attached, top: 0, column: 183).path(in: rect), attached.path(in: rect))
+    }
+
+    func testAFloatingWingIsNeverWiderThanTheAttachedOneAllows() {
+        func compact(_ kind: ActivityKind, title: String = "", value: String = "", count: Int = 0) -> CompactView {
+            CompactView(kind: kind, title: title, value: value, endsAtMs: nil, totalSecs: nil, count: count)
+        }
+        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: compact(.idle)), 0)
+        for kind in [ActivityKind.pomodoro, .timer, .caffeine, .meeting, .media, .approval, .banner, .agent] {
+            let w = NotchGeometry.floatingWingWidth(for: compact(kind, title: String(repeating: "long title ", count: 20),
+                                                                 value: String(repeating: "9", count: 40), count: 3))
+            XCTAssertGreaterThanOrEqual(w, 30, "\(kind)")
+            XCTAssertLessThanOrEqual(w, 80, "\(kind)")
+        }
+    }
+
+    func testThePanelFollowsTheNotchStyleSetting() throws {
+        let attached = try panel()
+        XCTAssertFalse(attached.layout.floating)
+        XCTAssertEqual(attached.targetSize,
+                       NotchGeometry.size(for: attached.mode, compact: attached.view?.compact, notch: attached.notch))
+        XCTAssertTrue(attached.shapeContains(CGPoint(x: 1, y: 0)))
+
+        let floating = try panel { $0.appearance.notchStyle = .floating }
+        floating.hasNotch = false
+        floating.menuBarHeight = 24
+        XCTAssertTrue(floating.layout.floating)
+        XCTAssertEqual(floating.targetSize.height, 3 + 18, "a capsule inside a 24 pt menu bar")
+        XCTAssertLessThan(floating.targetSize.width, attached.targetSize.width)
+        floating.open()
+        XCTAssertEqual(floating.targetSize.height, 24 + NotchGeometry.expandedSize.height)
+        // Above the open panel the menu bar stays usable except under the notch.
+        XCTAssertFalse(floating.shapeContains(CGPoint(x: 5, y: 5)))
+        XCTAssertTrue(floating.shapeContains(CGPoint(x: floating.targetSize.width / 2, y: 5)))
+        XCTAssertTrue(floating.shapeContains(CGPoint(x: 5, y: 60)))
+        // A style this build does not know draws the original.
+        let unknown = try panel { $0.appearance.notchStyle = .unknown }
+        XCTAssertFalse(unknown.layout.floating)
+    }
+
+    func testTheThreeOptionsAreIndependentAndDefaultToTheOldLook() throws {
+        let d = AppearanceConfig.default
+        XCTAssertEqual(d.notchStyle, .attached)
+        XCTAssertEqual(d.closedNotch, .dark)
+        XCTAssertEqual(d.material, .solid)
+        XCTAssertFalse(d.usesGlass)
+        XCTAssertEqual(d.closedScheme(system: .light), .dark)
+
+        // Every combination survives the trip to the core and back.
+        let encoder = JSONEncoder(); encoder.keyEncodingStrategy = .convertToSnakeCase
+        let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
+        for style in [NotchStyle.attached, .floating] {
+            for closed in [ClosedNotchChoice.dark, .theme] {
+                for material in [MaterialChoice.solid, .glass] {
+                    let a = AppearanceConfig(theme: .light, accent: "#30D158", notchStyle: style,
+                                             closedNotch: closed, material: material)
+                    XCTAssertEqual(try decoder.decode(AppearanceConfig.self, from: encoder.encode(a)), a)
+                    // Each option only decides its own part.
+                    XCTAssertEqual(a.closedFollowsTheme(hardwareNotch: false), closed == .theme)
+                    XCTAssertFalse(a.closedFollowsTheme(hardwareNotch: true))
+                    XCTAssertEqual(a.usesGlass, material == .glass && GlassSupport.available)
+                    XCTAssertFalse(a.drawsGlass(approvalPending: true))
+                }
+            }
+        }
+    }
+
+    func testAnApprovalIsNeverDrawnOnGlass() throws {
+        let vm = try loadFixture("approval")
+        XCTAssertFalse(vm.agents.pending.isEmpty)
+        var glass = vm.settings.appearance
+        glass.material = .glass
+        XCTAssertFalse(glass.drawsGlass(approvalPending: !vm.agents.pending.isEmpty))
+        // The view asks exactly that question.
+        let src = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/LiteNotchUI/NotchRootView.swift"), encoding: .utf8)
+        XCTAssertTrue(src.contains("appearance.drawsGlass(approvalPending: !(model.view?.agents.pending.isEmpty ?? true))"))
+    }
+
+    func testBarColoursAreResolvedForTheSchemeTheyAreDrawnIn() {
+        // The moving bars are a layer, which does not follow SwiftUI's scheme.
+        _ = NT.setAccent("#FFD60A")
+        defer { _ = NT.setAccent(AppearanceConfig.defaultAccent) }
+        let colour = NSColor(NT.accentText)
+        let dark = colour.resolved(dark: true), light = colour.resolved(dark: false)
+        XCTAssertNotEqual(dark, light, "a pale accent is darkened on a light surface")
+        XCTAssertEqual(colour.resolved(dark: true), dark, "stable for the same scheme")
+    }
+
+    func testSnapshotsCoverTheNewLooks() throws {
+        let src = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/LiteNotchUI/SnapshotRenderer.swift"), encoding: .utf8)
+        for name in ["floating-\\(name)-closed", "floating-notchless-pomodoro-expanded-home",
+                     "light-matched-\\(name)-closed", "dark-matched-\\(name)-closed", "glass-media-expanded-home"] {
+            XCTAssertTrue(src.contains(name), name)
+        }
+    }
+}

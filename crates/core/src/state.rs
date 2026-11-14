@@ -2933,6 +2933,34 @@ mod tests {
     }
 
     #[test]
+    fn the_appearance_options_persist_together_and_a_partial_file_loads() {
+        let mut c = core();
+        let mut s = c.view(T0).settings;
+        s.appearance.notch_style = NotchStyle::Floating;
+        s.appearance.closed_notch = ClosedNotch::Theme;
+        s.appearance.material = Material::Glass;
+        cmd(
+            &mut c,
+            Command::SetSettings {
+                settings: Box::new(s),
+            },
+            T0,
+        );
+        let again = Core::new(c.persisted()).view(T0).settings.appearance;
+        assert_eq!(again.notch_style, NotchStyle::Floating);
+        assert_eq!(again.closed_notch, ClosedNotch::Theme);
+        assert_eq!(again.material, Material::Glass);
+        // A settings file that names one option leaves the rest at the old look.
+        let partial: Settings =
+            serde_json::from_value(json!({"appearance":{"notch_style":"floating"}})).unwrap();
+        assert_eq!(partial.appearance.notch_style, NotchStyle::Floating);
+        assert_eq!(partial.appearance.closed_notch, ClosedNotch::Dark);
+        assert_eq!(partial.appearance.material, Material::Solid);
+        assert_eq!(partial.appearance.theme, ThemeChoice::System);
+        assert_eq!(partial.appearance.accent, DEFAULT_ACCENT);
+    }
+
+    #[test]
     fn material_defaults_to_solid_and_round_trips() {
         let mut c = core();
         let mut s = c.view(T0).settings;

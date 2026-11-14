@@ -131,6 +131,12 @@ struct SettingsTab: View {
                                              set: { draft.appearance.theme = $0 }),
                           label: "Theme", height: 22)
         }
+        row("Notch") {
+            SegmentedPill(options: [(NotchStyle.attached, "Attached"), (NotchStyle.floating, "Floating")],
+                          selection: Binding(get: { draft.appearance.notchStyle == .floating ? .floating : .attached },
+                                             set: { draft.appearance.notchStyle = $0 }),
+                          label: "Notch style", height: 22)
+        }
         row("Accent") {
             HStack(spacing: 5) {
                 ForEach(AccentPresets.all, id: \.self) { hex in swatch(hex) }

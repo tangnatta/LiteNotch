@@ -321,6 +321,68 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(NotchGeometry.wingWidth(for: CompactView(kind: .idle, title: "", value: "", endsAtMs: nil, totalSecs: nil, count: 0)), 0)
     }
 
+    func testAttachedLayoutIsTheOriginalGeometry() {
+        let notch = CGSize(width: 183, height: 32)
+        let layout = NotchLayout(style: .attached, notch: notch)
+        let pomo = CompactView(kind: .pomodoro, title: "Focus", value: "", endsAtMs: 1, totalSecs: 1500, count: 0)
+        for mode in [NotchMode.closed, .toast, .expanded] {
+            XCTAssertEqual(layout.size(for: mode, compact: pomo), NotchGeometry.size(for: mode, compact: pomo, notch: notch))
+            XCTAssertEqual(layout.top(for: mode), 0)
+            XCTAssertTrue(layout.contains(CGPoint(x: 1, y: 0), mode: mode, in: layout.size(for: mode, compact: pomo)))
+        }
+        XCTAssertEqual(layout.wingWidth(for: pomo), NotchGeometry.wingWidth(for: pomo))
+    }
+
+    func testFloatingLayoutSitsInsideTheMenuBar() {
+        let pomo = CompactView(kind: .pomodoro, title: "Focus", value: "", endsAtMs: 1, totalSecs: 1500, count: 0)
+        // No notch, 24 pt menu bar: a capsule 3 pt in from top and bottom.
+        let bare = NotchLayout(style: .floating, notch: NotchGeometry.fallbackSize, hasNotch: false, menuBarHeight: 24)
+        XCTAssertEqual(bare.bar, 24)
+        XCTAssertEqual(bare.capsuleHeight, 18)
+        XCTAssertEqual(bare.top(for: .closed), 3)
+        XCTAssertEqual(bare.size(for: .closed, compact: nil), CGSize(width: NotchGeometry.floatingCenterWidth, height: 21))
+        XCTAssertEqual(bare.size(for: .closed, compact: pomo).width,
+                       NotchGeometry.floatingCenterWidth + 2 * NotchGeometry.floatingWingWidth(for: pomo))
+        // The toast overlaps the menu bar; the panel starts below it.
+        XCTAssertEqual(bare.top(for: .toast), 24 - NotchGeometry.floatingToastLift)
+        XCTAssertEqual(bare.top(for: .expanded), 24)
+        XCTAssertEqual(bare.size(for: .expanded, compact: pomo).height, 24 + NotchGeometry.expandedSize.height)
+        // A hidden menu bar falls back to the stand-in's height.
+        XCTAssertEqual(NotchLayout(style: .floating, notch: NotchGeometry.fallbackSize, hasNotch: false).bar, 32)
+        // With a notch the capsule keeps the notch's width and height band.
+        let notched = NotchLayout(style: .floating, notch: CGSize(width: 185, height: 38), hasNotch: true, menuBarHeight: 38)
+        XCTAssertEqual(notched.centerWidth, 185)
+        XCTAssertEqual(notched.capsuleHeight, 32)
+        XCTAssertEqual(notched.top(for: .expanded), 38)
+        // Above the open panel only the column under the notch takes the pointer.
+        let open = bare.size(for: .expanded, compact: nil)
+        XCTAssertFalse(bare.contains(CGPoint(x: 10, y: 5), mode: .expanded, in: open))
+        XCTAssertTrue(bare.contains(CGPoint(x: open.width / 2, y: 5), mode: .expanded, in: open))
+        XCTAssertTrue(bare.contains(CGPoint(x: 10, y: 30), mode: .expanded, in: open))
+        // The window has room for the floating panel.
+        let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let notch = NotchGeometry.notchRect(screenFrame: frame, safeAreaTop: 0, leftAux: nil, rightAux: nil)
+        XCTAssertGreaterThanOrEqual(NotchGeometry.panelFrame(screenFrame: frame, notch: notch).height,
+                                    bare.size(for: .expanded, compact: nil).height)
+    }
+
+    func testNotchStyleDecodesLenientlyAndDefaultsToAttached() throws {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        let old = try d.decode(AppearanceConfig.self, from: Data(##"{"theme":"dark","accent":"#000000"}"##.utf8))
+        XCTAssertEqual(old.notchStyle, .attached)
+        let floating = try d.decode(AppearanceConfig.self, from: Data(##"{"theme":"dark","accent":"#000000","notch_style":"floating"}"##.utf8))
+        XCTAssertEqual(floating.notchStyle, .floating)
+        let future = try d.decode(AppearanceConfig.self, from: Data(##"{"theme":"dark","accent":"#000000","notch_style":"orbit"}"##.utf8))
+        XCTAssertEqual(future.notchStyle, .unknown)
+        // An unknown style is not sent back, so the core keeps its own.
+        let e = JSONEncoder()
+        e.keyEncodingStrategy = .convertToSnakeCase
+        let json = String(decoding: try e.encode(future), as: UTF8.self)
+        XCTAssertFalse(json.contains("notch_style"))
+        XCTAssertTrue(String(decoding: try e.encode(floating), as: UTF8.self).contains(#""notch_style":"floating""#))
+    }
+
     func testHitRectIsCentredAndTopAligned() {
         let r = NotchGeometry.shapeRect(in: CGSize(width: 608, height: 284), shape: CGSize(width: 195, height: 32), flipped: false)
         XCTAssertEqual(r, CGRect(x: 206.5, y: 252, width: 195, height: 32))

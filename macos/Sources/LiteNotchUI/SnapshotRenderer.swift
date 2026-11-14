@@ -16,20 +16,31 @@ public enum SnapshotRenderer {
         func add(_ name: String, _ vm: ViewModel, expanded: Bool = true, tab: Tab = .home,
                  section: SettingsSection = .general, pane: AgentsPane = .sessions,
                  timerPane: TimerPane = .focus, clipPreview: Int? = nil,
-                 accessibilityNeeded: Bool = false) throws {
+                 accessibilityNeeded: Bool = false, notchless: Bool = false) throws {
             // A pending approval opens the panel whatever `expanded` says;
             // a short canvas would show it cut off.
             let open = NotchPresentation.mode(expanded: expanded, view: vm) == .expanded
             let size = open ? canvas : CGSize(width: canvas.width, height: 110)
             if let u = try write(vm, expanded: expanded, tab: tab, section: section, pane: pane,
                                  timerPane: timerPane, clipPreview: clipPreview,
-                                 accessibilityNeeded: accessibilityNeeded, size: size,
+                                 accessibilityNeeded: accessibilityNeeded, notchless: notchless, size: size,
                                  to: outDir.appendingPathComponent("\(name).png")) { written.append(u) }
         }
         for f in files {
             let name = f.deletingPathExtension().lastPathComponent
             let vm = try ViewModel.decode(Data(contentsOf: f))
             try add("\(name)-closed", vm, expanded: false)
+            if ["idle", "pomodoro", "media", "banner"].contains(name) {
+                // The floating style, with a notch and on a 24 pt menu bar without one.
+                var floating = vm
+                floating.settings.appearance.notchStyle = .floating
+                try add("floating-\(name)-closed", floating, expanded: false)
+                try add("floating-notchless-\(name)-closed", floating, expanded: false, notchless: true)
+                if name == "pomodoro" {
+                    try add("floating-pomodoro-expanded-home", floating)
+                    try add("floating-notchless-pomodoro-expanded-home", floating, notchless: true)
+                }
+            }
             if name == "approval" {
                 var long = vm
                 long.agents.pending[0].truncated = true
@@ -207,8 +218,14 @@ public enum SnapshotRenderer {
     @MainActor
     static func write(_ vm: ViewModel, expanded: Bool, tab: Tab, section: SettingsSection = .general,
                       pane: AgentsPane = .sessions, timerPane: TimerPane = .focus, clipPreview: Int? = nil,
-                      accessibilityNeeded: Bool = false, size: CGSize, to url: URL) throws -> URL? {
+                      accessibilityNeeded: Bool = false, notchless: Bool = false,
+                      size: CGSize, to url: URL) throws -> URL? {
         let model = AppModel(bridge: MockBridge())
+        if notchless {
+            model.primary.notch = NotchGeometry.fallbackSize
+            model.primary.hasNotch = false
+            model.primary.menuBarHeight = 24
+        }
         model.setForSnapshot(vm, expanded: expanded, tab: tab, section: section, pane: pane,
                              timerPane: timerPane, clipPreview: clipPreview,
                              accessibilityNeeded: accessibilityNeeded)

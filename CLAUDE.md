@@ -83,6 +83,17 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   hardware notch (`safeAreaInsets.top > 0`, `PanelState.hasNotch`)
   they are always black and that row is hidden, since the camera housing
   cannot turn white.
+  `appearance.material` (Settings → General → Panel): Solid (default) or
+  Glass, macOS 26 Liquid Glass for the open panel only; the closed notch
+  and toast stay black to blend with the hardware notch. Glass needs a
+  build with the macOS 26 SDK (`#if compiler(>=6.2)`) and macOS 26 at run
+  time (`GlassSupport`); otherwise the row is disabled with the reason and
+  the panel draws Solid. `ImageRenderer` snapshots never show glass.
+  Glass is always Apple's Frosted (`regular`) glass, untinted; there are
+  no style or tint options (tried and dropped), so the system's own glass
+  setting applies.
+  While an approval is waiting the panel is drawn Solid even with Glass
+  chosen: its text is contrast-tested against the solid colour only.
 - **Agent integration** is Claude Code hooks → `litenotch hook` (reads the
   hook JSON on stdin) → Unix socket → runtime. A `PermissionRequest` is held
   open until the user clicks Allow/Deny in the notch, the request expires

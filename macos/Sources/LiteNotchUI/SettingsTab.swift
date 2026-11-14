@@ -147,6 +147,7 @@ struct SettingsTab: View {
                               label: "Closed notch", height: 22)
             }
         }
+        materialRow
         row("Accent") {
             HStack(spacing: 5) {
                 ForEach(AccentPresets.all, id: \.self) { hex in swatch(hex) }
@@ -158,6 +159,22 @@ struct SettingsTab: View {
         row("Quit LiteNotch") {
             TextPill(title: "Quit", tint: NT.text1, height: 22) { model.app?.onQuit() }
                 .help("Quit LiteNotch")
+        }
+    }
+
+    /// Solid or Liquid Glass for the open panel. Shown everywhere so the
+    /// choice is discoverable, disabled (with the reason) where glass cannot
+    /// be drawn; a saved Glass then draws as Solid.
+    private var materialRow: some View {
+        let reason = GlassSupport.unavailableReason
+        return row("Panel", caption: reason.map { "Liquid Glass: \($0)" } ?? "") {
+            SegmentedPill(options: [(MaterialChoice.solid, "Solid"), (MaterialChoice.glass, "Glass")],
+                          selection: Binding(get: { draft.appearance.material == .glass && reason == nil ? .glass : .solid },
+                                             set: { draft.appearance.material = $0 }),
+                          label: "Panel material", height: 22)
+                .disabled(reason != nil)
+                .opacity(reason == nil ? 1 : 0.5)
+                .help(reason ?? "Liquid Glass lets the desktop show through the open panel")
         }
     }
 

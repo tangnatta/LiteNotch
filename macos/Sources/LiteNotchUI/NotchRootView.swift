@@ -15,7 +15,8 @@ extension NotchPresentation {
 /// shape grows inside it. Closed and as a toast, the shape is black with dark
 /// content by default so it blends with the hardware notch, or follows the
 /// theme when "Closed notch: Match theme" is set; open it follows the chosen
-/// theme, and the fill fades with the spring.
+/// theme (solid or Liquid Glass, see `GlassSupport`), and the fill fades
+/// with the spring.
 public struct NotchRootView: View {
     @ObservedObject var model: PanelState
     /// The window's scheme, which follows the system setting live.
@@ -54,7 +55,18 @@ public struct NotchRootView: View {
             // as part of the hardware notch; the open panel follows the theme.
             // `NT.panel` is black in the dark scheme, so "Match theme" with a
             // dark theme draws exactly what the default does.
-            shape.fill(mode == .expanded || appearance.closedFollowsTheme(hardwareNotch: model.hasNotch) ? NT.panel : Color.black)
+            // With Liquid Glass chosen (and drawable) the open panel is glass and
+            // the closed fill fades out under it. Not while an approval waits:
+            // its text is contrast-tested against the solid colour only.
+            if appearance.drawsGlass(approvalPending: !(model.view?.agents.pending.isEmpty ?? true)) {
+                shape.fill(appearance.closedFollowsTheme(hardwareNotch: model.hasNotch) ? NT.panel : Color.black)
+                    .opacity(mode == .expanded ? 0 : 1)
+                if mode == .expanded {
+                    PanelFill(shape: shape, glass: true).transition(.opacity)
+                }
+            } else {
+                shape.fill(mode == .expanded || appearance.closedFollowsTheme(hardwareNotch: model.hasNotch) ? NT.panel : Color.black)
+            }
             switch mode {
             case .closed:
                 if let c = model.view?.compact, c.kind != .idle, c.kind != .unknown {

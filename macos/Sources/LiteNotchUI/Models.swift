@@ -127,26 +127,36 @@ public enum ClosedNotchChoice: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// What the open panel is drawn with (`appearance.material`). Glass is the
+/// macOS 26 Liquid Glass material; see `GlassSupport`.
+public enum MaterialChoice: String, LenientEnum {
+    case solid, glass, unknown
+    static var unknownCase: MaterialChoice { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
 public struct AppearanceConfig: Codable, Equatable {
     public var theme: ThemeChoice
     /// `#RRGGBB`; anything unparsable falls back to the default accent.
     public var accent: String
     public var notchStyle: NotchStyle
     public var closedNotch: ClosedNotchChoice
+    public var material: MaterialChoice
 
     // Plain names: the view model is decoded with `.convertFromSnakeCase` and
     // settings are encoded with `.convertToSnakeCase`, which map them to snake_case.
-    enum CodingKeys: String, CodingKey { case theme, accent, notchStyle, closedNotch }
+    enum CodingKeys: String, CodingKey { case theme, accent, notchStyle, closedNotch, material }
 
     public static let defaultAccent = "#FF9E0A"
     public static let `default` = AppearanceConfig(theme: .system, accent: defaultAccent)
 
     public init(theme: ThemeChoice, accent: String, notchStyle: NotchStyle = .attached,
-                closedNotch: ClosedNotchChoice = .dark) {
+                closedNotch: ClosedNotchChoice = .dark, material: MaterialChoice = .solid) {
         self.theme = theme
         self.accent = accent
         self.notchStyle = notchStyle
         self.closedNotch = closedNotch
+        self.material = material
     }
 
     // `notch_style` is newer than the rest; a missing or unknown one draws
@@ -157,6 +167,7 @@ public struct AppearanceConfig: Codable, Equatable {
         accent = (try? c.decodeIfPresent(String.self, forKey: .accent)) ?? Self.defaultAccent
         notchStyle = (try? c.decodeIfPresent(NotchStyle.self, forKey: .notchStyle)) ?? .attached
         closedNotch = (try? c.decodeIfPresent(ClosedNotchChoice.self, forKey: .closedNotch)) ?? .dark
+        material = (try? c.decodeIfPresent(MaterialChoice.self, forKey: .material)) ?? .solid
     }
 
     // An unknown value is left out so the core keeps its own.
@@ -166,7 +177,17 @@ public struct AppearanceConfig: Codable, Equatable {
         try c.encode(accent, forKey: .accent)
         if notchStyle != .unknown { try c.encode(notchStyle, forKey: .notchStyle) }
         if closedNotch != .unknown { try c.encode(closedNotch, forKey: .closedNotch) }
+        if material != .unknown { try c.encode(material, forKey: .material) }
     }
+
+    /// Whether the open panel is drawn with Liquid Glass: chosen, and this
+    /// build and system can draw it.
+    public var usesGlass: Bool { material == .glass && GlassSupport.available }
+
+    /// Whether to draw the open panel as glass right now. Never while an
+    /// approval is waiting: that text has to read over any wallpaper, and it
+    /// is contrast-tested against the solid panel colour only.
+    public func drawsGlass(approvalPending: Bool) -> Bool { usesGlass && !approvalPending }
 }
 
 public struct PomodoroConfig: Codable, Equatable {

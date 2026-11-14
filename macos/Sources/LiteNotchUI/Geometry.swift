@@ -130,7 +130,7 @@ extension NotchGeometry {
     /// around, so only a little room between the two sides.
     public static let floatingCenterWidth: CGFloat = 50
     /// The floating toast overlaps the bottom of the menu bar by this much.
-    public static let floatingToastLift: CGFloat = 12
+    public static let floatingToastLift: CGFloat = 8
     /// Gap between the bottom of the menu bar and the floating panel.
     public static let floatingPanelDrop: CGFloat = 0
     /// Space between a floating wing's content and the capsule's round end.

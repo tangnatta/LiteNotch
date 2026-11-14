@@ -73,7 +73,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   Two notch styles (`appearance.notch_style`, Settings → General): Attached
   (default, the original geometry; keep it pixel-identical for existing
   users) and Floating, a capsule inset 3 pt inside the menu bar or notch
-  band, with the toast overlapping it by 12 pt and the panel just below.
+  band, with the toast overlapping it by 8 pt and the panel just below.
   Floating sizes derive from the measured menu bar height; all geometry
   lives in `NotchLayout` (`Geometry.swift`).
   The theme (`appearance.theme`) styles the open panel. The closed notch

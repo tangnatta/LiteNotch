@@ -12,9 +12,10 @@ extension NotchPresentation {
 }
 
 /// The SwiftUI root hosted by one panel. The window never resizes; the
-/// shape grows inside it. Closed, the shape is black with dark content in
-/// every theme so it blends with the hardware notch; open (and as a toast)
-/// it follows the chosen theme, and the fill fades with the spring.
+/// shape grows inside it. Closed and as a toast, the shape is black with dark
+/// content by default so it blends with the hardware notch, or follows the
+/// theme when "Closed notch: Match theme" is set; open it follows the chosen
+/// theme, and the fill fades with the spring.
 public struct NotchRootView: View {
     @ObservedObject var model: PanelState
     /// The window's scheme, which follows the system setting live.
@@ -33,6 +34,7 @@ public struct NotchRootView: View {
         let scheme = appearance.theme.scheme(system: systemScheme)
         let layout = model.layout
         let top = layout.top(for: mode)
+        let closedScheme = appearance.closedScheme(system: systemScheme, hardwareNotch: model.hasNotch)
         let ear = mode == .expanded ? NotchGeometry.expandedEar : NotchGeometry.closedEar
         let bottom: CGFloat = {
             switch mode {
@@ -48,10 +50,11 @@ public struct NotchRootView: View {
             : NotchShape(topRadius: ear, bottomRadius: bottom)
 
         ZStack(alignment: .top) {
-            // Closed and as a toast the shape is black in every theme, so it
-            // reads as part of the hardware notch; only the open panel follows
-            // the theme.
-            shape.fill(mode == .expanded ? NT.panel : Color.black)
+            // Closed and as a toast the shape is black by default, so it reads
+            // as part of the hardware notch; the open panel follows the theme.
+            // `NT.panel` is black in the dark scheme, so "Match theme" with a
+            // dark theme draws exactly what the default does.
+            shape.fill(mode == .expanded || appearance.closedFollowsTheme(hardwareNotch: model.hasNotch) ? NT.panel : Color.black)
             switch mode {
             case .closed:
                 if let c = model.view?.compact, c.kind != .idle, c.kind != .unknown {
@@ -70,7 +73,7 @@ public struct NotchRootView: View {
                                                artworkPath: model.view?.media?.artworkPath)
                         }
                     }
-                        .environment(\.colorScheme, .dark)
+                        .environment(\.colorScheme, closedScheme)
                         .transition(.opacity)
                 }
             case .toast:
@@ -79,7 +82,7 @@ public struct NotchRootView: View {
                               rowHeight: NotchGeometry.toastExtraHeight - (layout.floating ? 0 : 6), ear: ear,
                               open: { model.openNotification(b, isBanner: true) },
                               dismiss: { model.send(.notifyDismissBanner) })
-                        .environment(\.colorScheme, .dark)
+                        .environment(\.colorScheme, closedScheme)
                         .transition(.opacity)
                 }
             case .expanded:
@@ -149,7 +152,7 @@ struct ClosedActivityView: View {
         case .meeting:
             Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold)).foregroundStyle(NT.accentText)
         case .approval:
-            Circle().fill(NT.accent).frame(width: 9, height: 9)
+            Circle().fill(NT.accentText).frame(width: 9, height: 9)
         case .banner:
             Image(systemName: "bell.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
         case .idle, .unknown:
@@ -234,15 +237,19 @@ private extension Text {
 struct MediaBars: View {
     var active: Bool
     @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.colorScheme) private var scheme
     static let base: [CGFloat] = [6, 11, 8, 12]
 
     var body: some View {
+        // `accentText`: the accent, darkened on a light surface until it
+        // reads (a pale accent on white would all but vanish).
         if active && !snapshot {
-            AnimatedBars().frame(width: 16, height: 14)
+            AnimatedBars(color: NSColor(NT.accentText).resolved(dark: scheme == .dark))
+                .frame(width: 16, height: 14)
         } else {
             HStack(alignment: .center, spacing: 2) {
                 ForEach(0..<4, id: \.self) { i in
-                    Capsule().fill(NT.accent).frame(width: 2.5, height: Self.base[i])
+                    Capsule().fill(NT.accentText).frame(width: 2.5, height: Self.base[i])
                 }
             }
             .frame(height: 14)
@@ -251,6 +258,10 @@ struct MediaBars: View {
 }
 
 private struct AnimatedBars: NSViewRepresentable {
+    /// Already resolved for the scheme: a layer's `CGColor` does not follow
+    /// SwiftUI's environment.
+    let color: CGColor
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 16, height: 14))
         view.wantsLayer = true
@@ -259,7 +270,7 @@ private struct AnimatedBars: NSViewRepresentable {
         let durations: [CFTimeInterval] = [0.42, 0.34, 0.50, 0.38]
         for i in 0..<4 {
             let bar = CALayer()
-            bar.backgroundColor = NSColor(NT.accent).cgColor
+            bar.backgroundColor = color
             bar.cornerRadius = 1.25
             bar.bounds = CGRect(x: 0, y: 0, width: 2.5, height: MediaBars.base[i])
             bar.position = CGPoint(x: 1.25 + CGFloat(i) * 4.5, y: 7)
@@ -278,7 +289,23 @@ private struct AnimatedBars: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    /// Only the colour changes (a theme switch); the running animations
+    /// are left alone.
+    func updateNSView(_ nsView: NSView, context: Context) {
+        for bar in nsView.layer?.sublayers ?? [] where bar.backgroundColor != color {
+            bar.backgroundColor = color
+        }
+    }
+}
+
+extension NSColor {
+    /// This (dynamic) colour as it draws in the dark or the light appearance.
+    func resolved(dark: Bool) -> CGColor {
+        var out = cgColor
+        let appearance = NSAppearance(named: dark ? .darkAqua : .aqua) ?? NSAppearance.currentDrawing()
+        appearance.performAsCurrentDrawingAppearance { out = self.cgColor }
+        return out
+    }
 }
 
 // MARK: - Toast

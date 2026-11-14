@@ -387,7 +387,8 @@ public final class PanelState: ObservableObject {
     @Published public var keyboardRequested = false
     /// Size of the physical (or fallback) notch; set by the panel controller.
     @Published public var notch = CGSize(width: 183, height: 32)
-    /// False when `notch` is only the stand-in on a screen without one.
+    /// False when `notch` is only the stand-in on a screen without one. With
+    /// a real notch the closed shape stays black whatever `closed_notch` says.
     @Published public var hasNotch = true
     /// Height of this screen's menu bar; 0 when hidden or unknown.
     @Published public var menuBarHeight: CGFloat = 0

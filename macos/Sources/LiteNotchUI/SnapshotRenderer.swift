@@ -90,6 +90,21 @@ public enum SnapshotRenderer {
                 var light = vm
                 light.settings.appearance.theme = .light
                 try add("light-banner-closed", light, expanded: false)
+                light.settings.appearance.closedNotch = .theme
+                try add("light-matched-banner-closed", light, expanded: false, notchless: true)
+            }
+            // "Closed notch: Match theme" in the light theme: every closed
+            // activity, plus the toast above. Without a notch: with one the
+            // closed shape stays black.
+            if name != "banner" && name != "idle" {
+                var matched = vm
+                matched.settings.appearance.theme = .light
+                matched.settings.appearance.closedNotch = .theme
+                try add("light-matched-\(name)-closed", matched, expanded: false, notchless: true)
+                var darkMatched = vm
+                darkMatched.settings.appearance.theme = .dark
+                darkMatched.settings.appearance.closedNotch = .theme
+                try add("dark-matched-\(name)-closed", darkMatched, expanded: false, notchless: true)
             }
             if name == "media" {
                 var colored = vm

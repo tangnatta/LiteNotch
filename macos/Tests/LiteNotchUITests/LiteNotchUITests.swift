@@ -244,7 +244,8 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(Set(inner.allKeys as! [String]),
                        ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics"])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
-        XCTAssertEqual(inner["appearance"] as? NSDictionary, ["theme": "system", "accent": "#FF9E0A"])
+        XCTAssertEqual(inner["appearance"] as? NSDictionary,
+                       ["theme": "system", "accent": "#FF9E0A", "notch_style": "attached"])
         XCTAssertEqual((inner["media"] as! NSDictionary)["enabled"] as? Bool, true)
         XCTAssertEqual((inner["notify"] as! NSDictionary)["system"] as? Bool, false)
         XCTAssertEqual(Tab.allCases.map(\.rawValue), ["home", "music", "timer", "clipboard", "agents", "inbox", "settings"])
@@ -975,10 +976,11 @@ final class NewCommandTests: XCTestCase {
     func testSettingsCarryTheNewFields() throws {
         var s = try loadFixture("idle").settings
         s.general.allScreens = true
-        s.appearance = AppearanceConfig(theme: .light, accent: "#30D158")
+        s.appearance = AppearanceConfig(theme: .light, accent: "#30D158", notchStyle: .floating)
         let inner = try obj(ShellCommand.setSettings(s).encode())["settings"] as! NSDictionary
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, true)
-        XCTAssertEqual(inner["appearance"] as? NSDictionary, ["theme": "light", "accent": "#30D158"])
+        XCTAssertEqual(inner["appearance"] as? NSDictionary,
+                       ["theme": "light", "accent": "#30D158", "notch_style": "floating"])
     }
 }
 

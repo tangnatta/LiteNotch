@@ -49,6 +49,9 @@ pub struct Env {
     /// terminal or editor running Claude Code), so the notch can bring it
     /// forward.
     pub app: Option<String>,
+    /// The terminal device this process runs on (`ttys003`), so the notch
+    /// can bring that window forward and not just the app.
+    pub tty: Option<String>,
 }
 
 impl Env {
@@ -67,6 +70,7 @@ impl Env {
             app: std::env::var("__CFBundleIdentifier")
                 .ok()
                 .filter(|s| !s.is_empty()),
+            tty: controlling_tty(),
         }
     }
 
@@ -166,6 +170,70 @@ pub fn run(
     }
 }
 
+/// The terminal device of this process, or of the nearest ancestor that has
+/// one: Claude Code may run a hook without a terminal of its own, but it sits
+/// in the tab's. Two or three system calls; no process is started.
+#[cfg(target_os = "macos")]
+pub fn controlling_tty() -> Option<String> {
+    use std::ffi::{c_char, c_int, c_void, CStr};
+    extern "C" {
+        fn devname_r(
+            dev: libc::dev_t,
+            mode: libc::mode_t,
+            buf: *mut c_char,
+            len: c_int,
+        ) -> *mut c_char;
+    }
+    const NO_DEVICE: u32 = u32::MAX;
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as c_int;
+    let mut pid = std::process::id() as c_int;
+    for _ in 0..8 {
+        // SAFETY: an all-zero `proc_bsdinfo` is a valid value of this plain C struct.
+        let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+        // SAFETY: the buffer is a `proc_bsdinfo` and `size` is its size.
+        let n = unsafe {
+            libc::proc_pidinfo(
+                pid,
+                libc::PROC_PIDTBSDINFO,
+                0,
+                (&mut info as *mut libc::proc_bsdinfo).cast::<c_void>(),
+                size,
+            )
+        };
+        if n != size {
+            return None;
+        }
+        if info.e_tdev != NO_DEVICE && info.e_tdev != 0 {
+            let mut buf = [0 as c_char; 64];
+            // SAFETY: `buf` is writable for the length passed.
+            let name = unsafe {
+                devname_r(
+                    info.e_tdev as libc::dev_t,
+                    libc::S_IFCHR,
+                    buf.as_mut_ptr(),
+                    buf.len() as c_int,
+                )
+            };
+            if name.is_null() {
+                return None;
+            }
+            // SAFETY: `devname_r` wrote a NUL-terminated name into `buf`.
+            let name = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().ok()?;
+            return litenotch_core::agent::valid_tty(name).then(|| name.to_owned());
+        }
+        if info.pbi_ppid <= 1 {
+            return None;
+        }
+        pid = info.pbi_ppid as c_int;
+    }
+    None
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn controlling_tty() -> Option<String> {
+    None
+}
+
 fn hook(env: &Env, stdin: &mut dyn Read, stdout: &mut dyn Write) -> i32 {
     let Some(mut payload) = read_input(stdin) else {
         return 0;
@@ -174,8 +242,12 @@ fn hook(env: &Env, stdin: &mut dyn Read, stdout: &mut dyn Write) -> i32 {
     // payload is never passed on.
     if let Some(obj) = payload.as_object_mut() {
         obj.remove("litenotch_app");
+        obj.remove("litenotch_tty");
         if let Some(app) = &env.app {
             obj.insert("litenotch_app".into(), Value::String(app.clone()));
+        }
+        if let Some(tty) = &env.tty {
+            obj.insert("litenotch_tty".into(), Value::String(tty.clone()));
         }
     }
     let is_permission =

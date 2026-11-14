@@ -133,6 +133,14 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   id the CLI adds to each hook payload as `litenotch_app` (from
   `__CFBundleIdentifier`). Other apps' banners get a unique group starting
   with NUL, which the socket path strips, so nothing else can pose as one.
+  The CLI also adds the session's terminal device as `litenotch_tty`
+  (`ttys003`; its own or the nearest ancestor's, from `proc_pidinfo`), and
+  the target carries it as `tty`. For Terminal and iTerm2 the shell asks the
+  app, by AppleScript through `osascript`, to raise the window and tab on
+  that device (`TerminalWindow.swift`); macOS asks the user once whether
+  LiteNotch may control the terminal. Other terminals have no such
+  interface: there, and whenever the script fails or is not allowed, only
+  the app is activated.
 - **Accessibility and ad-hoc signing**: an ad-hoc signed app's identity is
   its cdhash, so every rebuild loses the Accessibility permission even
   though System Settings still shows it on. "Reset and ask again" runs
@@ -204,7 +212,16 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   - Socket notifications cannot use the core's own sources (`agent`,
     `litenotch`, …) or the captured-banner group; they get "(script)".
   - The app and CLI are signed with the hardened runtime (no `DYLD_*`
-    injection to borrow the Accessibility permission). Keep it on.
+    injection to borrow the Accessibility permission). Keep it on. The app
+    has one entitlement, `com.apple.security.automation.apple-events`, so
+    macOS can ask whether it may control the terminal.
+  - With that permission LiteNotch could tell the terminal to do anything,
+    so the scripts it sends are fixed text that only select a tab and raise
+    a window (no `do script`, no `write text`; tested). The terminal device
+    is accepted only as `ttys` plus one to four digits, in the core and
+    again in the shell, and is passed to `osascript` as an argument, never
+    written into a script. The CLI drops any `litenotch_tty` already in a
+    payload and adds its own.
   - The socket lives in a 0700 directory with mode 0600; server and CLI both
     check the peer uid. A request line must arrive within 5 s in total.
 - Anything that moves continuously in the shell (the equaliser bars) must be
@@ -297,6 +314,12 @@ the plain animation.
   tests but not by a real click.
 - Media transport commands (play/pause/next) are sent through the helper but
   were not exercised against a real player.
+- Raising a session's own terminal window: the Terminal script was run by
+  hand (it finds a tab by its device and raises it), and the CLI finds the
+  device. Not exercised: the click in the real app, macOS's "LiteNotch wants
+  to control Terminal" question (which, like Accessibility, an ad-hoc signed
+  build has to be asked again after an update), and the iTerm2 script
+  (written from its scripting dictionary, never run).
 - The Floating notch style has been seen on a Mac without a notch only, not
   on one with a notch.
 

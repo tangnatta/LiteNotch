@@ -237,8 +237,13 @@ public final class AppModel: ObservableObject {
     public static func activate(_ target: OpenTarget) {
         let ws = NSWorkspace.shared
         switch target {
-        case .app(let id):
+        case .app(let id, let tty):
             if let running = NSRunningApplication.runningApplications(withBundleIdentifier: id).first {
+                // The session's own window where the terminal can be asked
+                // for it; otherwise (or if that fails) just the app.
+                if let tty, TerminalWindow.focus(bundleId: id, tty: tty, fallback: { running.activate() }) {
+                    return
+                }
                 running.activate()
             } else if let url = ws.urlForApplication(withBundleIdentifier: id), mayLaunch(url) {
                 ws.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
@@ -502,7 +507,7 @@ public final class PanelState: ObservableObject {
     /// A click on a session row: brings its terminal forward when known.
     public func openSession(_ s: AgentSession) {
         guard let app = s.app else { return }
-        follow(.app(bundleId: app))
+        follow(.app(bundleId: app, tty: s.tty))
     }
 
     /// The tab-bar eyedropper: the panel gets out of the way first.

@@ -10,5 +10,8 @@ litenotch-core.workspace = true
 litenotch-files.workspace = true
 serde_json.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 litenotch-app.workspace = true

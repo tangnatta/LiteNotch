@@ -386,19 +386,26 @@ public struct ClipboardView: Codable, Equatable {
 
 /// Where clicking a notification or session takes the user.
 public enum OpenTarget: Codable, Equatable {
-    /// Bring an app forward by bundle id (a session's terminal).
-    case app(bundleId: String)
+    /// Bring an app forward by bundle id (a session's terminal). With `tty`
+    /// (`ttys003`), the window and tab on that terminal device, in terminals
+    /// that can be asked for one (`TerminalWindow`).
+    case app(bundleId: String, tty: String? = nil)
     /// Bring an app forward by name (another app's notification).
     case appNamed(String)
     /// A tab in the notch, and a sub-view of it where there is one.
     case tab(Tab, pane: String?)
 
-    private enum Keys: String, CodingKey { case kind, bundleId, name, tab, pane }
+    private enum Keys: String, CodingKey { case kind, bundleId, name, tab, pane, tty }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         switch try c.decode(String.self, forKey: .kind) {
-        case "app": self = .app(bundleId: try c.decode(String.self, forKey: .bundleId))
+        case "app":
+            // Anything that is not a terminal device name is dropped.
+            let tty = ((try? c.decodeIfPresent(String.self, forKey: .tty)) ?? nil).flatMap {
+                TerminalWindow.validTTY($0) ? $0 : nil
+            }
+            self = .app(bundleId: try c.decode(String.self, forKey: .bundleId), tty: tty)
         case "app_named": self = .appNamed(try c.decode(String.self, forKey: .name))
         case "tab":
             guard let tab = Tab(rawValue: try c.decode(String.self, forKey: .tab)) else {
@@ -413,7 +420,9 @@ public enum OpenTarget: Codable, Equatable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Keys.self)
         switch self {
-        case .app(let id): try c.encode("app", forKey: .kind); try c.encode(id, forKey: .bundleId)
+        case .app(let id, let tty):
+            try c.encode("app", forKey: .kind); try c.encode(id, forKey: .bundleId)
+            try c.encodeIfPresent(tty, forKey: .tty)
         case .appNamed(let n): try c.encode("app_named", forKey: .kind); try c.encode(n, forKey: .name)
         case .tab(let t, let p):
             try c.encode("tab", forKey: .kind); try c.encode(t.rawValue, forKey: .tab)
@@ -473,6 +482,14 @@ public struct AgentSession: Codable, Equatable, Identifiable {
     public var lastMessage: String?
     /// Bundle id of the terminal or editor it runs in, when known.
     public var app: String?
+    /// The terminal device it runs on (`ttys003`), when known.
+    public var tty: String?
+
+    public init(id: String, project: String, cwd: String, status: AgentStatus, lastEventMs: Int,
+                lastMessage: String? = nil, app: String? = nil, tty: String? = nil) {
+        self.id = id; self.project = project; self.cwd = cwd; self.status = status
+        self.lastEventMs = lastEventMs; self.lastMessage = lastMessage; self.app = app; self.tty = tty
+    }
 }
 
 public struct PermissionRequest: Codable, Equatable, Identifiable {

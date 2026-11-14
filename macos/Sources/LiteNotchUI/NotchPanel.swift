@@ -48,7 +48,10 @@ final class NotchHostingView: NSHostingView<NotchRootView> {
         let rect = NotchGeometry.shapeRect(in: bounds.size, shape: shapeSize(), flipped: isFlipped)
         guard rect.contains(local) else { return nil }
         let p = CGPoint(x: local.x - rect.minX, y: isFlipped ? local.y - rect.minY : rect.maxY - local.y)
-        return shapeContains(p) ? super.hitTest(point) : nil
+        guard shapeContains(p) else { return nil }
+        // Inside the shape something always takes the event. SwiftUI answers
+        // nil over its empty areas, and a scroll there went to the app behind.
+        return super.hitTest(point) ?? self
     }
 }
 

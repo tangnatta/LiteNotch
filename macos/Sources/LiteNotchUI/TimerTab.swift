@@ -362,7 +362,7 @@ struct CountdownPane: View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 SectionLabel(text: "Length in minutes")
-                Text(verbatim: "Or click the time to type one")
+                Text(verbatim: "Or click the time or this number to type")
                     .nfont(.caption).foregroundStyle(NT.text3).lineLimit(1)
             }
             Spacer(minLength: 4)

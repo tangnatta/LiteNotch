@@ -88,12 +88,16 @@ Quick controls on the right of the bar:
 
 ### What macOS may ask for
 
-LiteNotch works without any permission. Two optional features need one:
+LiteNotch works without any permission. Three optional features need one:
 
 - **Other apps' notifications:** turn on in **Inbox**, then allow LiteNotch
   in **System Settings › Privacy & Security › Accessibility**. macOS forgets
   this permission when LiteNotch is updated; use **Reset and ask again** in
   the inbox to restore it.
+- **Going to a session's own terminal window:** the first time you click a
+  Claude Code session, macOS asks whether LiteNotch may control Terminal (or
+  iTerm2). Allow it and the click raises that session's window and tab. If
+  you don't, the click still brings the terminal app forward.
 - **Keep awake with the lid closed:** asks for your administrator password
   each time you turn it on.
 
@@ -107,7 +111,9 @@ can approve or deny them without finding the right terminal window.
 2. Start a new Claude Code session. It appears under **Agents**, and its
    requests open the notch with **Allow**, **Deny**, or **Answer in Terminal**.
 
-Clicking a session brings its terminal to the front. If LiteNotch isn't
+Clicking a session brings its terminal window to the front (the exact
+window and tab in Terminal and iTerm2, the app in other terminals). Sessions
+that were already running pick this up at their next prompt. If LiteNotch isn't
 running, Claude Code behaves exactly as before. **Disconnect** undoes it (a
 backup of your settings is kept as `settings.json.litenotch-backup`).
 

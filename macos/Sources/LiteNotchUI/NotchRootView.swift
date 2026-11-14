@@ -99,6 +99,7 @@ public struct NotchRootView: View {
                 }
             case .expanded:
                 ExpandedView(model: model, ear: ear)
+                    .environment(\.requestKeyboard, { [weak model] on in model?.requestKeyboard(on) })
                     .padding(.top, top)
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }

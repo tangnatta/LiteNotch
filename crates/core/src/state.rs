@@ -1297,14 +1297,12 @@ impl Core {
         match n.source.as_str() {
             "agent" => {
                 let session = n.group.as_deref()?.strip_prefix("agent-")?;
-                let app = self
-                    .agents
-                    .sessions()
-                    .iter()
-                    .find(|s| s.id == session)
-                    .and_then(|s| s.app.clone());
-                match app {
-                    Some(bundle_id) => Some(OpenTarget::App { bundle_id }),
+                let found = self.agents.sessions().iter().find(|s| s.id == session);
+                match found.and_then(|s| s.app.clone()) {
+                    Some(bundle_id) => Some(OpenTarget::App {
+                        bundle_id,
+                        tty: found.and_then(|s| s.tty.clone()),
+                    }),
                     None => tab("agents", Some("sessions")),
                 }
             }
@@ -3237,7 +3235,7 @@ mod tests {
         // An agent notification opens the session's terminal.
         c.hook(
             &json!({"hook_event_name":"Stop","session_id":"s9","cwd":"/w/api",
-                    "litenotch_app":"com.apple.Terminal"})
+                    "litenotch_app":"com.apple.Terminal","litenotch_tty":"ttys003"})
             .to_string(),
             T0 + 1,
         );
@@ -3251,12 +3249,23 @@ mod tests {
         assert_eq!(
             agent.open,
             Some(OpenTarget::App {
-                bundle_id: "com.apple.Terminal".into()
+                bundle_id: "com.apple.Terminal".into(),
+                tty: Some("ttys003".into()),
             })
         );
         assert_eq!(
             v.agents.sessions[0].app.as_deref(),
             Some("com.apple.Terminal")
+        );
+        assert_eq!(v.agents.sessions[0].tty.as_deref(), Some("ttys003"));
+        // The device is left out of the JSON when it is not known.
+        let bare = OpenTarget::App {
+            bundle_id: "com.apple.Terminal".into(),
+            tty: None,
+        };
+        assert_eq!(
+            serde_json::to_value(&bare).unwrap(),
+            json!({"kind":"app","bundle_id":"com.apple.Terminal"})
         );
 
         // Without a known terminal it opens the Agents tab; own ones open their tab.

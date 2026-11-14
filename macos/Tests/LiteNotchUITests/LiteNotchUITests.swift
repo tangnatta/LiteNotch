@@ -1517,6 +1517,79 @@ final class ReportedIssueTests: XCTestCase {
         s.app = "com.apple.Terminal"
         p.openSession(s)
         XCTAssertEqual(activated, [.app(bundleId: "com.apple.Terminal")])
+        // Reported: with several sessions a click raised whichever Terminal
+        // window was on top. The session's terminal device goes along, so
+        // its own window can be raised.
+        s.tty = "ttys003"
+        p.openSession(s)
+        XCTAssertEqual(activated.last, .app(bundleId: "com.apple.Terminal", tty: "ttys003"))
+    }
+
+    func testOnlyATerminalDeviceNameReachesTheWindowScript() throws {
+        for good in ["ttys0", "ttys003", "ttys9999"] { XCTAssertTrue(TerminalWindow.validTTY(good), good) }
+        for bad in ["", "ttys", "ttys12345", "/dev/ttys003", "ttys3a", "console", "ttys-1", "ttys３",
+                    "ttys3\" & do shell script \"id"] {
+            XCTAssertFalse(TerminalWindow.validTTY(bad), bad)
+            XCTAssertFalse(TerminalWindow.focus(bundleId: "com.apple.Terminal", tty: bad, fallback: {}))
+        }
+        // Terminal and iTerm2 can be asked for a tab; other apps are just activated.
+        XCTAssertNotNil(TerminalWindow.script(bundleId: "com.apple.Terminal"))
+        XCTAssertNotNil(TerminalWindow.script(bundleId: "com.googlecode.iterm2"))
+        XCTAssertNil(TerminalWindow.script(bundleId: "com.mitchellh.ghostty"))
+        XCTAssertFalse(TerminalWindow.focus(bundleId: "com.mitchellh.ghostty", tty: "ttys003", fallback: {}))
+        // The device is an argument to the script, never part of its text.
+        let script = try XCTUnwrap(TerminalWindow.script(bundleId: "com.apple.Terminal"))
+        XCTAssertEqual(TerminalWindow.arguments(script: script, tty: "ttys003"), ["-e", script, "/dev/ttys003"])
+        XCTAssertFalse(script.contains("ttys"))
+        XCTAssertFalse(script.contains("do shell script"))
+        XCTAssertFalse(script.contains("do script"))
+        XCTAssertFalse(TerminalWindow.iTermScript.contains("write text"))
+
+        // From the core: the device rides on the app target, and a bad one is dropped.
+        let d = JSONDecoder(); d.keyDecodingStrategy = .convertFromSnakeCase
+        func target(_ json: String) throws -> OpenTarget { try d.decode(OpenTarget.self, from: Data(json.utf8)) }
+        XCTAssertEqual(try target(#"{"kind":"app","bundle_id":"com.apple.Terminal","tty":"ttys012"}"#),
+                       .app(bundleId: "com.apple.Terminal", tty: "ttys012"))
+        XCTAssertEqual(try target(#"{"kind":"app","bundle_id":"com.apple.Terminal","tty":"x; rm"}"#),
+                       .app(bundleId: "com.apple.Terminal"))
+        XCTAssertEqual(try target(#"{"kind":"app","bundle_id":"com.apple.Terminal"}"#),
+                       .app(bundleId: "com.apple.Terminal"))
+        let session = try d.decode(AgentSession.self, from: Data(#"""
+        {"id":"s","project":"p","cwd":"/p","status":"idle","last_event_ms":0,"last_message":null,
+         "app":"com.apple.Terminal","tty":"ttys004"}
+        """#.utf8))
+        XCTAssertEqual(session.tty, "ttys004")
+    }
+
+    /// Reported: the number in a `− 12 +` pill could only be stepped, which
+    /// is slow for a long agenda item. It can be clicked and typed.
+    func testATypedStepperValueIsAWholeNumberClampedToTheRange() {
+        XCTAssertEqual(MiniStepper.typedValue("45", range: 1...240), 45)
+        XCTAssertEqual(MiniStepper.typedValue(" 7 ", range: 1...240), 7)
+        XCTAssertEqual(MiniStepper.typedValue("0", range: 1...240), 1)
+        XCTAssertEqual(MiniStepper.typedValue("999", range: 1...240), 240)
+        for bad in ["", "  ", "abc", "1.5", "-3", "1:30", "12m", "９", "1234567"] {
+            XCTAssertNil(MiniStepper.typedValue(bad, range: 1...240), bad)
+        }
+    }
+
+    /// Reported: scrolling with the pointer over an empty part of Settings
+    /// scrolled the app behind. Inside the shape the panel always takes the
+    /// event; outside it, clicks still fall through.
+    @MainActor
+    func testEveryPointInsideTheShapeIsHitAndOutsideFallsThrough() throws {
+        let p = try panel()
+        p.open()
+        let host = NotchHostingView(rootView: NotchRootView(model: p))
+        host.frame = NSRect(x: 0, y: 0, width: 700, height: 400)
+        host.shapeSize = { CGSize(width: 600, height: 280) }
+        // No SwiftUI content answers in an empty host, so only the override can.
+        let inside = NSPoint(x: 350, y: host.isFlipped ? 100 : 300)
+        XCTAssertNotNil(host.hitTest(inside))
+        let outside = NSPoint(x: 10, y: host.isFlipped ? 390 : 10)
+        XCTAssertNil(host.hitTest(outside))
+        host.shapeContains = { _ in false }
+        XCTAssertNil(host.hitTest(inside))
     }
 }
 

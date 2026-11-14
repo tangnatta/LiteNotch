@@ -167,6 +167,9 @@ extension AppearanceConfig {
 
 private struct SnapshotKey: EnvironmentKey { static let defaultValue = false }
 private struct ClockOffsetKey: EnvironmentKey { static let defaultValue = 0 }
+private struct KeyboardRequestKey: EnvironmentKey {
+    static let defaultValue: (Bool) -> Void = { _ in }
+}
 
 extension EnvironmentValues {
     /// True when rendering with `ImageRenderer`, which cannot draw AppKit-backed
@@ -179,6 +182,12 @@ extension EnvironmentValues {
     var clockOffsetMs: Int {
         get { self[ClockOffsetKey.self] }
         set { self[ClockOffsetKey.self] = newValue }
+    }
+    /// Asks the panel to take (or give back) the keyboard, for controls that
+    /// have a text field but no `PanelState` of their own.
+    var requestKeyboard: (Bool) -> Void {
+        get { self[KeyboardRequestKey.self] }
+        set { self[KeyboardRequestKey.self] = newValue }
     }
 }
 
@@ -216,9 +225,14 @@ struct NotchScroll<Content: View>: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()
         } else {
+            // The content shapes make the gaps between rows, and the space
+            // below a short list, part of the scroll view for the pointer:
+            // without them the wheel did nothing there.
             ScrollView(.vertical, showsIndicators: false) {
                 content.frame(maxWidth: .infinity, alignment: .topLeading)
+                    .contentShape(Rectangle())
             }
+            .contentShape(Rectangle())
         }
     }
 }
@@ -427,19 +441,33 @@ struct NotchToggle: View {
     }
 }
 
+/// A `− 12 +` pill. The number is a button: click it to type a value,
+/// Return (or clicking elsewhere) applies it, Esc keeps the old one.
 struct MiniStepper: View {
     @Binding var value: Int
     var range: ClosedRange<Int>
     var step: Int = 1
     var label: String = ""
 
+    @Environment(\.requestKeyboard) private var requestKeyboard
+    /// The text being typed; nil when showing the value.
+    @State private var typed: String?
+    @FocusState private var focused: Bool
+
+    /// What typed text sets the value to: a whole number, clamped to the
+    /// range. Nil when it is not a number, so the old value stays.
+    static func typedValue(_ text: String, range: ClosedRange<Int>) -> Int? {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty, t.count <= 6, t.allSatisfy({ $0.isASCII && $0.isNumber }), let n = Int(t) else {
+            return nil
+        }
+        return min(max(n, range.lowerBound), range.upperBound)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             stepButton("minus", delta: -step, name: "Decrease")
-            Text(verbatim: "\(value)")
-                .nfont(.bodyMedium).monospacedDigit()
-                .foregroundStyle(NT.text1)
-                .frame(minWidth: 26)
+            number
             stepButton("plus", delta: step, name: "Increase")
         }
         .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
@@ -447,8 +475,62 @@ struct MiniStepper: View {
         .accessibilityLabel(Text(verbatim: label))
     }
 
+    @ViewBuilder private var number: some View {
+        if typed != nil {
+            TextField("", text: Binding(get: { typed ?? "" },
+                                        set: { typed = String($0.filter { $0.isASCII && $0.isNumber }.prefix(4)) }),
+                      prompt: Text(verbatim: "\(value)"))
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.center)
+                .font(NType.bodyMedium.font)
+                .monospacedDigit()
+                .foregroundStyle(NT.text1)
+                .frame(width: 34, height: 22)
+                .focused($focused)
+                .onSubmit(commit)
+                .onExitCommand(perform: cancel)
+                .onChange(of: focused) { _, f in if !f { commit() } }
+                .accessibilityLabel(Text(verbatim: label))
+        } else {
+            Button(action: begin) {
+                Text(verbatim: "\(value)")
+                    .nfont(.bodyMedium).monospacedDigit()
+                    .foregroundStyle(NT.text1)
+                    .frame(minWidth: 26, minHeight: 22)
+                    .contentShape(Rectangle())
+                    .controlHover(RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .help("Click to type \(label.isEmpty ? "a value" : label.lowercased())")
+            .accessibilityLabel(Text(verbatim: "\(label): \(value). Click to type."))
+        }
+    }
+
+    private func begin() {
+        typed = ""
+        requestKeyboard(true)
+        DispatchQueue.main.async { focused = true }
+    }
+
+    private func commit() {
+        guard let text = typed else { return }
+        if let v = Self.typedValue(text, range: range) { value = v }
+        cancel()
+    }
+
+    private func cancel() {
+        guard typed != nil else { return }
+        typed = nil
+        focused = false
+        requestKeyboard(false)
+    }
+
     private func stepButton(_ symbol: String, delta: Int, name: String) -> some View {
-        Button { value = min(max(value + delta, range.lowerBound), range.upperBound) } label: {
+        Button {
+            // A number being typed is applied first, then stepped.
+            commit()
+            value = min(max(value + delta, range.lowerBound), range.upperBound)
+        } label: {
             Image(systemName: symbol).glyph(9, .bold)
                 .foregroundStyle(NT.text2)
                 .frame(width: 22, height: 22)

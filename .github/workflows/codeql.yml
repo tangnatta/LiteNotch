@@ -7,13 +7,16 @@ name: CodeQL
 #
 # Default setup must be off for these results to be accepted: Settings ›
 # Code security › Code scanning › CodeQL analysis › switch to advanced.
+#
+# Weekly, not on every push or pull request: the Swift scan takes about
+# 18 minutes (CodeQL traces the whole build, in x86_64 emulation). It scans
+# `main`, so a finding shows up within a week of merging, not before. Run it
+# by hand from the Actions tab (Run workflow) before a release or after a
+# change that deserves a look sooner.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   schedule:
-    - cron: "27 3 * * 1"
+    - cron: "27 3 * * 1" # Mondays 03:27 UTC
+  workflow_dispatch:
 
 permissions:
   contents: read

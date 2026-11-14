@@ -179,7 +179,9 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   clippy, tests under coverage, the app build, Swift tests, the footprint
   budget, and keeps the built app as an artifact for 14 days.
 - `.github/workflows/codeql.yml` is code scanning (Actions, C, Rust, Swift)
-  on pushes to `main`, pull requests and weekly. It exists because GitHub's
+  of `main`, weekly (Mondays) and on demand from the Actions tab; not on
+  pull requests, because the Swift scan takes about 18 minutes. Run it by
+  hand before a release. It exists because GitHub's
   default CodeQL setup cannot build the Swift shell: that needs the Rust
   static library first, which this workflow builds before CodeQL starts
   tracing. Default setup has to stay off, or GitHub rejects these results.

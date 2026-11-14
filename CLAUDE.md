@@ -70,11 +70,17 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   Settings is a sidebar of feature categories (`AppModel.settingsSection`,
   so other tabs can deep-link). Hover opens after a delay, a click opens at
   once, a click on the tab-bar background closes.
+  Two notch styles (`appearance.notch_style`, Settings → General): Attached
+  (default, the original geometry; keep it pixel-identical for existing
+  users) and Floating, a capsule inset 3 pt inside the menu bar or notch
+  band, with the toast overlapping it by 12 pt and the panel just below.
+  Floating sizes derive from the measured menu bar height; all geometry
+  lives in `NotchLayout` (`Geometry.swift`).
   The theme (`appearance.theme`) styles the open panel. The closed notch
   and the toast stay black unless `appearance.closed_notch` is `theme`
   (Settings → General → Closed notch: Always dark | Match theme); the
   default keeps them pixel-identical to before. On a display with a
-  hardware notch (`safeAreaInsets.top > 0`, `PanelState.hasHardwareNotch`)
+  hardware notch (`safeAreaInsets.top > 0`, `PanelState.hasNotch`)
   they are always black and that row is hidden, since the camera housing
   cannot turn white.
 - **Agent integration** is Claude Code hooks → `litenotch hook` (reads the
@@ -280,6 +286,8 @@ the plain animation.
   tests but not by a real click.
 - Media transport commands (play/pause/next) are sent through the helper but
   were not exercised against a real player.
+- The Floating notch style has been seen on a Mac without a notch only, not
+  on one with a notch.
 
 - Unverified against a live Claude Code session: whether the terminal's own
   permission dialog is delayed while the hook waits for the notch.

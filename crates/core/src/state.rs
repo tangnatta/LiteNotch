@@ -106,6 +106,17 @@ pub enum ThemeChoice {
     Light,
 }
 
+/// How the notch is drawn. `Attached` hangs from the top edge in the
+/// notch's own silhouette; `Floating` is a capsule inside the menu bar, and
+/// the toast and the open panel float just below it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NotchStyle {
+    #[default]
+    Attached,
+    Floating,
+}
+
 /// How the closed notch and the toast are drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -125,6 +136,7 @@ pub struct Appearance {
     pub theme: ThemeChoice,
     /// `#RRGGBB`, upper case.
     pub accent: String,
+    pub notch_style: NotchStyle,
     pub closed_notch: ClosedNotch,
 }
 
@@ -133,6 +145,7 @@ impl Default for Appearance {
         Self {
             theme: ThemeChoice::System,
             accent: DEFAULT_ACCENT.into(),
+            notch_style: NotchStyle::Attached,
             closed_notch: ClosedNotch::Dark,
         }
     }
@@ -2847,9 +2860,11 @@ mod tests {
         let mut s = c.view(T0).settings;
         assert_eq!(s.appearance.theme, ThemeChoice::System);
         assert_eq!(s.appearance.accent, DEFAULT_ACCENT);
+        assert_eq!(s.appearance.notch_style, NotchStyle::Attached);
         assert!(!s.general.all_screens);
         s.appearance.theme = ThemeChoice::Light;
         s.appearance.accent = "3366ff".into();
+        s.appearance.notch_style = NotchStyle::Floating;
         s.general.all_screens = true;
         cmd(
             &mut c,
@@ -2861,6 +2876,7 @@ mod tests {
         let v = c.view(T0).settings;
         assert_eq!(v.appearance.theme, ThemeChoice::Light);
         assert_eq!(v.appearance.accent, "#3366FF");
+        assert_eq!(v.appearance.notch_style, NotchStyle::Floating);
         assert!(v.general.all_screens);
         s.appearance.accent = "not a colour".into();
         cmd(
@@ -2874,8 +2890,12 @@ mod tests {
         let json = serde_json::to_value(c.view(T0).settings.appearance).unwrap();
         assert_eq!(
             json,
-            json!({"theme":"light","accent":DEFAULT_ACCENT,"closed_notch":"dark"})
+            json!({"theme":"light","accent":DEFAULT_ACCENT,"notch_style":"floating","closed_notch":"dark"})
         );
+        // Settings saved before the field existed load as the original look.
+        let old: Appearance =
+            serde_json::from_value(json!({"theme":"dark","accent":"#000000"})).unwrap();
+        assert_eq!(old.notch_style, NotchStyle::Attached);
     }
 
     #[test]

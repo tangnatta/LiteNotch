@@ -110,6 +110,15 @@ public enum ThemeChoice: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// How the notch is drawn: hanging from the top edge in the notch's own
+/// silhouette (the original look), or as a capsule floating inside the
+/// menu bar with the toast and the open panel just below it.
+public enum NotchStyle: String, LenientEnum {
+    case attached, floating, unknown
+    static var unknownCase: NotchStyle { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
 /// How the closed notch and the toast are drawn: black in every theme
 /// (the default, it reads as part of the hardware notch) or like the panel.
 public enum ClosedNotchChoice: String, LenientEnum {
@@ -122,25 +131,31 @@ public struct AppearanceConfig: Codable, Equatable {
     public var theme: ThemeChoice
     /// `#RRGGBB`; anything unparsable falls back to the default accent.
     public var accent: String
+    public var notchStyle: NotchStyle
     public var closedNotch: ClosedNotchChoice
 
     // Plain names: the view model is decoded with `.convertFromSnakeCase` and
-    // settings are encoded with `.convertToSnakeCase`, which map them to `closed_notch`.
-    enum CodingKeys: String, CodingKey { case theme, accent, closedNotch }
+    // settings are encoded with `.convertToSnakeCase`, which map them to snake_case.
+    enum CodingKeys: String, CodingKey { case theme, accent, notchStyle, closedNotch }
 
     public static let defaultAccent = "#FF9E0A"
     public static let `default` = AppearanceConfig(theme: .system, accent: defaultAccent)
 
-    public init(theme: ThemeChoice, accent: String, closedNotch: ClosedNotchChoice = .dark) {
+    public init(theme: ThemeChoice, accent: String, notchStyle: NotchStyle = .attached,
+                closedNotch: ClosedNotchChoice = .dark) {
         self.theme = theme
         self.accent = accent
+        self.notchStyle = notchStyle
         self.closedNotch = closedNotch
     }
 
+    // `notch_style` is newer than the rest; a missing or unknown one draws
+    // the original look.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         theme = (try? c.decodeIfPresent(ThemeChoice.self, forKey: .theme)) ?? .system
         accent = (try? c.decodeIfPresent(String.self, forKey: .accent)) ?? Self.defaultAccent
+        notchStyle = (try? c.decodeIfPresent(NotchStyle.self, forKey: .notchStyle)) ?? .attached
         closedNotch = (try? c.decodeIfPresent(ClosedNotchChoice.self, forKey: .closedNotch)) ?? .dark
     }
 
@@ -149,6 +164,7 @@ public struct AppearanceConfig: Codable, Equatable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         if theme != .unknown { try c.encode(theme, forKey: .theme) }
         try c.encode(accent, forKey: .accent)
+        if notchStyle != .unknown { try c.encode(notchStyle, forKey: .notchStyle) }
         if closedNotch != .unknown { try c.encode(closedNotch, forKey: .closedNotch) }
     }
 }

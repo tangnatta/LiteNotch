@@ -387,9 +387,11 @@ public final class PanelState: ObservableObject {
     @Published public var keyboardRequested = false
     /// Size of the physical (or fallback) notch; set by the panel controller.
     @Published public var notch = CGSize(width: 183, height: 32)
-    /// True on a display with a camera housing; the closed notch then stays
-    /// black whatever `closed_notch` says. Set by the panel controller.
-    @Published public var hasHardwareNotch = false
+    /// False when `notch` is only the stand-in on a screen without one. With
+    /// a real notch the closed shape stays black whatever `closed_notch` says.
+    @Published public var hasNotch = true
+    /// Height of this screen's menu bar; 0 when hidden or unknown.
+    @Published public var menuBarHeight: CGFloat = 0
 
     public private(set) weak var app: AppModel?
     /// Monotonic seconds; replaced in tests.
@@ -427,9 +429,21 @@ public final class PanelState: ObservableObject {
         NotchPresentation.mode(expanded: expanded, view: view)
     }
 
+    public var layout: NotchLayout {
+        let style = view?.settings.appearance.notchStyle ?? .attached
+        return NotchLayout(style: style == .floating ? .floating : .attached,
+                           notch: notch, hasNotch: hasNotch, menuBarHeight: menuBarHeight)
+    }
+
     /// Target size of the current shape (not animated); used for hit testing.
     public var targetSize: CGSize {
-        NotchGeometry.size(for: mode, compact: view?.compact, notch: notch)
+        layout.size(for: mode, compact: view?.compact)
+    }
+
+    /// Whether a point (from the top-left of the shape's area) takes the
+    /// pointer; see `NotchLayout.contains`.
+    public func shapeContains(_ p: CGPoint) -> Bool {
+        layout.contains(p, mode: mode, in: targetSize)
     }
 
     // MARK: Navigation

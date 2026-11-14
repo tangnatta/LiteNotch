@@ -35,7 +35,7 @@ Drive the real runtime without the UI (end-to-end checks of hooks/CLI):
 
 ```
 crates/core      litenotch-core      all logic; no I/O, no clock, no threads, forbid(unsafe)
-crates/platform  litenotch-platform  macOS calls: pasteboard, IOKit power assertion, pmset, osascript, lid watchdog, now-playing helper process
+crates/platform  litenotch-platform  macOS calls: pasteboard, IOKit power assertion, pmset, osascript, closed-lid helper, now-playing helper process
 crates/files     litenotch-files     saved state + editing ~/.claude/settings.json (shared by app and CLI)
 crates/app       litenotch-app       runtime thread, socket server, transcript scanner, C FFI (staticlib)
 crates/cli       litenotch (bin)     hook | statusline | notify | status | hooks install/uninstall/status
@@ -152,11 +152,18 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   one-sentence summary (`usage::Usage::snapshot`). "Tokens" there means
   input + output; cache tokens are tracked separately in `today`.
 - **Closed-lid keep-awake** needs root (`pmset -a disablesleep 1`). One admin
-  prompt starts a root shell loop that sets the flag and restores it when the
-  LiteNotch process (pid + start time) is gone, the sentinel file is removed,
-  or 12 h pass. The sentinel is in the user's private temp dir with a
-  per-session name, and the value to restore is read once per process; both
-  matter (see the comments in `crates/platform/src/lid.rs`).
+  prompt per run of LiteNotch starts a root shell loop, the helper, which
+  sets the flag and then sleeps in `read` on a named pipe that LiteNotch
+  holds open. A line `0` restores sleep and `1` disables it again, so
+  turning the mode off and on asks for no second password. The helper
+  restores sleep and exits when the pipe closes (LiteNotch quit or crashed:
+  at once), when the LiteNotch process (pid + start time) is gone (checked
+  every 30 s, for the case of something else holding the pipe), after 12 h
+  in one stretch with sleep disabled, or when it reads anything but `0` or
+  `1`. If the helper is gone, the next enable notices (the flag does not
+  change within 2 s) and asks again. The pipe is in the user's private temp
+  dir with a fresh name per helper, and the value to restore is read once
+  per process; both matter (see the comments in `crates/platform/src/lid.rs`).
 
 ## Releasing
 
@@ -205,7 +212,12 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   - An artwork path is passed to the shell only if it is an `art-*` file
     directly inside the data directory's `artwork` folder.
   - Only validated integers and a `[A-Za-z0-9/._-]` path are interpolated into
-    the root watchdog command.
+    the root helper command. The helper reads the pipe four characters at a
+    time and only compares them with `0` and `1`; it never runs what it
+    read, and anything else ends it with sleep restored. What remains: while
+    LiteNotch runs and after the user gave the password once, another
+    process of the same user could write to the pipe and keep the Mac awake
+    with the lid closed (12 h at a stretch). It cannot do more than that.
   - Copies the clipboard history would not keep (off, concealed, excluded
     app) never reach disk; files of dropped copies are pruned at once, and
     with "Keep on restart" off the clips folder is emptied on quit.
@@ -295,14 +307,9 @@ the plain animation.
   not create, downsample now-playing artwork and bound pasteboard text
   before converting it, Developer ID signing + notarization (then drop the
   cask's quarantine removal), and `cargo audit` in CI.
-- Next after the beta (agreed): make the closed-lid root watchdog
-  event-driven. Today it polls every 2 s (`ps` plus a file check, about
-  0.1 % CPU, only while the mode is on). Plan: LiteNotch holds the write end
-  of a FIFO in its private temp dir; the root loop blocks reading it and
-  restores sleep the moment it gets EOF (LiteNotch quit, crashed, or turned
-  the mode off), keeping the 12 h cap. Root code: review it on its own.
-  Longer term, a launchd daemon via SMAppService (needs a Developer ID)
-  replaces the password prompt and the watchdog.
+- Closed-lid mode asks for the password once per run of LiteNotch. Asking
+  only once ever needs a launchd daemon via SMAppService, which needs a
+  Developer ID; it would replace the prompt and the helper.
 
 - Reading other apps' notifications (`SystemNotificationObserver`) is
   unit-tested against a fake accessibility tree only. It has never run
@@ -325,8 +332,10 @@ the plain animation.
 
 - Unverified against a live Claude Code session: whether the terminal's own
   permission dialog is delayed while the hook waits for the notch.
-- Closed-lid mode's privileged step is tested with `pmset` stubbed out; the
-  real admin prompt has not been exercised.
+- Closed-lid mode's helper is tested as the real shell loop with `pmset`
+  swapped for a log (on, off, on again, pipe closed, process gone, junk, the
+  cap). The real admin prompt and the real flag have not been exercised
+  since the helper moved from a polled sentinel file to the pipe.
 - In-app updates and the analytics backend. Releases already go to GitHub
   Releases with a Homebrew cask (see Releasing); in-app updates would read a
   static JSON manifest (version, URL, sha256, minimum OS) next to those

@@ -83,7 +83,7 @@ Quick controls on the right of the bar:
   `#RRGGBB`, and recent colours sit at the top of Clipboard.
 - **Cup:** keep the Mac awake. Options in **Settings › Keep awake** include a
   timer, a battery limit, and staying awake with the lid closed (asks for your
-  password; turns itself off when LiteNotch quits).
+  password once; turns itself off when LiteNotch quits).
 - **Bell:** the inbox. **Gear:** settings.
 
 ### What macOS may ask for
@@ -99,7 +99,8 @@ LiteNotch works without any permission. Three optional features need one:
   iTerm2). Allow it and the click raises that session's window and tab. If
   you don't, the click still brings the terminal app forward.
 - **Keep awake with the lid closed:** asks for your administrator password
-  each time you turn it on.
+  the first time you turn it on. After that you can switch it off and on
+  without typing it again, until you quit LiteNotch.
 
 ## Claude Code
 
@@ -147,7 +148,7 @@ nothing else is affected.
 - Apple silicon only; not notarized yet.
 - Other apps' notifications are read from the banners on screen, so they
   need the Accessibility permission, which resets on each update.
-- Closed-lid mode needs your password each time.
+- Closed-lid mode needs your password once each time LiteNotch is started.
 
 Found a problem? [Open an issue](https://github.com/tangnatta/LiteNotch/issues).
 

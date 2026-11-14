@@ -107,6 +107,14 @@ public enum SnapshotRenderer {
                 var purpleLight = light
                 purpleLight.settings.appearance.accent = "#BF5AF2"
                 try add("accent-purple-light-expanded-home", purpleLight)
+                // Liquid Glass chosen. ImageRenderer draws no glass (the
+                // window server makes it), so these show the Solid fallback
+                // and the Settings row as this build and system offer it.
+                var glass = vm
+                glass.settings.appearance.material = .glass
+                try add("glass-media-expanded-home", glass)
+                try add("glass-media-expanded-settings-general", glass, tab: .settings, section: .general)
+                try add("glass-media-closed", glass, expanded: false)
                 var bad = vm
                 bad.settings.appearance.accent = "not a colour"
                 try add("accent-invalid-expanded-timer", bad, tab: .timer)

@@ -106,6 +106,18 @@ pub enum ThemeChoice {
     Light,
 }
 
+/// What the open panel is drawn with. Glass is the macOS 26 Liquid Glass
+/// material; the shell falls back to Solid where the system (or the SDK it
+/// was built with) lacks it. The closed notch and the toast stay black in
+/// either case so they blend into the hardware notch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Material {
+    #[default]
+    Solid,
+    Glass,
+}
+
 pub const DEFAULT_ACCENT: &str = "#FF9E0A";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -114,6 +126,7 @@ pub struct Appearance {
     pub theme: ThemeChoice,
     /// `#RRGGBB`, upper case.
     pub accent: String,
+    pub material: Material,
 }
 
 impl Default for Appearance {
@@ -121,6 +134,7 @@ impl Default for Appearance {
         Self {
             theme: ThemeChoice::System,
             accent: DEFAULT_ACCENT.into(),
+            material: Material::Solid,
         }
     }
 }
@@ -2859,7 +2873,42 @@ mod tests {
         );
         assert_eq!(c.view(T0).settings.appearance.accent, DEFAULT_ACCENT);
         let json = serde_json::to_value(c.view(T0).settings.appearance).unwrap();
-        assert_eq!(json, json!({"theme":"light","accent":DEFAULT_ACCENT}));
+        assert_eq!(
+            json,
+            json!({"theme":"light","accent":DEFAULT_ACCENT,"material":"solid"})
+        );
+    }
+
+    #[test]
+    fn material_defaults_to_solid_and_round_trips() {
+        let mut c = core();
+        let mut s = c.view(T0).settings;
+        assert_eq!(s.appearance.material, Material::Solid);
+        s.appearance.material = Material::Glass;
+        cmd(
+            &mut c,
+            Command::SetSettings {
+                settings: Box::new(s),
+            },
+            T0,
+        );
+        assert_eq!(c.view(T0).settings.appearance.material, Material::Glass);
+        // Saved and restored.
+        let saved = c.persisted();
+        assert_eq!(saved.settings.appearance.material, Material::Glass);
+        assert_eq!(
+            Core::new(saved).view(T0).settings.appearance.material,
+            Material::Glass
+        );
+        // Settings saved before the field existed read as Solid.
+        let old: Appearance =
+            serde_json::from_value(json!({"theme":"dark","accent":"#0A84FF"})).unwrap();
+        assert_eq!(old.material, Material::Solid);
+        assert_eq!(old.theme, ThemeChoice::Dark);
+        assert_eq!(
+            serde_json::to_value(Material::Glass).unwrap(),
+            json!("glass")
+        );
     }
 
     #[test]

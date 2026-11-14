@@ -244,7 +244,7 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(Set(inner.allKeys as! [String]),
                        ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics"])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
-        XCTAssertEqual(inner["appearance"] as? NSDictionary, ["theme": "system", "accent": "#FF9E0A"])
+        XCTAssertEqual(inner["appearance"] as? NSDictionary, ["theme": "system", "accent": "#FF9E0A", "material": "solid"])
         XCTAssertEqual((inner["media"] as! NSDictionary)["enabled"] as? Bool, true)
         XCTAssertEqual((inner["notify"] as! NSDictionary)["system"] as? Bool, false)
         XCTAssertEqual(Tab.allCases.map(\.rawValue), ["home", "music", "timer", "clipboard", "agents", "inbox", "settings"])
@@ -868,7 +868,7 @@ final class NewFieldsDecodingTests: XCTestCase {
 
         o["meeting"] = ["title": 3, "items": "x", "run_state": "levitating", "presets": [["id": 1]]]
         o["colors"] = "red"
-        settings["appearance"] = ["theme": "sepia", "accent": 7]
+        settings["appearance"] = ["theme": "sepia", "accent": 7, "material": "frosted"]
         o["settings"] = settings
         let odd = try ViewModel.decode(JSONSerialization.data(withJSONObject: o))
         XCTAssertEqual(odd.meeting.title, "")
@@ -882,6 +882,25 @@ final class NewFieldsDecodingTests: XCTestCase {
         let appearance = (sent["settings"] as! NSDictionary)["appearance"] as! NSDictionary
         XCTAssertNil(appearance["theme"])
         XCTAssertEqual(appearance["accent"] as? String, "#FF9E0A")
+        XCTAssertEqual(odd.settings.appearance.material, .unknown)
+        XCTAssertNil(appearance["material"])
+        XCTAssertFalse(odd.settings.appearance.usesGlass)
+    }
+
+    func testMaterialDecodesAndGlassIsGatedOnSupport() throws {
+        let json = try String(contentsOf: fixtureURL("media"), encoding: .utf8)
+            .replacingOccurrences(of: "\"material\": \"solid\"", with: "\"material\": \"glass\"")
+        let v = try ViewModel.decode(Data(json.utf8))
+        XCTAssertEqual(v.settings.appearance.material, .glass)
+        XCTAssertEqual(v.settings.appearance.usesGlass, GlassSupport.available)
+        XCTAssertFalse(try loadFixture("media").settings.appearance.usesGlass)
+        // Settings go back with the choice even where glass cannot be drawn,
+        // so a newer build on a newer system shows it.
+        let sent = try obj(ShellCommand.setSettings(v.settings).encode())
+        let appearance = (sent["settings"] as! NSDictionary)["appearance"] as! NSDictionary
+        XCTAssertEqual(appearance["material"] as? String, "glass")
+        XCTAssertEqual(GlassSupport.unavailableReason == nil, GlassSupport.available)
+        if !GlassSupport.compiled { XCTAssertFalse(GlassSupport.available) }
     }
 
     func testMeetingKindDecodes() throws {
@@ -916,7 +935,7 @@ final class NewCommandTests: XCTestCase {
         s.appearance = AppearanceConfig(theme: .light, accent: "#30D158")
         let inner = try obj(ShellCommand.setSettings(s).encode())["settings"] as! NSDictionary
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, true)
-        XCTAssertEqual(inner["appearance"] as? NSDictionary, ["theme": "light", "accent": "#30D158"])
+        XCTAssertEqual(inner["appearance"] as? NSDictionary, ["theme": "light", "accent": "#30D158", "material": "solid"])
     }
 }
 

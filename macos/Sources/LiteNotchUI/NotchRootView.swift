@@ -13,8 +13,9 @@ extension NotchPresentation {
 
 /// The SwiftUI root hosted by one panel. The window never resizes; the
 /// shape grows inside it. Closed, the shape is black with dark content in
-/// every theme so it blends with the hardware notch; open (and as a toast)
-/// it follows the chosen theme, and the fill fades with the spring.
+/// every theme so it blends with the hardware notch; open it follows the
+/// chosen theme (solid or Liquid Glass, see `GlassSupport`), and the fill
+/// fades with the spring.
 public struct NotchRootView: View {
     @ObservedObject var model: PanelState
     /// The window's scheme, which follows the system setting live.
@@ -44,8 +45,17 @@ public struct NotchRootView: View {
         ZStack(alignment: .top) {
             // Closed and as a toast the shape is black in every theme, so it
             // reads as part of the hardware notch; only the open panel follows
-            // the theme.
-            shape.fill(mode == .expanded ? NT.panel : Color.black)
+            // the theme. With Liquid Glass chosen (and drawable) the open
+            // panel is glass tinted with the theme; the black fades out
+            // under it.
+            if appearance.usesGlass {
+                shape.fill(Color.black).opacity(mode == .expanded ? 0 : 1)
+                if mode == .expanded {
+                    PanelFill(shape: shape, glass: true).transition(.opacity)
+                }
+            } else {
+                shape.fill(mode == .expanded ? NT.panel : Color.black)
+            }
             switch mode {
             case .closed:
                 if let c = model.view?.compact, c.kind != .idle, c.kind != .unknown {

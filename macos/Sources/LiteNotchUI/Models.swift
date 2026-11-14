@@ -110,33 +110,49 @@ public enum ThemeChoice: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// What the open panel is drawn with (`appearance.material`). Glass is the
+/// macOS 26 Liquid Glass material; see `GlassSupport`.
+public enum MaterialChoice: String, LenientEnum {
+    case solid, glass, unknown
+    static var unknownCase: MaterialChoice { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
 public struct AppearanceConfig: Codable, Equatable {
     public var theme: ThemeChoice
     /// `#RRGGBB`; anything unparsable falls back to the default accent.
     public var accent: String
+    public var material: MaterialChoice
 
-    enum CodingKeys: String, CodingKey { case theme, accent }
+    enum CodingKeys: String, CodingKey { case theme, accent, material }
 
     public static let defaultAccent = "#FF9E0A"
     public static let `default` = AppearanceConfig(theme: .system, accent: defaultAccent)
 
-    public init(theme: ThemeChoice, accent: String) {
+    public init(theme: ThemeChoice, accent: String, material: MaterialChoice = .solid) {
         self.theme = theme
         self.accent = accent
+        self.material = material
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         theme = (try? c.decodeIfPresent(ThemeChoice.self, forKey: .theme)) ?? .system
         accent = (try? c.decodeIfPresent(String.self, forKey: .accent)) ?? Self.defaultAccent
+        material = (try? c.decodeIfPresent(MaterialChoice.self, forKey: .material)) ?? .solid
     }
 
-    // An unknown theme is left out so the core keeps its own value.
+    // An unknown theme or material is left out so the core keeps its own value.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         if theme != .unknown { try c.encode(theme, forKey: .theme) }
         try c.encode(accent, forKey: .accent)
+        if material != .unknown { try c.encode(material, forKey: .material) }
     }
+
+    /// Whether the open panel is drawn with Liquid Glass: chosen, and this
+    /// build and system can draw it.
+    public var usesGlass: Bool { material == .glass && GlassSupport.available }
 }
 
 public struct PomodoroConfig: Codable, Equatable {

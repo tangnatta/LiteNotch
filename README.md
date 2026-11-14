@@ -111,8 +111,10 @@ LiteNotch works without any permission. Three optional features need one:
   iTerm2). Allow it and the click raises that session's window and tab. If
   you don't, the click still brings the terminal app forward.
 - **Keep awake with the lid closed:** asks for your administrator password
-  the first time you turn it on. After that you can switch it off and on
-  without typing it again, until you quit LiteNotch.
+  the first time you turn it on. After that you can normally switch it off
+  and on without typing it again until you quit LiteNotch. The mode turns
+  itself off after 12 hours, and if macOS stops honouring it for any reason
+  LiteNotch tells you and asks for the password the next time.
 
 ## Claude Code
 

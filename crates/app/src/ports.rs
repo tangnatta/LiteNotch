@@ -22,6 +22,10 @@ pub trait Ports: Send {
     /// thread once the user has answered the password prompt.
     fn enable_lid(&mut self, done: Box<dyn FnOnce(bool) + Send>);
     fn disable_lid(&mut self);
+    /// False when closed-lid mode was enabled but the system no longer has
+    /// sleep disabled (the root helper stopped). One `pmset -g`; called
+    /// when the lid closes, not on a timer.
+    fn lid_active(&mut self) -> bool;
     fn write_clipboard(&mut self, text: &str);
     /// `Some`: start reporting what is playing, one helper line per call of
     /// the sink (from another thread). `None`: stop.
@@ -216,6 +220,12 @@ impl Ports for MacPorts {
         let mut state = lock(&self.lid);
         state.wanted = false;
         state.guard = None;
+    }
+
+    fn lid_active(&mut self) -> bool {
+        // Not being able to tell is not a reason to end the mode.
+        lock(&self.lid).guard.is_some()
+            && litenotch_platform::battery::sleep_disabled() != Some(false)
     }
 
     fn write_clipboard(&mut self, text: &str) {

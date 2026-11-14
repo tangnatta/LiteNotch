@@ -158,10 +158,18 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   turning the mode off and on asks for no second password. The helper
   restores sleep and exits when the pipe closes (LiteNotch quit or crashed:
   at once), when the LiteNotch process (pid + start time) is gone (checked
-  every 30 s, for the case of something else holding the pipe), after 12 h
-  in one stretch with sleep disabled, or when it reads anything but `0` or
-  `1`. If the helper is gone, the next enable notices (the flag does not
-  change within 2 s) and asks again. The pipe is in the user's private temp
+  every 30 s, for the case of something else holding the pipe), after
+  12 h 10 min in one stretch with sleep disabled (measured on the shell's
+  clock from the last off-to-on change, so repeating `1` does not stretch
+  it), or when it reads anything but `0` or `1`. It opens the pipe before
+  it first sets the flag, so a failure there changes nothing. The core
+  ends the mode itself after 12 h (`caffeine::LID_MAX_HOURS`) with a
+  notification, so in normal use the helper's cap never fires and the
+  helper stays for the next enable. If the helper is gone anyway, two
+  things notice: closing the lid (the runtime checks the flag once, then
+  `Input::LidLost` ends the mode with a notification), and the next enable
+  (the flag does not change within 2 s, so it asks for the password
+  again). The pipe is in the user's private temp
   dir with a fresh name per helper, and the value to restore is read once
   per process; both matter (see the comments in `crates/platform/src/lid.rs`).
 
@@ -217,7 +225,9 @@ scripts/         build-app.sh, bench.sh, coverage.sh
     read, and anything else ends it with sleep restored. What remains: while
     LiteNotch runs and after the user gave the password once, another
     process of the same user could write to the pipe and keep the Mac awake
-    with the lid closed (12 h at a stretch). It cannot do more than that.
+    with the lid closed (by switching it off and on it can do so beyond the
+    cap, which guards against forgetting, not against such a process). It
+    cannot do more than that.
   - Copies the clipboard history would not keep (off, concealed, excluded
     app) never reach disk; files of dropped copies are pruned at once, and
     with "Keep on restart" off the clips folder is emptied on quit.
@@ -341,7 +351,7 @@ the plain animation.
   permission dialog is delayed while the hook waits for the notch.
 - Closed-lid mode's helper is tested as the real shell loop with `pmset`
   swapped for a log (on, off, on again, pipe closed, process gone, junk, the
-  cap). The real admin prompt and the real flag have not been exercised
+  cap, a pipe that cannot be opened). The real admin prompt and the real flag have not been exercised
   since the helper moved from a polled sentinel file to the pipe.
 - In-app updates and the analytics backend. Releases already go to GitHub
   Releases with a Homebrew cask (see Releasing); in-app updates would read a

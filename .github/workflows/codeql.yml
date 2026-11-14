@@ -1,0 +1,70 @@
+name: CodeQL
+
+# Code scanning for every language in the repository. This replaces GitHub's
+# "default setup", whose automatic Swift build runs `swift build` before the
+# Rust library the shell links against exists, and so fails. Here that
+# library is built first.
+#
+# Default setup must be off for these results to be accepted: Settings ›
+# Code security › Code scanning › CodeQL analysis › switch to advanced.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "27 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+            os: ubuntu-latest
+          - language: c-cpp
+            build-mode: none
+            os: ubuntu-latest
+          - language: rust
+            build-mode: none
+            os: ubuntu-latest
+          - language: swift
+            build-mode: manual
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # Before CodeQL starts watching: the Rust code is analysed by its own
+      # job, and the Swift build only needs the finished library.
+      - if: matrix.language == 'swift'
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - if: matrix.language == 'swift'
+        name: Build the Rust library the shell links against
+        run: cargo build --locked --release -p litenotch-app
+
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - if: matrix.language == 'swift'
+        name: Build the shell
+        run: LITENOTCH_RUST_LIB="$PWD/target/release" swift build --package-path macos
+
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+        with:
+          category: /language:${{ matrix.language }}

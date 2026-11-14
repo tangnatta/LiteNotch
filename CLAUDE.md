@@ -155,6 +155,11 @@ scripts/         build-app.sh, bench.sh, coverage.sh
 - `.github/workflows/ci.yml` runs on every push and pull request: fmt,
   clippy, tests under coverage, the app build, Swift tests, the footprint
   budget, and keeps the built app as an artifact for 14 days.
+- `.github/workflows/codeql.yml` is code scanning (Actions, C, Rust, Swift)
+  on pushes to `main`, pull requests and weekly. It exists because GitHub's
+  default CodeQL setup cannot build the Swift shell: that needs the Rust
+  static library first, which this workflow builds before CodeQL starts
+  tracing. Default setup has to stay off, or GitHub rejects these results.
 - `.github/workflows/release.yml` runs on a `v*` tag. The tag must equal the
   `version` in the root `Cargo.toml`. It tests, builds, zips
   `LiteNotch-<version>-arm64.zip`, publishes a GitHub pre-release, then

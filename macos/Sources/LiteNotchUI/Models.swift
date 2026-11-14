@@ -110,32 +110,47 @@ public enum ThemeChoice: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// How the notch is drawn: hanging from the top edge in the notch's own
+/// silhouette (the original look), or as a capsule floating inside the
+/// menu bar with the toast and the open panel just below it.
+public enum NotchStyle: String, LenientEnum {
+    case attached, floating, unknown
+    static var unknownCase: NotchStyle { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
 public struct AppearanceConfig: Codable, Equatable {
     public var theme: ThemeChoice
     /// `#RRGGBB`; anything unparsable falls back to the default accent.
     public var accent: String
+    public var notchStyle: NotchStyle
 
-    enum CodingKeys: String, CodingKey { case theme, accent }
+    enum CodingKeys: String, CodingKey { case theme, accent, notchStyle }
 
     public static let defaultAccent = "#FF9E0A"
     public static let `default` = AppearanceConfig(theme: .system, accent: defaultAccent)
 
-    public init(theme: ThemeChoice, accent: String) {
+    public init(theme: ThemeChoice, accent: String, notchStyle: NotchStyle = .attached) {
         self.theme = theme
         self.accent = accent
+        self.notchStyle = notchStyle
     }
 
+    // `notch_style` is newer than the rest; a missing or unknown one draws
+    // the original look.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         theme = (try? c.decodeIfPresent(ThemeChoice.self, forKey: .theme)) ?? .system
         accent = (try? c.decodeIfPresent(String.self, forKey: .accent)) ?? Self.defaultAccent
+        notchStyle = (try? c.decodeIfPresent(NotchStyle.self, forKey: .notchStyle)) ?? .attached
     }
 
-    // An unknown theme is left out so the core keeps its own value.
+    // An unknown theme or style is left out so the core keeps its own value.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         if theme != .unknown { try c.encode(theme, forKey: .theme) }
         try c.encode(accent, forKey: .accent)
+        if notchStyle != .unknown { try c.encode(notchStyle, forKey: .notchStyle) }
     }
 }
 

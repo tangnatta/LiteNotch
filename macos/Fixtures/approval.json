@@ -374,7 +374,8 @@
     },
     "appearance": {
       "theme": "system",
-      "accent": "#FF9E0A"
+      "accent": "#FF9E0A",
+      "closed_notch": "dark"
     },
     "media": {
       "enabled": true

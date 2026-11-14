@@ -387,6 +387,9 @@ public final class PanelState: ObservableObject {
     @Published public var keyboardRequested = false
     /// Size of the physical (or fallback) notch; set by the panel controller.
     @Published public var notch = CGSize(width: 183, height: 32)
+    /// True on a display with a camera housing; the closed notch then stays
+    /// black whatever `closed_notch` says. Set by the panel controller.
+    @Published public var hasHardwareNotch = false
 
     public private(set) weak var app: AppModel?
     /// Monotonic seconds; replaced in tests.

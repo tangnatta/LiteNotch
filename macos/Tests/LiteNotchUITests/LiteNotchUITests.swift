@@ -244,7 +244,7 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(Set(inner.allKeys as! [String]),
                        ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics"])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
-        XCTAssertEqual(inner["appearance"] as? NSDictionary, ["theme": "system", "accent": "#FF9E0A"])
+        XCTAssertEqual(inner["appearance"] as? NSDictionary, ["theme": "system", "accent": "#FF9E0A", "closed_notch": "dark"])
         XCTAssertEqual((inner["media"] as! NSDictionary)["enabled"] as? Bool, true)
         XCTAssertEqual((inner["notify"] as! NSDictionary)["system"] as? Bool, false)
         XCTAssertEqual(Tab.allCases.map(\.rawValue), ["home", "music", "timer", "clipboard", "agents", "inbox", "settings"])
@@ -916,7 +916,40 @@ final class NewCommandTests: XCTestCase {
         s.appearance = AppearanceConfig(theme: .light, accent: "#30D158")
         let inner = try obj(ShellCommand.setSettings(s).encode())["settings"] as! NSDictionary
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, true)
-        XCTAssertEqual(inner["appearance"] as? NSDictionary, ["theme": "light", "accent": "#30D158"])
+        XCTAssertEqual(inner["appearance"] as? NSDictionary, ["theme": "light", "accent": "#30D158", "closed_notch": "dark"])
+    }
+
+    func testClosedNotchFollowsTheThemeOnlyWhenAsked() throws {
+        // The same key strategies as the bridge: the core's snake_case JSON.
+        let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let encoder = JSONEncoder(); encoder.keyEncodingStrategy = .convertToSnakeCase
+        let matched = try decoder.decode(AppearanceConfig.self, from: Data(##"{"theme":"light","accent":"#FF9E0A","closed_notch":"theme"}"##.utf8))
+        XCTAssertEqual(matched.closedNotch, .theme)
+        XCTAssertEqual(matched.closedScheme(system: .dark), .light)
+        // A hardware notch keeps it black whatever the setting says.
+        XCTAssertFalse(matched.closedFollowsTheme(hardwareNotch: true))
+        XCTAssertEqual(matched.closedScheme(system: .light, hardwareNotch: true), .dark)
+        XCTAssertTrue(matched.closedFollowsTheme(hardwareNotch: false))
+        // Older settings and older cores: no field means the black notch.
+        let old = try decoder.decode(AppearanceConfig.self, from: Data(##"{"theme":"light","accent":"#FF9E0A"}"##.utf8))
+        XCTAssertEqual(old.closedNotch, .dark)
+        XCTAssertEqual(old.closedScheme(system: .light), .dark)
+        let odd = try decoder.decode(AppearanceConfig.self, from: Data(##"{"theme":"light","accent":"#FF9E0A","closed_notch":"glass"}"##.utf8))
+        XCTAssertEqual(odd.closedNotch, .unknown)
+        XCTAssertEqual(odd.closedScheme(system: .light), .dark)
+        // An unknown value is left out so the core keeps its own.
+        let sent = try JSONSerialization.jsonObject(with: encoder.encode(odd)) as! NSDictionary
+        XCTAssertNil(sent["closed_notch"])
+
+        var a = AppearanceConfig(theme: .light, accent: "#FF9E0A", closedNotch: .theme)
+        XCTAssertEqual(a.closedScheme(system: .dark), .light)
+        a.theme = .dark
+        XCTAssertEqual(a.closedScheme(system: .light), .dark)
+        a.theme = .system
+        XCTAssertEqual(a.closedScheme(system: .light), .light)
+        XCTAssertEqual(a.closedScheme(system: .dark), .dark)
+        let inner = try JSONSerialization.jsonObject(with: encoder.encode(a)) as! NSDictionary
+        XCTAssertEqual(inner["closed_notch"] as? String, "theme")
     }
 }
 
@@ -1452,11 +1485,11 @@ final class TextContrastTests: XCTestCase {
         XCTAssertEqual(ColorMath.over(w, alpha: 0, b), b)
     }
 
-    func testTheClosedNotchAndToastAreBlackInEveryTheme() throws {
+    func testTheClosedNotchAndToastAreBlackUnlessAskedToMatchTheTheme() throws {
         let src = try String(contentsOf: URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/LiteNotchUI/NotchRootView.swift"), encoding: .utf8)
-        XCTAssertTrue(src.contains("shape.fill(mode == .expanded ? NT.panel : Color.black)"))
+        XCTAssertTrue(src.contains("shape.fill(mode == .expanded || appearance.closedFollowsTheme(hardwareNotch: model.hasHardwareNotch) ? NT.panel : Color.black)"))
     }
 }
 

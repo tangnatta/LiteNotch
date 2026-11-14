@@ -79,8 +79,9 @@ enum NT {
     /// Selected and hovered controls.
     static let fillHi = dynamic(.fillHi)
     static let hairline = dynamic(.hairline)
-    /// Background of the open panel and the toast. The closed notch is
-    /// always `Color.black`.
+    /// Background of the open panel, and of the closed notch and the toast
+    /// when they follow the theme (`ClosedNotchChoice.theme`); otherwise
+    /// those are `Color.black`.
     static let panel = dynamic(.panel)
     /// Knob of a switched-off toggle.
     static let knob = dynamic(dark: NSColor(white: 1, alpha: 0.85), light: .white)
@@ -144,6 +145,21 @@ extension ThemeChoice {
         case .light: return .light
         case .system, .unknown: return system
         }
+    }
+}
+
+extension AppearanceConfig {
+    /// Whether the closed notch and the toast follow the theme. Never on a
+    /// display with a hardware notch: the camera housing stays black, so a
+    /// light shape around it would read as two white wings.
+    func closedFollowsTheme(hardwareNotch: Bool) -> Bool {
+        closedNotch == .theme && !hardwareNotch
+    }
+
+    /// The scheme of the closed notch and the toast: dark unless the user
+    /// asked for them to follow the theme and the display has no notch.
+    func closedScheme(system: ColorScheme, hardwareNotch: Bool = false) -> ColorScheme {
+        closedFollowsTheme(hardwareNotch: hardwareNotch) ? theme.scheme(system: system) : .dark
     }
 }
 

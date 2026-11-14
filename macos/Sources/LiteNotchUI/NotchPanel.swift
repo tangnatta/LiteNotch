@@ -209,6 +209,8 @@ public final class NotchPanelController {
             leftAux: screen.auxiliaryTopLeftArea,
             rightAux: screen.auxiliaryTopRightArea)
         if e.state.notch != notch.size { e.state.notch = notch.size }
+        let hardware = screen.safeAreaInsets.top > 0
+        if e.state.hasHardwareNotch != hardware { e.state.hasHardwareNotch = hardware }
         e.window.setFrame(NotchGeometry.panelFrame(screenFrame: screen.frame, notch: notch), display: true)
     }
 }

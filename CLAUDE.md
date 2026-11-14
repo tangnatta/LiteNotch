@@ -70,6 +70,13 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   Settings is a sidebar of feature categories (`AppModel.settingsSection`,
   so other tabs can deep-link). Hover opens after a delay, a click opens at
   once, a click on the tab-bar background closes.
+  The theme (`appearance.theme`) styles the open panel. The closed notch
+  and the toast stay black unless `appearance.closed_notch` is `theme`
+  (Settings → General → Closed notch: Always dark | Match theme); the
+  default keeps them pixel-identical to before. On a display with a
+  hardware notch (`safeAreaInsets.top > 0`, `PanelState.hasHardwareNotch`)
+  they are always black and that row is hidden, since the camera housing
+  cannot turn white.
 - **Agent integration** is Claude Code hooks → `litenotch hook` (reads the
   hook JSON on stdin) → Unix socket → runtime. A `PermissionRequest` is held
   open until the user clicks Allow/Deny in the notch, the request expires

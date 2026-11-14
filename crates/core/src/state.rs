@@ -106,6 +106,17 @@ pub enum ThemeChoice {
     Light,
 }
 
+/// How the closed notch and the toast are drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ClosedNotch {
+    /// Black in every theme, so it reads as part of the hardware notch.
+    #[default]
+    Dark,
+    /// Follows `theme`, like the open panel.
+    Theme,
+}
+
 pub const DEFAULT_ACCENT: &str = "#FF9E0A";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -114,6 +125,7 @@ pub struct Appearance {
     pub theme: ThemeChoice,
     /// `#RRGGBB`, upper case.
     pub accent: String,
+    pub closed_notch: ClosedNotch,
 }
 
 impl Default for Appearance {
@@ -121,6 +133,7 @@ impl Default for Appearance {
         Self {
             theme: ThemeChoice::System,
             accent: DEFAULT_ACCENT.into(),
+            closed_notch: ClosedNotch::Dark,
         }
     }
 }
@@ -2859,7 +2872,32 @@ mod tests {
         );
         assert_eq!(c.view(T0).settings.appearance.accent, DEFAULT_ACCENT);
         let json = serde_json::to_value(c.view(T0).settings.appearance).unwrap();
-        assert_eq!(json, json!({"theme":"light","accent":DEFAULT_ACCENT}));
+        assert_eq!(
+            json,
+            json!({"theme":"light","accent":DEFAULT_ACCENT,"closed_notch":"dark"})
+        );
+    }
+
+    #[test]
+    fn closed_notch_defaults_to_dark_and_can_follow_the_theme() {
+        // Settings saved before the option existed keep the black notch.
+        let old: Appearance =
+            serde_json::from_value(json!({"theme":"light","accent":"#FF9E0A"})).unwrap();
+        assert_eq!(old.closed_notch, ClosedNotch::Dark);
+        assert_eq!(Appearance::default().closed_notch, ClosedNotch::Dark);
+        let mut c = core();
+        let mut s = c.view(T0).settings;
+        s.appearance.closed_notch = ClosedNotch::Theme;
+        cmd(
+            &mut c,
+            Command::SetSettings {
+                settings: Box::new(s),
+            },
+            T0,
+        );
+        let v = c.view(T0).settings.appearance;
+        assert_eq!(v.closed_notch, ClosedNotch::Theme);
+        assert_eq!(serde_json::to_value(v).unwrap()["closed_notch"], "theme");
     }
 
     #[test]

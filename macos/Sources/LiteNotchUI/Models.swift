@@ -110,32 +110,46 @@ public enum ThemeChoice: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// How the closed notch and the toast are drawn: black in every theme
+/// (the default, it reads as part of the hardware notch) or like the panel.
+public enum ClosedNotchChoice: String, LenientEnum {
+    case dark, theme, unknown
+    static var unknownCase: ClosedNotchChoice { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
 public struct AppearanceConfig: Codable, Equatable {
     public var theme: ThemeChoice
     /// `#RRGGBB`; anything unparsable falls back to the default accent.
     public var accent: String
+    public var closedNotch: ClosedNotchChoice
 
-    enum CodingKeys: String, CodingKey { case theme, accent }
+    // Plain names: the view model is decoded with `.convertFromSnakeCase` and
+    // settings are encoded with `.convertToSnakeCase`, which map them to `closed_notch`.
+    enum CodingKeys: String, CodingKey { case theme, accent, closedNotch }
 
     public static let defaultAccent = "#FF9E0A"
     public static let `default` = AppearanceConfig(theme: .system, accent: defaultAccent)
 
-    public init(theme: ThemeChoice, accent: String) {
+    public init(theme: ThemeChoice, accent: String, closedNotch: ClosedNotchChoice = .dark) {
         self.theme = theme
         self.accent = accent
+        self.closedNotch = closedNotch
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         theme = (try? c.decodeIfPresent(ThemeChoice.self, forKey: .theme)) ?? .system
         accent = (try? c.decodeIfPresent(String.self, forKey: .accent)) ?? Self.defaultAccent
+        closedNotch = (try? c.decodeIfPresent(ClosedNotchChoice.self, forKey: .closedNotch)) ?? .dark
     }
 
-    // An unknown theme is left out so the core keeps its own value.
+    // An unknown value is left out so the core keeps its own.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         if theme != .unknown { try c.encode(theme, forKey: .theme) }
         try c.encode(accent, forKey: .accent)
+        if closedNotch != .unknown { try c.encode(closedNotch, forKey: .closedNotch) }
     }
 }
 

@@ -76,6 +76,7 @@ public struct NotchRootView: View {
                                                wing: layout.wingWidth(for: c),
                                                edgePadding: NotchGeometry.floatingWingPadding,
                                                artworkSize: min(20, layout.capsuleHeight - 4),
+                                               artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
                                                artworkPath: model.view?.media?.artworkPath)
                                 .frame(height: layout.capsuleHeight)
                                 .padding(.top, top)
@@ -132,12 +133,15 @@ struct ClosedActivityView: View {
     /// Space between the content and the outer end of each wing.
     var edgePadding: CGFloat = 12
     var artworkSize: CGFloat = 20
+    /// Floating only: the artwork is round and sits this far from the
+    /// capsule's top, bottom and end, so it nests inside the round end.
+    var artworkInset: CGFloat?
     var artworkPath: String?
 
     var body: some View {
         HStack(spacing: 0) {
             leftIcon
-                .padding(.leading, edgePadding)
+                .padding(.leading, compact.kind == .media ? artworkInset ?? edgePadding : edgePadding)
                 .frame(width: wing, alignment: .leading)
             Color.clear.frame(width: notchWidth)
             rightValue
@@ -155,7 +159,7 @@ struct ClosedActivityView: View {
         case .pomodoro:
             Image(systemName: "timer").font(.system(size: 12, weight: .semibold)).foregroundStyle(NT.accentText)
         case .media:
-            ArtworkView(path: artworkPath, size: artworkSize, radius: artworkSize / 4)
+            ArtworkView(path: artworkPath, size: artworkSize, radius: artworkInset == nil ? artworkSize / 4 : artworkSize / 2)
         case .caffeine:
             Image(systemName: "cup.and.heat.waves.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.text1)
         case .agent:

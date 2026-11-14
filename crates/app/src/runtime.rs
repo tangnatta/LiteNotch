@@ -797,7 +797,10 @@ pub(crate) mod testing {
         ) -> serde_json::Value {
             let (lock, cond) = &*self.0;
             let mut views = lock.lock().unwrap();
-            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            // Generous: a shared CI runner once took over 10 s to schedule
+            // the runtime thread (the whole suite ran 12 times slower than
+            // usual). The wait ends as soon as the view arrives.
+            let deadline = std::time::Instant::now() + Duration::from_secs(60);
             loop {
                 if let Some(view) = views.last().filter(|v| pred(v)) {
                     return view.clone();
@@ -866,7 +869,7 @@ pub(crate) mod testing {
         }
 
         pub fn wait_call(&self, call: &str) {
-            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            let deadline = std::time::Instant::now() + Duration::from_secs(60);
             while !self.calls().iter().any(|c| c == call) {
                 assert!(
                     std::time::Instant::now() < deadline,
@@ -1338,7 +1341,7 @@ mod tests {
         h.wait_call("display:sleep");
         h.wait_call("assert:System");
         lid(false);
-        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
         while h.calls().iter().filter(|c| *c == "assert:Display").count() < 2 {
             assert!(std::time::Instant::now() < deadline, "{:?}", h.calls());
             std::thread::sleep(Duration::from_millis(20));

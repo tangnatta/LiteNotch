@@ -420,6 +420,12 @@ impl Loop {
             }
             Msg::Lid(lid) => {
                 if self.watching_lid {
+                    // The moment it matters: if the helper has stopped, say
+                    // so now instead of showing a mode that does nothing.
+                    if lid.closed && !self.ports.lid_active() {
+                        self.apply(Input::LidLost, now);
+                        return;
+                    }
                     self.apply(
                         Input::Clamshell {
                             closed: lid.closed,
@@ -661,6 +667,8 @@ pub(crate) mod testing {
         pub lid_closed: Option<bool>,
         /// Call this to play a lid change while the lid is watched.
         pub lid_watch: Option<Box<dyn Fn(litenotch_platform::display::Clamshell) + Send>>,
+        /// True plays a root helper that has stopped.
+        pub lid_helper_gone: bool,
     }
 
     #[derive(Clone, Default)]
@@ -711,6 +719,9 @@ pub(crate) mod testing {
         }
         fn prune_clip_files(&mut self, keep: &[String]) {
             self.0.lock().unwrap().pruned.push(keep.to_vec());
+        }
+        fn lid_active(&mut self) -> bool {
+            !self.0.lock().unwrap().lid_helper_gone
         }
         fn watch_lid(
             &mut self,
@@ -1254,6 +1265,45 @@ mod tests {
         assert!(
             !text.contains("secret clipboard") && !text.contains("private body"),
             "{text}"
+        );
+    }
+
+    /// From review: when the root helper has stopped, the mode stayed shown
+    /// as on. Closing the lid is when that is checked.
+    #[test]
+    fn closing_the_lid_without_a_helper_ends_lid_mode_and_says_so() {
+        let os = FakeOs {
+            lid_answer: Some(true),
+            lid_closed: Some(false),
+            power: Some(PowerStatus {
+                on_ac: true,
+                battery_pct: Some(90),
+            }),
+            ..FakeOs::default()
+        };
+        let h = Harness::start_in(crate::store::temp_dir("rt-lid-lost"), os);
+        h.send(r#"{"cmd":"caffeine_activate","mode":"display","duration_secs":null}"#);
+        h.send(r#"{"cmd":"caffeine_lid","on":true}"#);
+        h.views.wait("lid on", |v| v["caffeine"]["lid"] == "on");
+        {
+            let mut os = h.os.lock().unwrap();
+            os.lid_helper_gone = true;
+            (os.lid_watch.as_ref().expect("the lid is watched"))(
+                litenotch_platform::display::Clamshell {
+                    closed: true,
+                    external_display: false,
+                },
+            );
+        }
+        h.views.wait("lid off with a notice", |v| {
+            v["caffeine"]["lid"] == "off"
+                && v["inbox"]["history"]
+                    .as_array()
+                    .is_some_and(|n| n.iter().any(|n| n["title"] == "Lid mode stopped"))
+        });
+        assert!(
+            !h.calls().iter().any(|c| c == "display:sleep"),
+            "the display is not turned off for a mode that has ended"
         );
     }
 

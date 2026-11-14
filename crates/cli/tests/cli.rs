@@ -498,6 +498,11 @@ fn hooks_carry_the_app_the_session_runs_in() {
         Request::Hook { payload } => {
             assert_eq!(payload["litenotch_app"], "com.example.Terminal");
             assert_eq!(payload["hook_event_name"], "Stop");
+            // The terminal device is this test's own (none on a CI runner).
+            assert_eq!(
+                payload.get("litenotch_tty").and_then(|t| t.as_str()),
+                litenotch::controlling_tty().as_deref()
+            );
         }
         other => panic!("{other:?}"),
     }
@@ -520,13 +525,33 @@ fn a_terminal_id_in_the_payload_itself_is_dropped() {
         .take()
         .unwrap()
         .write_all(
-            br#"{"hook_event_name":"Stop","session_id":"s1","litenotch_app":"com.evil.app"}"#,
+            br#"{"hook_event_name":"Stop","session_id":"s1","litenotch_app":"com.evil.app","litenotch_tty":"ttys9999"}"#,
         )
         .unwrap();
     child.wait().unwrap();
     let seen = fx.seen.lock().unwrap();
     match &seen[0] {
-        Request::Hook { payload } => assert!(payload.get("litenotch_app").is_none()),
+        Request::Hook { payload } => {
+            assert!(payload.get("litenotch_app").is_none());
+            // Only the device the CLI found itself is passed on.
+            assert_ne!(
+                payload.get("litenotch_tty").and_then(|t| t.as_str()),
+                Some("ttys9999")
+            );
+            assert_eq!(
+                payload.get("litenotch_tty").and_then(|t| t.as_str()),
+                litenotch::controlling_tty().as_deref()
+            );
+        }
         other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn the_terminal_device_is_a_pty_name_or_absent() {
+    let tty = litenotch::controlling_tty();
+    eprintln!("controlling tty: {tty:?}");
+    if let Some(t) = tty {
+        assert!(litenotch_core::agent::valid_tty(&t), "{t}");
     }
 }

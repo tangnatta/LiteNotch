@@ -77,8 +77,14 @@ pub struct Notification {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OpenTarget {
-    /// Bring an app forward by bundle id (a session's terminal).
-    App { bundle_id: String },
+    /// Bring an app forward by bundle id (a session's terminal). With
+    /// `tty`, the window and tab on that terminal device where the app can
+    /// be asked for it.
+    App {
+        bundle_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tty: Option<String>,
+    },
     /// Bring an app forward by its name (another app's notification).
     AppNamed { name: String },
     /// Open a tab in the notch; `pane` picks a sub-view where there is one.

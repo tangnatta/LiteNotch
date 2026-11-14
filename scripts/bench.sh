@@ -6,6 +6,8 @@
 #   timer       countdown running: the closed notch redraws its digits once a second
 #   music       a track playing: artwork and pulsing bars in the closed notch
 #   panel       the panel open on Home
+#   floating    the Floating notch style with a countdown running
+#   glass       the panel open on Home, drawn with Liquid Glass (macOS 26)
 #
 # Memory is the physical footprint, the figure Activity Monitor shows as
 # "Memory"; RSS is printed for reference only (it counts shared framework
@@ -26,7 +28,7 @@ CHECK=0
 if [ "${1:-}" = "--check" ]; then CHECK=1; shift; fi
 WINDOW=20
 case "${1:-}" in ''|*[!0-9]*) ;; *) WINDOW=$1; shift ;; esac
-SCENARIOS=${*:-"idle timer music panel"}
+SCENARIOS=${*:-"idle timer music panel floating glass"}
 
 APP=dist/LiteNotch.app
 [ -x "$APP/Contents/MacOS/LiteNotch" ] || { echo "build first: scripts/build-app.sh" >&2; exit 2; }
@@ -104,6 +106,9 @@ for s in $SCENARIOS; do
             LITENOTCH_BENCH_COMMANDS='[{"cmd":"timer_set","secs":3600},{"cmd":"timer_toggle"}]' ;;
         music) run music 1.0 30 "$QUIET" LITENOTCH_BENCH_NOWPLAYING_LIB="$FAKE_LIB" ;;
         panel) run panel 1.5 40 "$QUIET" LITENOTCH_BENCH_OPEN=1 ;;
+        floating) run floating 1.0 30 '{"appearance":{"notch_style":"floating"}}' \
+            LITENOTCH_BENCH_COMMANDS='[{"cmd":"timer_set","secs":3600},{"cmd":"timer_toggle"}]' ;;
+        glass) run glass 1.5 40 '{"appearance":{"material":"glass"}}' LITENOTCH_BENCH_OPEN=1 ;;
         *) echo "unknown scenario: $s" >&2; exit 2 ;;
     esac
 done

@@ -22,6 +22,8 @@
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>LiteNotch asks your terminal to bring the window of the Claude Code session you clicked to the front.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

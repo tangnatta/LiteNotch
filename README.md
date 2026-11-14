@@ -13,9 +13,9 @@ battery.
 
 | | LiteNotch |
 |---|---|
-| App size | 4 MB |
+| App size | 6 MB |
 | Memory while idle | 15 MB |
-| CPU while idle | under 0.1 % |
+| CPU while idle | under 0.5 % |
 
 ## Install
 
@@ -71,11 +71,11 @@ switch views; the icons on the right are quick controls.
 |---|---|
 | **Home** | Everything at a glance: what's playing, your timer, your AI sessions and the latest notification. Click any of them to go there. |
 | **Music** | Artwork, progress and play / pause / skip for whatever is playing, in any app: Music, Spotify, or a browser tab. While something plays, the closed notch shows its artwork. |
-| **Timer** | Three timers. **Focus** is a pomodoro: work, short break, repeat. **Meeting** runs an agenda item by item (stand-up, sprint review, planning, retro, or your own) and shows when an item runs over. **Timer** is a plain countdown: click the time in the circle and type `25`, `1:30` or `1h 30m`. |
+| **Timer** | Three timers. **Focus** is a pomodoro: work, short break, repeat. **Meeting** runs an agenda item by item (stand-up, sprint review, planning, retro, or your own) and shows when an item runs over. **Timer** is a plain countdown: click the time in the circle and type `25`, `1:30` or `1h 30m`. Any `− 12 +` number (an agenda item's minutes, a timer length) can be clicked and typed too. |
 | **Clipboard** | Everything you copy, searchable. Click an item to copy it again. Text copied with formatting keeps it; the **Aa** button copies it as plain text. Images and files show a preview. Pin what you want to keep. Password-manager copies are skipped. |
 | **Agents** | For Claude Code users: see each session's status, approve or deny its requests without switching windows, and see your usage limits and a 7-day summary. See [Claude Code](#claude-code). |
 | **Inbox** | Notifications from LiteNotch, Claude Code, and, if you allow it, other apps. Click one to open where it came from. |
-| **Settings** | Everything adjustable, by feature: appearance (light, dark or automatic, plus your accent colour), timer lengths, clipboard size, keep-awake options, and more. |
+| **Settings** | Everything adjustable, by feature: how the notch looks (see [Appearance](#appearance)), timer lengths, clipboard size, keep-awake options, and more. |
 
 Quick controls on the right of the bar:
 
@@ -83,19 +83,38 @@ Quick controls on the right of the bar:
   `#RRGGBB`, and recent colours sit at the top of Clipboard.
 - **Cup:** keep the Mac awake. Options in **Settings › Keep awake** include a
   timer, a battery limit, and staying awake with the lid closed (asks for your
-  password; turns itself off when LiteNotch quits).
+  password once; turns itself off when LiteNotch quits).
 - **Bell:** the inbox. **Gear:** settings.
+
+### Appearance
+
+All under **Settings › General**. The defaults are the original look.
+
+| Setting | Choices |
+|---|---|
+| **Theme** | System, Dark or Light, for the open panel. |
+| **Accent** | A preset colour or any colour you pick. |
+| **Notch** | **Attached** hangs from the top edge in the notch's own shape. **Floating** is a small capsule inside the menu bar, with notifications and the open panel just below it; it suits a Mac or an external display without a notch. |
+| **Closed notch** | **Always dark**, or **Match theme** so the closed notch and notifications turn white in the light theme. Offered only on a display without a notch: around a real notch, which is always black, it stays dark. |
+| **Panel** | **Solid**, or **Glass** to draw the open panel with macOS 26's Liquid Glass. Approval requests are always shown on the solid panel so they stay readable. |
 
 ### What macOS may ask for
 
-LiteNotch works without any permission. Two optional features need one:
+LiteNotch works without any permission. Three optional features need one:
 
 - **Other apps' notifications:** turn on in **Inbox**, then allow LiteNotch
   in **System Settings › Privacy & Security › Accessibility**. macOS forgets
   this permission when LiteNotch is updated; use **Reset and ask again** in
   the inbox to restore it.
+- **Going to a session's own terminal window:** the first time you click a
+  Claude Code session, macOS asks whether LiteNotch may control Terminal (or
+  iTerm2). Allow it and the click raises that session's window and tab. If
+  you don't, the click still brings the terminal app forward.
 - **Keep awake with the lid closed:** asks for your administrator password
-  each time you turn it on.
+  the first time you turn it on. After that you can normally switch it off
+  and on without typing it again until you quit LiteNotch. The mode turns
+  itself off after 12 hours, and if macOS stops honouring it for any reason
+  LiteNotch tells you and asks for the password the next time.
 
 ## Claude Code
 
@@ -107,7 +126,9 @@ can approve or deny them without finding the right terminal window.
 2. Start a new Claude Code session. It appears under **Agents**, and its
    requests open the notch with **Allow**, **Deny**, or **Answer in Terminal**.
 
-Clicking a session brings its terminal to the front. If LiteNotch isn't
+Clicking a session brings its terminal window to the front (the exact
+window and tab in Terminal and iTerm2, the app in other terminals). Sessions
+that were already running pick this up at their next prompt. If LiteNotch isn't
 running, Claude Code behaves exactly as before. **Disconnect** undoes it (a
 backup of your settings is kept as `settings.json.litenotch-backup`).
 
@@ -141,7 +162,7 @@ nothing else is affected.
 - Apple silicon only; not notarized yet.
 - Other apps' notifications are read from the banners on screen, so they
   need the Accessibility permission, which resets on each update.
-- Closed-lid mode needs your password each time.
+- Closed-lid mode needs your password once each time LiteNotch is started.
 
 Found a problem? [Open an issue](https://github.com/tangnatta/LiteNotch/issues).
 

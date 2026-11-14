@@ -342,6 +342,8 @@ pub enum Input {
         closed: bool,
         external_display: bool,
     },
+    /// Closed-lid mode is on but the Mac is no longer kept awake for it.
+    LidLost,
     UtcOffset(i32),
     HooksInstalled(Option<bool>),
     StatuslineInstalled(Option<bool>),
@@ -693,6 +695,10 @@ impl Core {
             }
             Input::LidResult { ok } => {
                 let effects = self.caffeine.lid_result(ok, now);
+                self.caffeine_effects(effects, now, &mut fx);
+            }
+            Input::LidLost => {
+                let effects = self.caffeine.lid_lost();
                 self.caffeine_effects(effects, now, &mut fx);
             }
             Input::Statusline(json) => {
@@ -1297,14 +1303,12 @@ impl Core {
         match n.source.as_str() {
             "agent" => {
                 let session = n.group.as_deref()?.strip_prefix("agent-")?;
-                let app = self
-                    .agents
-                    .sessions()
-                    .iter()
-                    .find(|s| s.id == session)
-                    .and_then(|s| s.app.clone());
-                match app {
-                    Some(bundle_id) => Some(OpenTarget::App { bundle_id }),
+                let found = self.agents.sessions().iter().find(|s| s.id == session);
+                match found.and_then(|s| s.app.clone()) {
+                    Some(bundle_id) => Some(OpenTarget::App {
+                        bundle_id,
+                        tty: found.and_then(|s| s.tty.clone()),
+                    }),
                     None => tab("agents", Some("sessions")),
                 }
             }
@@ -2935,6 +2939,34 @@ mod tests {
     }
 
     #[test]
+    fn the_appearance_options_persist_together_and_a_partial_file_loads() {
+        let mut c = core();
+        let mut s = c.view(T0).settings;
+        s.appearance.notch_style = NotchStyle::Floating;
+        s.appearance.closed_notch = ClosedNotch::Theme;
+        s.appearance.material = Material::Glass;
+        cmd(
+            &mut c,
+            Command::SetSettings {
+                settings: Box::new(s),
+            },
+            T0,
+        );
+        let again = Core::new(c.persisted()).view(T0).settings.appearance;
+        assert_eq!(again.notch_style, NotchStyle::Floating);
+        assert_eq!(again.closed_notch, ClosedNotch::Theme);
+        assert_eq!(again.material, Material::Glass);
+        // A settings file that names one option leaves the rest at the old look.
+        let partial: Settings =
+            serde_json::from_value(json!({"appearance":{"notch_style":"floating"}})).unwrap();
+        assert_eq!(partial.appearance.notch_style, NotchStyle::Floating);
+        assert_eq!(partial.appearance.closed_notch, ClosedNotch::Dark);
+        assert_eq!(partial.appearance.material, Material::Solid);
+        assert_eq!(partial.appearance.theme, ThemeChoice::System);
+        assert_eq!(partial.appearance.accent, DEFAULT_ACCENT);
+    }
+
+    #[test]
     fn material_defaults_to_solid_and_round_trips() {
         let mut c = core();
         let mut s = c.view(T0).settings;
@@ -3237,7 +3269,7 @@ mod tests {
         // An agent notification opens the session's terminal.
         c.hook(
             &json!({"hook_event_name":"Stop","session_id":"s9","cwd":"/w/api",
-                    "litenotch_app":"com.apple.Terminal"})
+                    "litenotch_app":"com.apple.Terminal","litenotch_tty":"ttys003"})
             .to_string(),
             T0 + 1,
         );
@@ -3251,12 +3283,23 @@ mod tests {
         assert_eq!(
             agent.open,
             Some(OpenTarget::App {
-                bundle_id: "com.apple.Terminal".into()
+                bundle_id: "com.apple.Terminal".into(),
+                tty: Some("ttys003".into()),
             })
         );
         assert_eq!(
             v.agents.sessions[0].app.as_deref(),
             Some("com.apple.Terminal")
+        );
+        assert_eq!(v.agents.sessions[0].tty.as_deref(), Some("ttys003"));
+        // The device is left out of the JSON when it is not known.
+        let bare = OpenTarget::App {
+            bundle_id: "com.apple.Terminal".into(),
+            tty: None,
+        };
+        assert_eq!(
+            serde_json::to_value(&bare).unwrap(),
+            json!({"kind":"app","bundle_id":"com.apple.Terminal"})
         );
 
         // Without a known terminal it opens the Agents tab; own ones open their tab.

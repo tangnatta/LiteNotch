@@ -5,8 +5,8 @@ pub mod install;
 pub mod statusline;
 
 pub use hooks::{
-    decision_output, describe, sanitize, summarize, valid_bundle_id, Description, HookError,
-    HookEvent, HookKind,
+    decision_output, describe, sanitize, summarize, valid_bundle_id, valid_tty, Description,
+    HookError, HookEvent, HookKind,
 };
 pub use install::{install, is_installed, uninstall, InstallError};
 
@@ -44,6 +44,9 @@ pub struct AgentSession {
     /// Bundle id of the terminal or editor it runs in, when known.
     #[serde(default)]
     pub app: Option<String>,
+    /// The terminal device it runs on (`ttys003`), when known.
+    #[serde(default)]
+    pub tty: Option<String>,
 }
 
 /// A tool permission prompt waiting for the user.
@@ -260,6 +263,7 @@ impl Agents {
                     last_event_ms: now_ms,
                     last_message: None,
                     app: None,
+                    tty: None,
                 });
                 self.sessions.len() - 1
             }
@@ -271,6 +275,9 @@ impl Agents {
         }
         if ev.app.is_some() {
             s.app = ev.app.clone();
+        }
+        if ev.tty.is_some() {
+            s.tty = ev.tty.clone();
         }
         if let Some(st) = ev.status() {
             s.status = st;

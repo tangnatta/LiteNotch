@@ -44,6 +44,9 @@ pub struct HookEvent {
     /// Bundle id of the app the session runs in (the terminal or editor),
     /// added by the `litenotch` CLI; used to bring that app forward.
     pub app: Option<String>,
+    /// The terminal device the session runs on (`ttys003`), added by the
+    /// `litenotch` CLI; used to bring that window forward, not just the app.
+    pub tty: Option<String>,
 }
 
 /// A macOS bundle identifier such as `com.apple.Terminal`.
@@ -54,6 +57,13 @@ pub fn valid_bundle_id(s: &str) -> bool {
         && !s.ends_with('.')
         && s.chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+}
+
+/// A macOS pseudo-terminal name such as `ttys003`. Nothing else is
+/// accepted: the shell hands it to a script that looks for that tab.
+pub fn valid_tty(s: &str) -> bool {
+    s.strip_prefix("ttys")
+        .is_some_and(|n| (1..=4).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// Why a payload could not be parsed.
@@ -121,6 +131,7 @@ impl HookEvent {
             last_assistant_message: opt_str(obj, "last_assistant_message"),
             prompt: opt_str(obj, "prompt"),
             app: opt_str(obj, "litenotch_app").filter(|a| valid_bundle_id(a)),
+            tty: opt_str(obj, "litenotch_tty").filter(|t| valid_tty(t)),
         })
     }
 
@@ -808,6 +819,36 @@ mod tests {
         let e = ev(&json!({"hook_event_name":"Stop","session_id":big,"cwd":big}).to_string());
         assert_eq!(e.session_id.chars().count(), MAX_ID_CHARS);
         assert_eq!(e.cwd.chars().count(), MAX_ID_CHARS);
+    }
+
+    #[test]
+    fn the_terminal_device_is_read_only_when_it_is_a_pty_name() {
+        let ev = |tty: &str| {
+            HookEvent::parse(
+                &serde_json::json!({"hook_event_name":"Stop","session_id":"s","litenotch_tty":tty})
+                    .to_string(),
+            )
+            .unwrap()
+            .tty
+        };
+        assert_eq!(ev("ttys003").as_deref(), Some("ttys003"));
+        assert_eq!(ev("ttys0").as_deref(), Some("ttys0"));
+        for bad in [
+            "",
+            "ttys",
+            "ttys12345",
+            "/dev/ttys003",
+            "ttys3a",
+            "ttys3\" & do shell script \"id",
+            "console",
+            "ttys-1",
+            "ttys３",
+        ] {
+            assert_eq!(ev(bad), None, "{bad:?}");
+        }
+        // A payload without the field (an older CLI) has none.
+        let none = HookEvent::parse(r#"{"hook_event_name":"Stop","session_id":"s"}"#).unwrap();
+        assert_eq!(none.tty, None);
     }
 
     #[test]

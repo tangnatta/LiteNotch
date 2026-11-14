@@ -35,7 +35,7 @@ Drive the real runtime without the UI (end-to-end checks of hooks/CLI):
 
 ```
 crates/core      litenotch-core      all logic; no I/O, no clock, no threads, forbid(unsafe)
-crates/platform  litenotch-platform  macOS calls: pasteboard, IOKit power assertion, pmset, osascript, lid watchdog, now-playing helper process
+crates/platform  litenotch-platform  macOS calls: pasteboard, IOKit power assertion, pmset, osascript, closed-lid helper, now-playing helper process
 crates/files     litenotch-files     saved state + editing ~/.claude/settings.json (shared by app and CLI)
 crates/app       litenotch-app       runtime thread, socket server, transcript scanner, C FFI (staticlib)
 crates/cli       litenotch (bin)     hook | statusline | notify | status | hooks install/uninstall/status
@@ -133,6 +133,14 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   id the CLI adds to each hook payload as `litenotch_app` (from
   `__CFBundleIdentifier`). Other apps' banners get a unique group starting
   with NUL, which the socket path strips, so nothing else can pose as one.
+  The CLI also adds the session's terminal device as `litenotch_tty`
+  (`ttys003`; its own or the nearest ancestor's, from `proc_pidinfo`), and
+  the target carries it as `tty`. For Terminal and iTerm2 the shell asks the
+  app, by AppleScript through `osascript`, to raise the window and tab on
+  that device (`TerminalWindow.swift`); macOS asks the user once whether
+  LiteNotch may control the terminal. Other terminals have no such
+  interface: there, and whenever the script fails or is not allowed, only
+  the app is activated.
 - **Accessibility and ad-hoc signing**: an ad-hoc signed app's identity is
   its cdhash, so every rebuild loses the Accessibility permission even
   though System Settings still shows it on. "Reset and ask again" runs
@@ -144,11 +152,26 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   one-sentence summary (`usage::Usage::snapshot`). "Tokens" there means
   input + output; cache tokens are tracked separately in `today`.
 - **Closed-lid keep-awake** needs root (`pmset -a disablesleep 1`). One admin
-  prompt starts a root shell loop that sets the flag and restores it when the
-  LiteNotch process (pid + start time) is gone, the sentinel file is removed,
-  or 12 h pass. The sentinel is in the user's private temp dir with a
-  per-session name, and the value to restore is read once per process; both
-  matter (see the comments in `crates/platform/src/lid.rs`).
+  prompt per run of LiteNotch starts a root shell loop, the helper, which
+  sets the flag and then sleeps in `read` on a named pipe that LiteNotch
+  holds open. A line `0` restores sleep and `1` disables it again, so
+  turning the mode off and on asks for no second password. The helper
+  restores sleep and exits when the pipe closes (LiteNotch quit or crashed:
+  at once), when the LiteNotch process (pid + start time) is gone (checked
+  every 30 s, for the case of something else holding the pipe), after
+  12 h 10 min in one stretch with sleep disabled (measured on the shell's
+  clock from the last off-to-on change, so repeating `1` does not stretch
+  it), or when it reads anything but `0` or `1`. It opens the pipe before
+  it first sets the flag, so a failure there changes nothing. The core
+  ends the mode itself after 12 h (`caffeine::LID_MAX_HOURS`) with a
+  notification, so in normal use the helper's cap never fires and the
+  helper stays for the next enable. If the helper is gone anyway, two
+  things notice: closing the lid (the runtime checks the flag once, then
+  `Input::LidLost` ends the mode with a notification), and the next enable
+  (the flag does not change within 2 s, so it asks for the password
+  again). The pipe is in the user's private temp
+  dir with a fresh name per helper, and the value to restore is read once
+  per process; both matter (see the comments in `crates/platform/src/lid.rs`).
 
 ## Releasing
 
@@ -197,14 +220,30 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   - An artwork path is passed to the shell only if it is an `art-*` file
     directly inside the data directory's `artwork` folder.
   - Only validated integers and a `[A-Za-z0-9/._-]` path are interpolated into
-    the root watchdog command.
+    the root helper command. The helper reads the pipe four characters at a
+    time and only compares them with `0` and `1`; it never runs what it
+    read, and anything else ends it with sleep restored. What remains: while
+    LiteNotch runs and after the user gave the password once, another
+    process of the same user could write to the pipe and keep the Mac awake
+    with the lid closed (by switching it off and on it can do so beyond the
+    cap, which guards against forgetting, not against such a process). It
+    cannot do more than that.
   - Copies the clipboard history would not keep (off, concealed, excluded
     app) never reach disk; files of dropped copies are pruned at once, and
     with "Keep on restart" off the clips folder is emptied on quit.
   - Socket notifications cannot use the core's own sources (`agent`,
     `litenotch`, …) or the captured-banner group; they get "(script)".
   - The app and CLI are signed with the hardened runtime (no `DYLD_*`
-    injection to borrow the Accessibility permission). Keep it on.
+    injection to borrow the Accessibility permission). Keep it on. The app
+    has one entitlement, `com.apple.security.automation.apple-events`, so
+    macOS can ask whether it may control the terminal.
+  - With that permission LiteNotch could tell the terminal to do anything,
+    so the scripts it sends are fixed text that only select a tab and raise
+    a window (no `do script`, no `write text`; tested). The terminal device
+    is accepted only as `ttys` plus one to four digits, in the core and
+    again in the shell, and is passed to `osascript` as an argument, never
+    written into a script. The CLI drops any `litenotch_tty` already in a
+    payload and adds its own.
   - The socket lives in a 0700 directory with mode 0600; server and CLI both
     check the peer uid. A request line must arrive within 5 s in total.
 - Anything that moves continuously in the shell (the equaliser bars) must be
@@ -239,6 +278,8 @@ the physical memory footprint:
 | timer | countdown running (digits redraw each second) | ≤ 1.0 % | ≤ 30 MB |
 | music | a stand-in track playing (`scripts/bench/nowplaying-fake.c`) | ≤ 1.0 % | ≤ 30 MB |
 | panel | the panel open on Home | ≤ 1.5 % | ≤ 40 MB |
+| floating | the Floating style with a countdown running | ≤ 1.0 % | ≤ 30 MB |
+| glass | the panel open on Home, drawn with Liquid Glass | ≤ 1.5 % | ≤ 40 MB |
 
 Bundle ≤ 15 MB; Rust line coverage ≥ 90 %. The app reads a few
 `LITENOTCH_BENCH_*` variables (start-up commands, open the panel, a stand-in
@@ -247,7 +288,12 @@ in `macos/Sources/LiteNotch/main.swift`. Add a scenario here when a feature
 adds steady work (a timer, an animation, a poll). RSS is about 65 MB but
 mostly shared framework pages, so the budget is on physical footprint.
 Single runs occasionally show a short burst (an outside event such as a
-copy landing in the window); a real regression repeats.
+copy landing in the window); a real regression repeats. Measured Nov 2026
+on an M-series MacBook: idle 0.05–0.30 % and 15–16 MB, timer 0.15–0.35 %,
+music 0.45 %, panel 0.70 % and 22 MB, floating 0.35 %, glass 0.25 % and
+28 MB, bundle 6.3 MB. (One run right after a build showed idle at 2.9 % and
+timer at 5.5 %; two repeats of each did not.) Glass is measured over a
+still desktop only, not over moving content.
 
 A feature was removed for cost: bars that followed the music through a
 Core Audio tap cost about 3 % CPU and 7 MB while playing, against 0 % for
@@ -278,14 +324,9 @@ the plain animation.
   not create, downsample now-playing artwork and bound pasteboard text
   before converting it, Developer ID signing + notarization (then drop the
   cask's quarantine removal), and `cargo audit` in CI.
-- Next after the beta (agreed): make the closed-lid root watchdog
-  event-driven. Today it polls every 2 s (`ps` plus a file check, about
-  0.1 % CPU, only while the mode is on). Plan: LiteNotch holds the write end
-  of a FIFO in its private temp dir; the root loop blocks reading it and
-  restores sleep the moment it gets EOF (LiteNotch quit, crashed, or turned
-  the mode off), keeping the 12 h cap. Root code: review it on its own.
-  Longer term, a launchd daemon via SMAppService (needs a Developer ID)
-  replaces the password prompt and the watchdog.
+- Closed-lid mode asks for the password once per run of LiteNotch. Asking
+  only once ever needs a launchd daemon via SMAppService, which needs a
+  Developer ID; it would replace the prompt and the helper.
 
 - Reading other apps' notifications (`SystemNotificationObserver`) is
   unit-tested against a fake accessibility tree only. It has never run
@@ -297,13 +338,21 @@ the plain animation.
   tests but not by a real click.
 - Media transport commands (play/pause/next) are sent through the helper but
   were not exercised against a real player.
+- Raising a session's own terminal window: the Terminal script was run by
+  hand (it finds a tab by its device and raises it), and the CLI finds the
+  device. Not exercised: the click in the real app, macOS's "LiteNotch wants
+  to control Terminal" question (which, like Accessibility, an ad-hoc signed
+  build has to be asked again after an update), and the iTerm2 script
+  (written from its scripting dictionary, never run).
 - The Floating notch style has been seen on a Mac without a notch only, not
   on one with a notch.
 
 - Unverified against a live Claude Code session: whether the terminal's own
   permission dialog is delayed while the hook waits for the notch.
-- Closed-lid mode's privileged step is tested with `pmset` stubbed out; the
-  real admin prompt has not been exercised.
+- Closed-lid mode's helper is tested as the real shell loop with `pmset`
+  swapped for a log (on, off, on again, pipe closed, process gone, junk, the
+  cap, a pipe that cannot be opened). The real admin prompt and the real flag have not been exercised
+  since the helper moved from a polled sentinel file to the pipe.
 - In-app updates and the analytics backend. Releases already go to GitHub
   Releases with a Homebrew cask (see Releasing); in-app updates would read a
   static JSON manifest (version, URL, sha256, minimum OS) next to those

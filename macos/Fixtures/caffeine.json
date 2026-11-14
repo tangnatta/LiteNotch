@@ -128,7 +128,8 @@
         "status": "working",
         "last_event_ms": 1794400000000,
         "last_message": "add tests",
-        "app": null
+        "app": null,
+        "tty": null
       },
       {
         "id": "s2",
@@ -137,7 +138,8 @@
         "status": "idle",
         "last_event_ms": 1794400000001,
         "last_message": "All 42 tests pass.",
-        "app": null
+        "app": null,
+        "tty": null
       }
     ],
     "pending": [],

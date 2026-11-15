@@ -524,6 +524,12 @@ pub enum Input {
     LidLost,
     UtcOffset(i32),
     HooksInstalled(Option<bool>),
+    /// Other copies of LiteNotch found in Claude Code's settings, and how
+    /// many of them are gone from disk.
+    OtherCopies {
+        found: u32,
+        missing: u32,
+    },
     StatuslineInstalled(Option<bool>),
     /// A notification from the runtime itself (not from the socket).
     OwnNotify(NotificationInput),
@@ -662,6 +668,11 @@ pub struct AgentsView {
     /// Whether Claude Code's status line goes through LiteNotch, which is
     /// what brings the usage limits; `None` if unknown.
     pub statusline_installed: Option<bool>,
+    /// Other copies of LiteNotch (a test build, an old location) that are
+    /// also registered with Claude Code and so run on every event too.
+    pub other_copies: u32,
+    /// How many of those no longer exist on disk.
+    pub other_copies_missing: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -729,6 +740,7 @@ pub struct Core {
     /// Highest alert level already raised per usage window (5 h, 7 d).
     usage_alerted: [u8; 2],
     hooks_installed: Option<bool>,
+    other_copies: (u32, u32),
     statusline_installed: Option<bool>,
     dirty: bool,
     peek: Option<Peek>,
@@ -832,6 +844,7 @@ impl Core {
             dnd: false,
             usage_alerted: [0; 2],
             hooks_installed: None,
+            other_copies: (0, 0),
             statusline_installed: None,
             dirty: false,
             peek: None,
@@ -964,6 +977,9 @@ impl Core {
             } => self.clamshell(closed, external_display, &mut fx),
             Input::UtcOffset(secs) => self.set_utc_offset(secs),
             Input::HooksInstalled(state) => self.hooks_installed = state,
+            Input::OtherCopies { found, missing } => {
+                self.other_copies = (found, missing.min(found))
+            }
             Input::StatuslineInstalled(state) => self.statusline_installed = state,
             Input::OwnNotify(input) => self.post(input, now),
             Input::Tick => {}
@@ -1783,6 +1799,8 @@ impl Core {
             sessions: self.agents.sessions().to_vec(),
             pending: self.agents.pending().to_vec(),
             hooks_installed: self.hooks_installed,
+            other_copies: self.other_copies.0,
+            other_copies_missing: self.other_copies.1,
             statusline_installed: self.statusline_installed,
         };
         let caf = self.caffeine.snapshot(now);
@@ -3700,6 +3718,29 @@ mod tests {
         assert_eq!(c.view(T0).agents.hooks_installed, None);
         c.apply(Input::HooksInstalled(Some(true)), T0);
         assert_eq!(c.view(T0).agents.hooks_installed, Some(true));
+        // Other copies registered with Claude Code are passed through.
+        assert_eq!(c.view(T0).agents.other_copies, 0);
+        c.apply(
+            Input::OtherCopies {
+                found: 4,
+                missing: 2,
+            },
+            T0,
+        );
+        let agents = c.view(T0).agents;
+        assert_eq!((agents.other_copies, agents.other_copies_missing), (4, 2));
+        c.apply(
+            Input::OtherCopies {
+                found: 1,
+                missing: 9,
+            },
+            T0,
+        );
+        assert_eq!(
+            c.view(T0).agents.other_copies_missing,
+            1,
+            "never more than were found"
+        );
     }
 
     #[test]

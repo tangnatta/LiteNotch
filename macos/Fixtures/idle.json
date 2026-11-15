@@ -38,7 +38,9 @@
     "sessions": [],
     "pending": [],
     "hooks_installed": null,
-    "statusline_installed": null
+    "statusline_installed": null,
+    "other_copies": 0,
+    "other_copies_missing": 0
   },
   "usage": {
     "five_hour": null,

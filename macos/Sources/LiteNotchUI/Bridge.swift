@@ -95,6 +95,8 @@ public enum ShellCommand: Equatable {
     /// Not part of the Rust `Command` enum: the app's bridge handles these
     /// (writing/removing the Claude Code hook entries) itself.
     case hooksInstall, hooksUninstall
+    /// Removes the hooks of other copies of LiteNotch from Claude Code's settings.
+    case hooksClean
     /// Makes LiteNotch Claude Code's status line (wrapping the one there),
     /// which is where usage limits come from; and the reverse.
     case statuslineInstall, statuslineUninstall
@@ -158,6 +160,7 @@ public enum ShellCommand: Equatable {
         case .colorPicked(let hex): return c("color_picked", ["hex": hex])
         case .hooksInstall: return c("hooks_install")
         case .hooksUninstall: return c("hooks_uninstall")
+        case .hooksClean: return c("hooks_clean")
         case .statuslineInstall: return c("statusline_install")
         case .statuslineUninstall: return c("statusline_uninstall")
         }

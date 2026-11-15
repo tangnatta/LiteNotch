@@ -201,6 +201,20 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   status line JSON (`litenotch statusline`, the only documented source of
   `rate_limits`); today's token totals are read from the session transcripts,
   whose format is internal to Claude Code and may change.
+- **One copy's hooks only.** Each copy of the app registers its own CLI
+  path, so test builds and moved installs used to pile up in
+  `~/.claude/settings.json`: five hook processes per Claude Code event,
+  all reporting to whichever LiteNotch was running, and the status line
+  wrapped once per copy. Now `install` removes every other LiteNotch hook
+  first (`'<any path>/litenotch' hook`), `install_statusline` wraps the
+  user's own command after peeling off every LiteNotch layer, and
+  uninstalling restores that command. `hooks_file::other_copies` lists the
+  other copies found in hooks or status line and which no longer exist on
+  disk; the runtime reports the count in `agents.other_copies` (and
+  `_missing`), posts one notice at start, and `hooks_clean` (Settings ›
+  Agents › Remove them) takes them out while leaving this copy and
+  everything that is not LiteNotch's alone. A command counts as
+  LiteNotch's only in exactly the form LiteNotch writes it.
 - **Now playing** is system-wide (any app, including browser tabs). macOS
   answers MediaRemote queries only for Apple-entitled processes since 15.4,
   so the runtime starts `/usr/bin/perl` (which is entitled) with a small

@@ -9,7 +9,7 @@
 
 use serde_json::{json, Map, Value};
 
-use super::install::InstallError;
+use super::install::{is_litenotch_cli, leading_quoted, InstallError};
 
 const WRAP: &str = " statusline -- /bin/sh -c ";
 
@@ -55,6 +55,95 @@ fn ours(cli_path: &str) -> String {
     format!("{} statusline", quote(cli_path))
 }
 
+/// One layer of LiteNotch around a status line: whose it is, and the command
+/// underneath (`None` when LiteNotch is all there is). `None` for a command
+/// that is not LiteNotch's.
+fn layer(command: &str) -> Option<(String, Option<String>)> {
+    let (cli, rest) = leading_quoted(command)?;
+    if !is_litenotch_cli(&cli) {
+        return None;
+    }
+    if rest == " statusline" {
+        return Some((cli, None));
+    }
+    let inner = unquote(rest.strip_prefix(WRAP)?)?;
+    Some((cli, Some(inner)))
+}
+
+/// `command` with every LiteNotch layer taken off: the user's own status
+/// line (`None` if there is none), and the copies of LiteNotch that were
+/// around it, outermost first. Each copy that was ever connected used to
+/// wrap the one before, so there can be several.
+fn unwrapped(command: &str) -> (Option<String>, Vec<String>) {
+    let mut layers = Vec::new();
+    let mut current = command.to_owned();
+    // The depth is bounded by the length of the text; the limit only makes
+    // that obvious.
+    for _ in 0..64 {
+        match layer(&current) {
+            Some((cli, Some(inner))) => {
+                layers.push(cli);
+                current = inner;
+            }
+            Some((cli, None)) => {
+                layers.push(cli);
+                return (None, layers);
+            }
+            None => break,
+        }
+    }
+    (Some(current).filter(|c| !c.trim().is_empty()), layers)
+}
+
+/// Other copies of LiteNotch the status line passes through, each once,
+/// sorted.
+pub fn other_statusline_clis(settings_json: &str, cli_path: &str) -> Vec<String> {
+    let Ok(root) = parse_root(settings_json) else {
+        return Vec::new();
+    };
+    let layers = current_command(&root)
+        .map(|c| unwrapped(c).1)
+        .unwrap_or_default();
+    let found: std::collections::BTreeSet<String> =
+        layers.into_iter().filter(|cli| cli != cli_path).collect();
+    found.into_iter().collect()
+}
+
+/// Takes other copies of LiteNotch out of the status line. If this copy is
+/// in it, it then wraps the user's own command directly; if not, the user's
+/// own command is restored (or the status line removed when LiteNotch was
+/// all there was). Idempotent.
+pub fn remove_other_statuslines(
+    settings_json: &str,
+    cli_path: &str,
+) -> Result<String, InstallError> {
+    let mut root = parse_root(settings_json)?;
+    let Some(command) = current_command(&root).map(str::to_owned) else {
+        return Ok(render(root));
+    };
+    let (theirs, layers) = unwrapped(&command);
+    if !layers.iter().any(|cli| cli != cli_path) {
+        return Ok(render(root));
+    }
+    let keep_ours = layers.iter().any(|cli| cli == cli_path);
+    let replacement = match (keep_ours, theirs) {
+        (true, Some(theirs)) => Some(format!("{}{WRAP}{}", quote(cli_path), quote(&theirs))),
+        (true, None) => Some(ours(cli_path)),
+        (false, theirs) => theirs,
+    };
+    match replacement {
+        Some(command) => {
+            if let Some(Value::Object(line)) = root.get_mut("statusLine") {
+                line.insert("command".into(), json!(command));
+            }
+        }
+        None => {
+            root.remove("statusLine");
+        }
+    }
+    Ok(render(root))
+}
+
 /// True when the status line goes through LiteNotch.
 pub fn is_statusline_installed(settings_json: &str, cli_path: &str) -> bool {
     let Ok(root) = parse_root(settings_json) else {
@@ -69,16 +158,14 @@ pub fn install_statusline(settings_json: &str, cli_path: &str) -> Result<String,
         return Err(InstallError::EmptyCliPath);
     }
     let mut root = parse_root(settings_json)?;
-    if current_command(&root).is_some_and(|c| c.starts_with(&ours(cli_path))) {
-        return Ok(render(root));
-    }
+    // Wrap the user's own command, never another copy of LiteNotch: a copy
+    // connected earlier is taken out, not wrapped again.
+    let theirs = current_command(&root).and_then(|c| unwrapped(c).0);
     match root.get_mut("statusLine") {
         Some(Value::Object(line)) => {
-            let command = match line.get("command").and_then(Value::as_str) {
-                Some(theirs) if !theirs.trim().is_empty() => {
-                    format!("{}{WRAP}{}", quote(cli_path), quote(theirs))
-                }
-                _ => ours(cli_path),
+            let command = match theirs {
+                Some(theirs) => format!("{}{WRAP}{}", quote(cli_path), quote(&theirs)),
+                None => ours(cli_path),
             };
             line.insert("type".into(), json!("command"));
             line.insert("command".into(), json!(command));
@@ -101,13 +188,20 @@ pub fn uninstall_statusline(settings_json: &str, cli_path: &str) -> Result<Strin
     let Some(command) = current_command(&root).map(str::to_owned) else {
         return Ok(render(root));
     };
-    let wrapped_prefix = format!("{}{WRAP}", quote(cli_path));
-    if let Some(theirs) = command.strip_prefix(&wrapped_prefix).and_then(unquote) {
-        if let Some(Value::Object(line)) = root.get_mut("statusLine") {
-            line.insert("command".into(), json!(theirs));
+    if !command.starts_with(&ours(cli_path)) {
+        return Ok(render(root));
+    }
+    // Back to the user's own command, not to an older copy of LiteNotch
+    // that this one may have been wrapped around.
+    match unwrapped(&command).0 {
+        Some(theirs) => {
+            if let Some(Value::Object(line)) = root.get_mut("statusLine") {
+                line.insert("command".into(), json!(theirs));
+            }
         }
-    } else if command == ours(cli_path) {
-        root.remove("statusLine");
+        None => {
+            root.remove("statusLine");
+        }
     }
     Ok(render(root))
 }
@@ -117,6 +211,106 @@ mod tests {
     use super::*;
 
     const CLI: &str = "/Applications/LiteNotch.app/Contents/Helpers/litenotch";
+
+    const OLD: &str = "/Users/me/Downloads/LiteNotch-old.app/Contents/Helpers/litenotch";
+    const DEV: &str = "/Users/me/it's here/LiteNotch.app/Contents/Helpers/litenotch";
+
+    fn command(settings: &str) -> String {
+        line(settings)["command"].as_str().unwrap().to_owned()
+    }
+
+    fn wrapping(cli: &str, theirs: &str) -> String {
+        format!("{}{WRAP}{}", quote(cli), quote(theirs))
+    }
+
+    /// Reported together with the duplicated hooks: each copy of LiteNotch
+    /// wrapped the status line of the copy before it, several layers deep.
+    #[test]
+    fn connecting_wraps_the_users_own_command_not_another_copy() {
+        let theirs = r#"{"statusLine":{"type":"command","command":"echo 'hi there'","padding":1}}"#;
+        let one = install_statusline(theirs, OLD).unwrap();
+        let two = install_statusline(&one, DEV).unwrap();
+        let three = install_statusline(&two, CLI).unwrap();
+        assert_eq!(command(&three), wrapping(CLI, "echo 'hi there'"));
+        assert_eq!(line(&three)["padding"], 1);
+        assert!(other_statusline_clis(&three, CLI).is_empty());
+        assert_eq!(
+            install_statusline(&three, CLI).unwrap(),
+            three,
+            "idempotent"
+        );
+        // Turning it off gives back exactly what the user had.
+        let back = uninstall_statusline(&three, CLI).unwrap();
+        assert_eq!(command(&back), "echo 'hi there'");
+    }
+
+    /// The layers an older version left behind, built the way it built them.
+    fn nested(theirs: Option<&str>, clis: &[&str]) -> String {
+        let mut command = theirs.map(str::to_owned);
+        for cli in clis {
+            command = Some(match command {
+                Some(inner) => wrapping(cli, &inner),
+                None => ours(cli),
+            });
+        }
+        json!({"statusLine": {"type": "command", "command": command}}).to_string()
+    }
+
+    #[test]
+    fn layers_left_by_older_versions_are_found_and_flattened() {
+        let deep = nested(Some("echo 'hi'"), &[OLD, DEV, CLI]);
+        assert_eq!(other_statusline_clis(&deep, CLI), [OLD, DEV]);
+        assert!(is_statusline_installed(&deep, CLI));
+        let flat = remove_other_statuslines(&deep, CLI).unwrap();
+        assert_eq!(command(&flat), wrapping(CLI, "echo 'hi'"));
+        assert_eq!(
+            remove_other_statuslines(&flat, CLI).unwrap(),
+            flat,
+            "idempotent"
+        );
+
+        // This copy is not in it: the user's own command comes back.
+        let others = nested(Some("echo 'hi'"), &[OLD, DEV]);
+        assert_eq!(other_statusline_clis(&others, CLI).len(), 2);
+        let restored = remove_other_statuslines(&others, CLI).unwrap();
+        assert_eq!(command(&restored), "echo 'hi'");
+
+        // LiteNotch was all there was: nothing is left behind.
+        let only = nested(None, &[OLD, DEV]);
+        let gone = remove_other_statuslines(&only, CLI).unwrap();
+        assert!(serde_json::from_str::<Value>(&gone)
+            .unwrap()
+            .get("statusLine")
+            .is_none());
+        let ours_on_top = nested(None, &[OLD, CLI]);
+        let kept = remove_other_statuslines(&ours_on_top, CLI).unwrap();
+        assert_eq!(command(&kept), ours(CLI));
+
+        // Uninstalling from a deep stack restores the user's command, not
+        // an older copy of LiteNotch.
+        assert_eq!(
+            command(&uninstall_statusline(&deep, CLI).unwrap()),
+            "echo 'hi'"
+        );
+    }
+
+    #[test]
+    fn a_status_line_that_is_not_litenotchs_is_left_alone() {
+        for theirs in [
+            "echo hi",
+            "'/usr/bin/starship' statusline",
+            "'/a/litenotch' something else",
+            "'/a/litenotch' statusline -- /bin/sh -c not-quoted",
+        ] {
+            let settings =
+                json!({"statusLine": {"type": "command", "command": theirs}}).to_string();
+            assert!(other_statusline_clis(&settings, CLI).is_empty(), "{theirs}");
+            let same = remove_other_statuslines(&settings, CLI).unwrap();
+            assert_eq!(command(&same), theirs);
+        }
+        assert!(other_statusline_clis("{}", CLI).is_empty());
+        assert!(other_statusline_clis("not json", CLI).is_empty());
+    }
 
     fn line(json: &str) -> Value {
         serde_json::from_str::<Value>(json).unwrap()["statusLine"].clone()

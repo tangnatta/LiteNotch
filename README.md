@@ -179,6 +179,11 @@ that were already running pick this up at their next prompt. If LiteNotch isn't
 running, Claude Code behaves exactly as before. **Disconnect** undoes it (a
 backup of your settings is kept as `settings.json.litenotch-backup`).
 
+Only one copy of LiteNotch should be connected. If you have run other
+copies (a test build, the app from a different folder), LiteNotch tells you
+at start and **Settings › Agents** offers **Remove them**; connecting also
+replaces any other copy's hooks.
+
 To also see your **usage limits**, make LiteNotch your Claude Code status
 line, wrapping the one you already have if you like:
 

@@ -700,6 +700,11 @@ public struct AgentsView: Codable, Equatable {
     /// LiteNotch is Claude Code's status line (the source of usage limits);
     /// nil when not known.
     public var statuslineInstalled: Bool? = nil
+    /// Other copies of LiteNotch still registered with Claude Code (a test
+    /// build, an old location); each runs on every event as well.
+    public var otherCopies: Int? = nil
+    /// How many of those no longer exist on disk.
+    public var otherCopiesMissing: Int? = nil
 }
 
 public struct RateWindow: Codable, Equatable {

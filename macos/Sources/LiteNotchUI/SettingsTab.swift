@@ -421,6 +421,15 @@ struct SettingsTab: View {
                 .help("Adds LiteNotch to Claude Code\u{2019}s settings. New sessions show up here.")
             }
         }
+        if let warning = AgentsText.otherCopies(found: vm.agents.otherCopies ?? 0,
+                                               missing: vm.agents.otherCopiesMissing ?? 0) {
+            warningRow(warning) {
+                TextPill(title: "Remove them", tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold) {
+                    send(.hooksClean)
+                }
+                .help("Removes the other copies\u{2019} hooks from Claude Code\u{2019}s settings. This copy stays connected.")
+            }
+        }
         let limits = vm.agents.statuslineInstalled ?? false
         row("Usage limits", caption: limits ? "Shown in Agents \u{203A} Usage" : "Not shown") {
             if limits {
@@ -689,5 +698,24 @@ struct SoundPicker: View {
         .buttonStyle(.plain)
         .help(label)
         .accessibilityLabel(Text(verbatim: label))
+    }
+}
+
+/// Text for the Agents settings; pure so it can be unit tested.
+public enum AgentsText {
+    /// The warning when other copies of LiteNotch are registered with Claude
+    /// Code; nil when there are none.
+    public static func otherCopies(found: Int, missing: Int) -> String? {
+        guard found > 0 else { return nil }
+        let missing = min(max(missing, 0), found)
+        let what = found == 1 ? "1 other copy of LiteNotch also runs" : "\(found) other copies of LiteNotch also run"
+        let gone: String
+        switch (missing, found) {
+        case (0, _): gone = ""
+        case (1, 1): gone = " It no longer exists."
+        case (let m, let f) where m == f: gone = " None of them exist any more."
+        case (let m, _): gone = " \(m) of them no longer exist."
+        }
+        return "\(what) on every Claude Code event.\(gone)"
     }
 }

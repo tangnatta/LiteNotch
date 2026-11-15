@@ -8,7 +8,9 @@ pub use hooks::{
     decision_output, describe, sanitize, summarize, valid_bundle_id, valid_tty, Description,
     HookError, HookEvent, HookKind,
 };
-pub use install::{install, is_installed, uninstall, InstallError};
+pub use install::{
+    install, is_installed, other_hook_clis, remove_other_hooks, uninstall, InstallError,
+};
 
 use serde::{Deserialize, Serialize};
 

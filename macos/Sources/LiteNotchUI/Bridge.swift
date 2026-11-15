@@ -470,8 +470,11 @@ public final class PanelState: ObservableObject {
 
     public var layout: NotchLayout {
         let style = view?.settings.appearance.notchStyle ?? .attached
+        let shrunk = mode == .closed && NotchLayout.shrinks(view?.settings.appearance.shrink ?? .off,
+                                                            content: ClosedContent(view: view),
+                                                            peek: view?.compact.peek != nil, hasNotch: hasNotch)
         return NotchLayout(style: style == .floating ? .floating : .attached,
-                           notch: notch, hasNotch: hasNotch, menuBarHeight: menuBarHeight)
+                           notch: notch, hasNotch: hasNotch, menuBarHeight: menuBarHeight, minimized: shrunk)
     }
 
     /// Target size of the current shape (not animated); used for hit testing.

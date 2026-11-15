@@ -105,7 +105,9 @@ final class NotchPriorityTests: XCTestCase {
         let one = ClosedContent(primary: compact(.pomodoro))
         let two = ClosedContent(primary: compact(.calendar), secondary: compact(.pomodoro))
         XCTAssertEqual(attached.size(for: .closed, content: one), attached.size(for: .closed, compact: compact(.pomodoro)))
-        XCTAssertEqual(floating.size(for: .closed, content: one), floating.size(for: .closed, compact: compact(.pomodoro)))
+        // Without a notch (this floating layout) the closed notch is one row.
+        XCTAssertEqual(floating.size(for: .closed, content: one).width,
+                       max(floating.centerWidth, NotchGeometry.rowWidth(for: one, floating: true)))
         XCTAssertGreaterThan(attached.size(for: .closed, content: two).width, attached.size(for: .closed, content: one).width)
         XCTAssertEqual(attached.size(for: .closed, content: two).height, 32)
         XCTAssertEqual(floating.size(for: .closed, content: two).height, 21)

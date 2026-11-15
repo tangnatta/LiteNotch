@@ -137,6 +137,21 @@ pub enum ClosedNotch {
     Theme,
 }
 
+/// On a display without a notch, when the closed notch shrinks to a thin
+/// strip at the top edge (the shell draws it; a hardware notch never
+/// shrinks, since the shape must cover the camera).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Shrink {
+    /// Never: the original look.
+    #[default]
+    Off,
+    /// While there is nothing to show.
+    WhenEmpty,
+    /// Whenever it is closed, except for a peek.
+    Always,
+}
+
 /// What the open panel is drawn with. Glass is the macOS 26 Liquid Glass
 /// material; the shell falls back to Solid where the system (or the SDK it
 /// was built with) lacks it. The closed notch and the toast stay black in
@@ -160,6 +175,7 @@ pub struct Appearance {
     pub notch_style: NotchStyle,
     pub closed_notch: ClosedNotch,
     pub material: Material,
+    pub shrink: Shrink,
 }
 
 impl Default for Appearance {
@@ -170,6 +186,7 @@ impl Default for Appearance {
             notch_style: NotchStyle::Attached,
             closed_notch: ClosedNotch::Dark,
             material: Material::Solid,
+            shrink: Shrink::Off,
         }
     }
 }
@@ -3721,12 +3738,16 @@ mod tests {
         let json = serde_json::to_value(c.view(T0).settings.appearance).unwrap();
         assert_eq!(
             json,
-            json!({"theme":"light","accent":DEFAULT_ACCENT,"notch_style":"floating","closed_notch":"dark","material":"solid"})
+            json!({"theme":"light","accent":DEFAULT_ACCENT,"notch_style":"floating","closed_notch":"dark","material":"solid","shrink":"off"})
         );
         // Settings saved before the field existed load as the original look.
         let old: Appearance =
             serde_json::from_value(json!({"theme":"dark","accent":"#000000"})).unwrap();
         assert_eq!(old.notch_style, NotchStyle::Attached);
+        assert_eq!(old.shrink, Shrink::Off);
+        let when_empty: Appearance =
+            serde_json::from_value(json!({"shrink":"when_empty"})).unwrap();
+        assert_eq!(when_empty.shrink, Shrink::WhenEmpty);
     }
 
     #[test]

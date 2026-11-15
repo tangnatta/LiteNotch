@@ -165,6 +165,13 @@ struct SettingsTab: View {
                                                  set: { draft.appearance.closedNotch = $0 }),
                               label: "Closed notch", height: 22)
             }
+            wideRow("Shrink", caption: "A thin strip at the top edge instead of the closed notch.") {
+                SegmentedPill(options: [(ShrinkChoice.off, "Default"), (ShrinkChoice.whenEmpty, "When empty"),
+                                        (ShrinkChoice.always, "Always")],
+                              selection: Binding(get: { draft.appearance.shrink == .unknown ? .off : draft.appearance.shrink },
+                                                 set: { draft.appearance.shrink = $0 }),
+                              label: "Shrink", height: 22)
+            }
         }
         materialRow
         row("Accent") {

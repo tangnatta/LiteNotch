@@ -86,6 +86,11 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   The shell draws one activity exactly as before (icon left, value right);
   two as icon + time on each side, the second dimmed
   (`ClosedActivityView`, widths in `NotchGeometry.wingWidth(for:floating:)`).
+  On a display without a notch there is no camera to keep clear, so in
+  both styles the same content is one row with no gap in the middle
+  (`NotchLayout.oneRow`, `NotchGeometry.rowWidth`): one activity is its
+  icon then its value through the middle, two sit side by side; never
+  narrower than the idle shape.
   Nothing rotates. Settings › Notch (`NotchPriority.swift`) edits the
   order with a preview drawn by the real closed-notch view; its
   `NotchPriority.resolve` repeats the core's rule and both are tested
@@ -110,7 +115,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   once, a click on the tab-bar background closes.
   Two notch styles (`appearance.notch_style`, Settings → General): Attached
   (default, the original geometry; keep it pixel-identical for existing
-  users) and Floating, a capsule inset 3 pt inside the menu bar or notch
+  users on a display with a notch; without one it uses the one row above) and Floating, a capsule inset 3 pt inside the menu bar or notch
   band, with the toast overlapping it by 8 pt and the panel 6 pt below
   (`floatingPanelDrop`; at 0 it looked hung from the bar).
   Floating sizes derive from the measured menu bar height; all geometry
@@ -128,6 +133,11 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   hardware notch (`safeAreaInsets.top > 0`, `PanelState.hasNotch`)
   they are always black and that row is hidden, since the camera housing
   cannot turn white.
+  `appearance.shrink` (Settings › General › Shrink, also only without a notch):
+  Off (default), WhenEmpty (nothing to show and no waiting dot) or Always
+  (except during a peek) turns the closed shape into a 120 x 8 pt strip
+  flush with the top edge, in either style (`NotchLayout.minimized`,
+  decided by `NotchLayout.shrinks`; never with a hardware notch).
   `appearance.material` (Settings → General → Panel): Solid (default) or
   Glass, macOS 26 Liquid Glass for the open panel only; the closed notch
   and toast stay black to blend with the hardware notch. Glass needs a

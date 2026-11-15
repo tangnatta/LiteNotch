@@ -154,6 +154,16 @@ public enum ClosedNotchChoice: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// On a display without a notch, when the closed notch shrinks to a thin
+/// strip (`appearance.shrink`). Never with a hardware notch.
+public enum ShrinkChoice: String, LenientEnum {
+    case off
+    case whenEmpty = "when_empty"
+    case always, unknown
+    static var unknownCase: ShrinkChoice { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
 /// What the open panel is drawn with (`appearance.material`). Glass is the
 /// macOS 26 Liquid Glass material; see `GlassSupport`.
 public enum MaterialChoice: String, LenientEnum {
@@ -169,21 +179,24 @@ public struct AppearanceConfig: Codable, Equatable {
     public var notchStyle: NotchStyle
     public var closedNotch: ClosedNotchChoice
     public var material: MaterialChoice
+    public var shrink: ShrinkChoice
 
     // Plain names: the view model is decoded with `.convertFromSnakeCase` and
     // settings are encoded with `.convertToSnakeCase`, which map them to snake_case.
-    enum CodingKeys: String, CodingKey { case theme, accent, notchStyle, closedNotch, material }
+    enum CodingKeys: String, CodingKey { case theme, accent, notchStyle, closedNotch, material, shrink }
 
     public static let defaultAccent = "#FF9E0A"
     public static let `default` = AppearanceConfig(theme: .system, accent: defaultAccent)
 
     public init(theme: ThemeChoice, accent: String, notchStyle: NotchStyle = .attached,
-                closedNotch: ClosedNotchChoice = .dark, material: MaterialChoice = .solid) {
+                closedNotch: ClosedNotchChoice = .dark, material: MaterialChoice = .solid,
+                shrink: ShrinkChoice = .off) {
         self.theme = theme
         self.accent = accent
         self.notchStyle = notchStyle
         self.closedNotch = closedNotch
         self.material = material
+        self.shrink = shrink
     }
 
     // `notch_style` is newer than the rest; a missing or unknown one draws
@@ -195,6 +208,7 @@ public struct AppearanceConfig: Codable, Equatable {
         notchStyle = (try? c.decodeIfPresent(NotchStyle.self, forKey: .notchStyle)) ?? .attached
         closedNotch = (try? c.decodeIfPresent(ClosedNotchChoice.self, forKey: .closedNotch)) ?? .dark
         material = (try? c.decodeIfPresent(MaterialChoice.self, forKey: .material)) ?? .solid
+        shrink = (try? c.decodeIfPresent(ShrinkChoice.self, forKey: .shrink)) ?? .off
     }
 
     // An unknown value is left out so the core keeps its own.
@@ -205,6 +219,7 @@ public struct AppearanceConfig: Codable, Equatable {
         if notchStyle != .unknown { try c.encode(notchStyle, forKey: .notchStyle) }
         if closedNotch != .unknown { try c.encode(closedNotch, forKey: .closedNotch) }
         if material != .unknown { try c.encode(material, forKey: .material) }
+        if shrink != .unknown { try c.encode(shrink, forKey: .shrink) }
     }
 
     /// Whether the open panel is drawn with Liquid Glass: chosen, and this

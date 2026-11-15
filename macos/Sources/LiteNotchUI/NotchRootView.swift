@@ -46,7 +46,10 @@ public struct NotchRootView: View {
         }()
         // Attached: the notch silhouette with concave ears. Floating: all
         // four corners rounded, `top` below the top of the screen.
-        let shape = layout.floating
+        // Shrunk: a thin strip flush with the top edge, in either style.
+        let shape = layout.minimized
+            ? NotchShape(topRadius: NotchGeometry.minimizedEar, bottomRadius: NotchGeometry.minimizedBottomRadius)
+            : layout.floating
             ? NotchShape(topRadius: 0, bottomRadius: bottom, topCorner: bottom, topInset: top)
             : NotchShape(topRadius: ear, bottomRadius: bottom)
 
@@ -70,7 +73,7 @@ public struct NotchRootView: View {
             switch mode {
             case .closed:
                 let content = ClosedContent(view: model.view)
-                if !content.isEmpty {
+                if !content.isEmpty && !layout.minimized {
                     Group {
                         if layout.floating {
                             ClosedActivityView(content: content, notchWidth: layout.centerWidth, ear: 0,
@@ -78,13 +81,15 @@ public struct NotchRootView: View {
                                                edgePadding: NotchGeometry.floatingWingPadding,
                                                artworkSize: min(20, layout.capsuleHeight - 4),
                                                artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
-                                               artworkPath: model.view?.media?.artworkPath)
+                                               artworkPath: model.view?.media?.artworkPath,
+                                               oneRow: layout.oneRow)
                                 .frame(height: layout.capsuleHeight)
                                 .padding(.top, top)
                         } else {
                             ClosedActivityView(content: content, notchWidth: model.notch.width, ear: ear,
                                                wing: layout.wingWidth(for: content),
-                                               artworkPath: model.view?.media?.artworkPath)
+                                               artworkPath: model.view?.media?.artworkPath,
+                                               oneRow: layout.oneRow)
                         }
                     }
                         .environment(\.colorScheme, closedScheme)
@@ -139,14 +144,22 @@ struct ClosedActivityView: View {
     /// capsule's top, bottom and end, so it nests inside the round end.
     var artworkInset: CGFloat?
     var artworkPath: String?
+    /// No notch: one row with no gap in the middle (`NotchLayout.oneRow`).
+    var oneRow = false
 
     private var paired: Bool { content.secondary != nil }
 
     var body: some View {
-        HStack(spacing: 0) {
-            left.frame(width: wing, alignment: .leading)
-            Color.clear.frame(width: notchWidth)
-            right.frame(width: wing, alignment: .trailing)
+        Group {
+            if oneRow, content.primary != nil {
+                row
+            } else {
+                HStack(spacing: 0) {
+                    left.frame(width: wing, alignment: .leading)
+                    Color.clear.frame(width: notchWidth)
+                    right.frame(width: wing, alignment: .trailing)
+                }
+            }
         }
         .padding(.horizontal, ear)
         .frame(maxHeight: .infinity)
@@ -160,6 +173,39 @@ struct ClosedActivityView: View {
             .map { "\($0.title) \($0.value)".trimmingCharacters(in: .whitespaces) }
         if content.waiting { parts.append("An agent is waiting for you") }
         return parts.joined(separator: ". ")
+    }
+
+    /// One row: one activity as its icon, then its value filling the rest;
+    /// two side by side, the second dimmed. Then the dot.
+    @ViewBuilder private var row: some View {
+        if let c = content.primary {
+            HStack(spacing: 0) {
+                if let s = content.secondary {
+                    HStack(spacing: NotchGeometry.pairGap) {
+                        icon(c)
+                        value(c)
+                    }
+                    Spacer(minLength: NotchGeometry.rowPairSpace)
+                    HStack(spacing: NotchGeometry.pairGap) {
+                        icon(s)
+                        value(s)
+                    }
+                    .opacity(0.7)
+                } else {
+                    HStack(spacing: NotchGeometry.rowGap) {
+                        icon(c).frame(minWidth: NotchGeometry.rowIcon, alignment: .leading)
+                        value(c).frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                }
+                if content.waiting {
+                    Circle().fill(NT.accentText)
+                        .frame(width: NotchGeometry.waitingDot, height: NotchGeometry.waitingDot)
+                        .padding(.leading, NotchGeometry.waitingDotSpace - NotchGeometry.waitingDot)
+                }
+            }
+            .padding(.leading, c.kind == .media ? artworkInset ?? edgePadding : edgePadding)
+            .padding(.trailing, edgePadding)
+        }
     }
 
     /// One activity: its icon. Two: the first one's icon and value.

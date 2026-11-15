@@ -299,7 +299,10 @@ struct SettingsTab: View {
                           selection: $draft.peek.moveMins, label: "Move", height: 22)
         }
         if draft.peek.moveMins > 0 {
-            row("Count", caption: draft.peek.moveCounts == .screen ? "Time at the Mac." : "Focus time only.") {
+            // Which minutes add up to the next Move reminder.
+            row("Move counts time", caption: draft.peek.moveCounts == .screen
+                ? "Every minute at the Mac adds up to the next reminder."
+                : "Only minutes inside a focus session add up.") {
                 SegmentedPill(options: [(CountTime.focus, "In focus"), (.screen, "At the Mac")],
                               selection: $draft.peek.moveCounts, label: "Move counts", height: 22)
             }

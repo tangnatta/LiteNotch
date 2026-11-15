@@ -508,7 +508,7 @@ struct MiniStepper: View {
     @ViewBuilder private var number: some View {
         if typed != nil {
             TextField("", text: Binding(get: { typed ?? "" },
-                                        set: { typed = String($0.filter { $0.isASCII && $0.isNumber }.prefix(4)) }))
+                                        set: { typed = Self.edited($0, typing: typed) }))
                 .textFieldStyle(.plain)
                 .multilineTextAlignment(.center)
                 .font(NType.bodyMedium.font)
@@ -573,6 +573,15 @@ struct MiniStepper: View {
     static func liveValue(_ text: String?, current: Int, range: ClosedRange<Int>) -> Int? {
         guard let text, let v = typedValue(text, range: range), v != current else { return nil }
         return v
+    }
+
+    /// The typing state after the field reports `text`. Once typing has
+    /// ended (nil) it stays ended: as the field is torn down it reports an
+    /// empty string, and taking that as new typing left an empty field
+    /// where the number should be.
+    static func edited(_ text: String, typing: String?) -> String? {
+        guard typing != nil else { return nil }
+        return String(text.filter { $0.isASCII && $0.isNumber }.prefix(4))
     }
 
     /// What the field holds when typing starts: the current value, so it is

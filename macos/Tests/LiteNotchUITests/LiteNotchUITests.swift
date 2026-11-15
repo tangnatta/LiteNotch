@@ -1888,6 +1888,18 @@ final class ReportedIssueTests: XCTestCase {
         XCTAssertEqual(MiniStepper.startingText(12), "12")
     }
 
+    /// Reported: after typing a number and pressing Return (or clicking
+    /// away) the value was kept but the control showed nothing.
+    func testAStepperFieldCannotRestartTypingAfterItEnded() {
+        XCTAssertNil(MiniStepper.edited("", typing: nil), "the field's last report as it goes away")
+        XCTAssertNil(MiniStepper.edited("45", typing: nil))
+        // While typing: digits only, at most four.
+        XCTAssertEqual(MiniStepper.edited("4", typing: "12"), "4")
+        XCTAssertEqual(MiniStepper.edited("", typing: "4"), "", "emptied to retype")
+        XCTAssertEqual(MiniStepper.edited("1a2-3", typing: ""), "123")
+        XCTAssertEqual(MiniStepper.edited("123456", typing: ""), "1234")
+    }
+
     func testAClickOutsideTheStepperFieldEndsTheTyping() {
         // The field at x 100–134, 40–62 pt below the top of a 300 pt window.
         let field = CGRect(x: 100, y: 40, width: 34, height: 22)

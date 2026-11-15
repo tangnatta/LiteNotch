@@ -214,6 +214,11 @@ extension NotchGeometry {
     /// The waiting dot and the space before it.
     public static let waitingDot: CGFloat = 6
     public static let waitingDotSpace: CGFloat = 11
+    /// Width of each wing when the dot is all there is to show beside a
+    /// notch. The camera housing is a little wider than the notch macOS
+    /// reports and its corners are round, so the dot needs clear space
+    /// between it and the housing as well as its padding at the outer end.
+    public static let loneDotWing: CGFloat = 34
     /// Space between an icon and its value when two activities share the notch.
     public static let pairGap: CGFloat = 5
 
@@ -237,7 +242,7 @@ extension NotchGeometry {
     /// this is the width it always had; the dot adds a little.
     public static func wingWidth(for content: ClosedContent, floating: Bool) -> CGFloat {
         let dot = content.waiting ? waitingDotSpace : 0
-        guard let first = content.primary else { return content.waiting ? (floating ? 12 : 20) : 0 }
+        guard let first = content.primary else { return content.waiting ? (floating ? 12 : loneDotWing) : 0 }
         guard let second = content.secondary else {
             return (floating ? floatingWingWidth(for: first) : wingWidth(for: first)) + dot
         }

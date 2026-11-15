@@ -76,6 +76,20 @@ final class NotchPriorityTests: XCTestCase {
         }
     }
 
+    /// Reported: on a Mac with a notch the lone dot was hard to see, tucked
+    /// against the camera housing. The wing leaves clear space on the
+    /// housing's side of the dot, at least as much as its outer padding.
+    func testTheLoneDotSitsClearOfTheCameraHousing() {
+        let wing = NotchGeometry.wingWidth(for: ClosedContent(primary: nil, waiting: true), floating: false)
+        let outerPadding: CGFloat = 12
+        let clear = wing - outerPadding - NotchGeometry.waitingDot
+        XCTAssertGreaterThanOrEqual(clear, 14, "space between the housing and the dot")
+        XCTAssertGreaterThanOrEqual(clear, outerPadding)
+        // With an activity the dot is at the far end of a full wing already.
+        XCTAssertGreaterThan(NotchGeometry.wingWidth(for: ClosedContent(primary: compact(.pomodoro), waiting: true),
+                                                     floating: false), wing)
+    }
+
     func testTwoActivitiesFitIconAndTimeOnEachSideWithinABound() {
         let kinds: [ActivityKind] = [.meeting, .calendar, .timer, .pomodoro, .media, .caffeine, .agent]
         for floating in [false, true] {

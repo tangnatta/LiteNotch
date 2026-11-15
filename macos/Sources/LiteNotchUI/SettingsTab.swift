@@ -126,7 +126,8 @@ struct SettingsTab: View {
     @ViewBuilder private var pane: some View {
         switch model.settingsSection {
         case .general: general
-        case .notch: NotchPriorityPane(config: $draft.notch, floating: draft.appearance.notchStyle == .floating)
+        case .notch: NotchPriorityPane(config: $draft.notch, floating: draft.appearance.notchStyle == .floating,
+                                         hasNotch: model.hasNotch)
         case .timer: timer
         case .music: music
         case .notifications: notifications
@@ -169,6 +170,15 @@ struct SettingsTab: View {
                 SegmentedPill(options: [(ShrinkChoice.off, "Default"), (ShrinkChoice.whenEmpty, "When empty"),
                                         (ShrinkChoice.always, "Always")],
                               selection: Binding(get: { draft.appearance.shrink == .unknown ? .off : draft.appearance.shrink },
+                                                 set: { draft.appearance.shrink = $0 }),
+                              label: "Shrink", height: 22)
+            }
+        } else {
+            // Beside a camera housing the only useful choice is to keep
+            // the sides clear: an empty notch already is just the notch.
+            row("Shrink", caption: "Nothing beside the notch while closed. Peeks and notifications still show.") {
+                SegmentedPill(options: [(ShrinkChoice.off, "Default"), (ShrinkChoice.always, "Always")],
+                              selection: Binding(get: { draft.appearance.shrink == .always ? .always : .off },
                                                  set: { draft.appearance.shrink = $0 }),
                               label: "Shrink", height: 22)
             }
@@ -288,6 +298,13 @@ struct SettingsTab: View {
         wideRow("Heads-up before it ends", caption: "Pomodoro and timer show the time left for a moment.") {
             SegmentedPill(options: [(0, "Off"), (60, "1"), (180, "3"), (300, "5"), (600, "10 min")],
                           selection: $draft.peek.timeWarningSecs, label: "Heads-up before it ends", height: 22)
+        }
+        toggle("Sound when time is up", $draft.sound.enabled,
+               caption: "When a timer, a focus session or a break ends.")
+        if draft.sound.enabled {
+            row("Sound") {
+                SoundPicker(name: $draft.sound.name) { send(.soundPreview(name: $0)) }
+            }
         }
         Hairline().padding(.vertical, 2)
         wideRow("Eye break", caption: "A quick blink and look away.") {
@@ -621,5 +638,56 @@ struct HueStrip: View {
                 let next = (hue ?? 0) + step
                 pick(next - floor(next))
             }
+    }
+}
+
+/// Steps through the system alert sounds, playing each as it is chosen.
+struct SoundPicker: View {
+    @Binding var name: String
+    let preview: (String) -> Void
+
+    /// The name `step` places from `name` in the list, wrapping round; the
+    /// default when `name` is not a known sound.
+    static func next(after name: String, step: Int) -> String {
+        let all = SoundConfig.sounds
+        guard let i = all.firstIndex(of: name) else { return SoundConfig.defaultName }
+        return all[((i + step) % all.count + all.count) % all.count]
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            arrow("chevron.left", "Previous sound", step: -1)
+            Button { preview(name) } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "speaker.wave.2.fill").glyph(9)
+                    Text(verbatim: name).nfont(.bodyMedium).lineLimit(1)
+                }
+                .foregroundStyle(NT.text1)
+                .frame(minWidth: 92, minHeight: 22)
+                .contentShape(Rectangle())
+                .controlHover(RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .help("Play \(name)")
+            .accessibilityLabel(Text(verbatim: "Sound: \(name). Click to play."))
+            arrow("chevron.right", "Next sound", step: 1)
+        }
+        .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
+    }
+
+    private func arrow(_ symbol: String, _ label: String, step: Int) -> some View {
+        Button {
+            name = Self.next(after: name, step: step)
+            preview(name)
+        } label: {
+            Image(systemName: symbol).glyph(9, .bold)
+                .foregroundStyle(NT.text2)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+                .controlHover(RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(Text(verbatim: label))
     }
 }

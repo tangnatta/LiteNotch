@@ -163,7 +163,8 @@ struct HomeTab: View {
     private var pomodoroRow: some View {
         let p = vm.pomodoro
         let running = p.runState == .running
-        return HomeRow(symbol: "timer", tint: p.phase == .focus ? NT.accent : NT.text2) {
+        let onBreak = p.phase == .shortBreak || p.phase == .longBreak
+        return HomeRow(symbol: onBreak ? "leaf.fill" : "timer", tint: p.phase == .focus ? NT.accent : NT.text2) {
             EverySecond { now in
                 let left = running && p.endsAtMs != nil
                     ? Format.secondsLeft(until: p.endsAtMs ?? now, nowMs: now) : p.remainingSecs

@@ -373,6 +373,22 @@ public struct AnalyticsConfig: Codable, Equatable {
     public var share: Bool
 }
 
+/// Mirrors `state::SoundConfig`: a sound when a timer, a focus session or a
+/// break ends.
+public struct SoundConfig: Codable, Equatable {
+    public var enabled: Bool
+    /// One of `sounds`.
+    public var name: String
+
+    /// The system alert sounds; mirrors `state::SOUNDS`.
+    public static let sounds = ["Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero", "Morse", "Ping", "Pop",
+                                "Purr", "Sosumi", "Submarine", "Tink"]
+    public static let defaultName = "Glass"
+    public static let `default` = SoundConfig(enabled: true, name: defaultName)
+
+    public init(enabled: Bool, name: String) { self.enabled = enabled; self.name = name }
+}
+
 /// Mirrors `state::NotchConfig`: what the closed notch shows when several
 /// things are running.
 public struct NotchConfig: Codable, Equatable {
@@ -417,6 +433,7 @@ public struct Settings: Codable, Equatable {
     public var calendar: CalendarConfig
     public var notch: NotchConfig
     public var peek: PeekConfig = .default
+    public var sound: SoundConfig = .default
 }
 
 extension Settings {
@@ -434,6 +451,7 @@ extension Settings {
         calendar = (try? c.decodeIfPresent(CalendarConfig.self, forKey: .calendar)) ?? .default
         notch = (try? c.decodeIfPresent(NotchConfig.self, forKey: .notch)) ?? .default
         peek = (try? c.decodeIfPresent(PeekConfig.self, forKey: .peek)) ?? .default
+        sound = (try? c.decodeIfPresent(SoundConfig.self, forKey: .sound)) ?? .default
     }
 }
 

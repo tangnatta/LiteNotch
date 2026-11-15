@@ -35,7 +35,7 @@ Drive the real runtime without the UI (end-to-end checks of hooks/CLI):
 
 ```
 crates/core      litenotch-core      all logic; no I/O, no clock, no threads, forbid(unsafe)
-crates/platform  litenotch-platform  macOS calls: pasteboard, IOKit power assertion, pmset, osascript, closed-lid helper, now-playing helper process
+crates/platform  litenotch-platform  macOS calls: pasteboard, IOKit power assertion, pmset, osascript, closed-lid helper, now-playing helper process, afplay
 crates/files     litenotch-files     saved state + editing ~/.claude/settings.json (shared by app and CLI)
 crates/app       litenotch-app       runtime thread, socket server, transcript scanner, C FFI (staticlib)
 crates/cli       litenotch (bin)     hook | statusline | notify | status | hooks install/uninstall/status
@@ -129,6 +129,15 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   polling) as `screen_away`; reminders are skipped then and screen-time
   counts start over. A mark seen over 60 s late was slept through and is
   skipped too, so it needs no word from the shell.
+- **Sound** (`settings.sound`, on by default, "Glass"): one of the 14
+  system alert sounds when the countdown timer, a focus session or a break
+  ends (not on skip, reset or pause). The core emits `Effect::PlaySound`
+  with a name from `SOUNDS`; the platform layer starts `afplay` on that
+  file in `/System/Library/Sounds` and lets it finish. `sound_preview`
+  plays one while the user chooses. Names are letters only, checked in
+  the core and again when the path is built.
+  The pomodoro's icon is a timer while focusing and a leaf during a break
+  (`ClosedActivityView.pomodoroSymbol`, from the core's phase label).
 - **Shell layout.** Tabs: Home (dashboard: now playing, timer, agents,
   inbox), Music, Timer, Clipboard, Agents (Sessions | Usage) on the left of
   the notch; keep-awake toggle (cup icon), Inbox, Settings on the right.
@@ -159,7 +168,19 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   Off (default), WhenEmpty (nothing to show and no waiting dot) or Always
   (except during a peek) turns the closed shape into a 120 x 8 pt strip
   flush with the top edge, in either style (`NotchLayout.minimized`,
-  decided by `NotchLayout.shrinks`; never with a hardware notch).
+  decided by `NotchLayout.shrinks`). With a hardware notch only Always
+  is offered and it means "nothing beside the notch while closed": the
+  shrunk shape there is the bare notch, full height, because an empty
+  notch already is just the notch and a strip thinner than the camera
+  housing could not be found with the pointer. Peeks, banners and
+  approvals still show.
+  Four layouts exist (camera housing or not, Attached or Floating) and
+  the user can choose either style on either machine. In each, what the
+  closed notch draws must fit the shape `NotchLayout.size(for:content:)`
+  gives it; `ClosedSpaceTests` measures the drawn content for every
+  activity, pair and the dot in all four, and for the Settings preview.
+  The preview once sized the shape by one rule and laid the content out
+  by another, which put the icons outside the capsule.
   `appearance.material` (Settings → General → Panel): Solid (default) or
   Glass, macOS 26 Liquid Glass for the open panel only; the closed notch
   and toast stay black to blend with the hardware notch. Glass needs a

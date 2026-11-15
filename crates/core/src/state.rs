@@ -230,7 +230,59 @@ pub struct Settings {
     pub analytics: AnalyticsConfig,
     pub calendar: CalendarConfig,
     pub notch: NotchConfig,
+    pub sound: SoundConfig,
     pub peek: PeekConfig,
+}
+
+/// The system alert sounds a timer can end with.
+pub const SOUNDS: [&str; 14] = [
+    "Basso",
+    "Blow",
+    "Bottle",
+    "Frog",
+    "Funk",
+    "Glass",
+    "Hero",
+    "Morse",
+    "Ping",
+    "Pop",
+    "Purr",
+    "Sosumi",
+    "Submarine",
+    "Tink",
+];
+pub const DEFAULT_SOUND: &str = "Glass";
+
+/// `name` as one of `SOUNDS`, if it is one.
+pub fn known_sound(name: &str) -> Option<&'static str> {
+    SOUNDS.iter().copied().find(|s| *s == name)
+}
+
+/// A sound when a countdown timer, a focus session or a break ends.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SoundConfig {
+    pub enabled: bool,
+    /// One of `SOUNDS`.
+    pub name: String,
+}
+
+impl Default for SoundConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            name: DEFAULT_SOUND.into(),
+        }
+    }
+}
+
+impl SoundConfig {
+    fn normalized(self) -> Self {
+        Self {
+            name: known_sound(&self.name).unwrap_or(DEFAULT_SOUND).into(),
+            ..self
+        }
+    }
 }
 
 /// The running activities the closed notch can show, in the default order:
@@ -329,6 +381,10 @@ pub enum Command {
     PomodoroToggle,
     /// Pause a running focus session; nothing otherwise.
     PomodoroPause,
+    /// Play a sound once, so the user can hear it while choosing.
+    SoundPreview {
+        name: String,
+    },
     PomodoroSkip,
     PomodoroReset,
     ClipCopy {
@@ -483,6 +539,8 @@ pub enum Effect {
     WriteClipboard(String),
     /// Turn the displays off (the lid was just closed in closed-lid mode).
     SleepDisplay,
+    /// Play this system alert sound (one of `SOUNDS`).
+    PlaySound(&'static str),
     /// Put the image in this file back on the pasteboard.
     WriteClipboardImage(String),
     /// Put text back with the formatting saved in `path`.
@@ -652,6 +710,8 @@ pub struct Core {
     calendar: Calendar,
     /// Makes each captured banner's group unique.
     system_seq: u64,
+    /// A timer or a pomodoro phase ended since the last effects went out.
+    ended: bool,
     /// Waiting sessions the user has since gone to; they no longer count
     /// for the dot until they wait again.
     attended: std::collections::BTreeSet<String>,
@@ -735,6 +795,7 @@ impl Core {
         } = saved;
         let settings = Settings {
             notch: settings.notch.clone().normalized(),
+            sound: settings.sound.clone().normalized(),
             ..settings
         };
         let mut pomodoro = Pomodoro::new(settings.pomodoro.clone());
@@ -756,6 +817,7 @@ impl Core {
             calendar: Calendar::new(settings.calendar.clone()),
             timer: Countdown::new(timer_secs.unwrap_or(300)),
             system_seq: 0,
+            ended: false,
             attended: std::collections::BTreeSet::new(),
             lid_shut: false,
             wanted_assertion: AwakeMode::Off,
@@ -907,6 +969,7 @@ impl Core {
             Input::Tick => {}
         }
         self.settle(now, &mut fx);
+        self.chime(&mut fx);
         fx
     }
 
@@ -981,7 +1044,18 @@ impl Core {
             _ => {}
         }
         self.settle(now, &mut fx);
+        self.chime(&mut fx);
         (outcome, fx)
+    }
+
+    /// One sound for whatever ended in this step (a timer and a phase at
+    /// the same instant still make one), if the user wants it.
+    fn chime(&mut self, fx: &mut Vec<Effect>) {
+        if std::mem::take(&mut self.ended) && self.settings.sound.enabled {
+            if let Some(name) = known_sound(&self.settings.sound.name) {
+                fx.push(Effect::PlaySound(name));
+            }
+        }
     }
 
     fn command(&mut self, cmd: Command, now: u64, fx: &mut Vec<Effect>) {
@@ -993,6 +1067,11 @@ impl Core {
                     self.count(Feature::PomodoroStart, now);
                 }
                 self.pomodoro_events(events, now);
+            }
+            Command::SoundPreview { name } => {
+                if let Some(name) = known_sound(&name) {
+                    fx.push(Effect::PlaySound(name));
+                }
             }
             Command::PomodoroPause => {
                 if self.pomodoro.is_focus_running() {
@@ -1223,6 +1302,7 @@ impl Core {
         self.agents.set_config(settings.agent.clone());
         self.calendar.set_config(settings.calendar.clone());
         settings.notch = settings.notch.normalized();
+        settings.sound = settings.sound.normalized();
         if !settings.media.enabled {
             self.media.set(None);
         }
@@ -1252,6 +1332,7 @@ impl Core {
         let events = self.meeting.tick(now);
         self.meeting_events(events, now);
         if self.timer.tick(now) {
+            self.ended = true;
             self.post(
                 NotificationInput {
                     source: "timer".into(),
@@ -1328,10 +1409,12 @@ impl Core {
                 Phase::Focus => {
                     self.count(Feature::PomodoroComplete, now);
                     self.dirty = true;
+                    self.ended = true;
                     ("Focus complete", "Time for a break.")
                 }
                 Phase::ShortBreak | Phase::LongBreak => {
                     self.break_done(now);
+                    self.ended = true;
                     ("Break over", "Ready for the next focus?")
                 }
                 Phase::Idle => continue,
@@ -2479,6 +2562,135 @@ mod tests {
         c.apply(status(96.0), T0 + 2);
         let banner = c.view(T0 + 2).inbox.banner.expect("95 % comes through");
         assert_eq!(banner.priority, Priority::High);
+    }
+
+    fn sounds(fx: &[Effect]) -> Vec<&'static str> {
+        fx.iter()
+            .filter_map(|e| match e {
+                Effect::PlaySound(name) => Some(*name),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_sound_plays_when_a_timer_a_focus_session_or_a_break_ends() {
+        let mut c = core();
+        // Countdown timer.
+        cmd(&mut c, Command::TimerSet { secs: 60 }, T0);
+        assert!(
+            sounds(&cmd(&mut c, Command::TimerToggle, T0)).is_empty(),
+            "not at the start"
+        );
+        assert!(sounds(&c.apply(Input::Tick, T0 + 59_000)).is_empty());
+        assert_eq!(sounds(&c.apply(Input::Tick, T0 + 60_000)), ["Glass"]);
+        assert!(
+            sounds(&c.apply(Input::Tick, T0 + 61_000)).is_empty(),
+            "once"
+        );
+
+        // Focus, then the break that follows by itself.
+        let t = T0 + 100_000;
+        cmd(&mut c, Command::PomodoroToggle, t);
+        assert_eq!(
+            sounds(&c.apply(Input::Tick, t + 1_500_000)),
+            ["Glass"],
+            "focus ended"
+        );
+        // The 5-minute break started by itself.
+        let break_end = t + 1_500_000 + 300_000;
+        assert!(sounds(&c.apply(Input::Tick, break_end - 1000)).is_empty());
+        assert_eq!(
+            sounds(&c.apply(Input::Tick, break_end)),
+            ["Glass"],
+            "break ended"
+        );
+    }
+
+    #[test]
+    fn skipping_resetting_or_pausing_makes_no_sound() {
+        let mut c = core();
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        assert!(
+            sounds(&cmd(&mut c, Command::PomodoroToggle, T0 + 1000)).is_empty(),
+            "pause"
+        );
+        assert!(
+            sounds(&cmd(&mut c, Command::PomodoroSkip, T0 + 2000)).is_empty(),
+            "skip"
+        );
+        assert!(
+            sounds(&cmd(&mut c, Command::PomodoroReset, T0 + 3000)).is_empty(),
+            "reset"
+        );
+        cmd(&mut c, Command::TimerSet { secs: 60 }, T0);
+        cmd(&mut c, Command::TimerToggle, T0);
+        assert!(sounds(&cmd(&mut c, Command::TimerReset, T0 + 1000)).is_empty());
+    }
+
+    #[test]
+    fn the_sound_can_be_chosen_turned_off_and_heard_before_choosing() {
+        let mut c = core();
+        set(&mut c, |s| s.sound.name = "Hero".into());
+        cmd(&mut c, Command::TimerSet { secs: 60 }, T0);
+        cmd(&mut c, Command::TimerToggle, T0);
+        assert_eq!(sounds(&c.apply(Input::Tick, T0 + 60_000)), ["Hero"]);
+
+        set(&mut c, |s| s.sound.enabled = false);
+        cmd(&mut c, Command::TimerToggle, T0 + 70_000);
+        assert!(
+            sounds(&c.apply(Input::Tick, T0 + 130_000)).is_empty(),
+            "off"
+        );
+        // A sound that ended while off is not played later.
+        set(&mut c, |s| s.sound.enabled = true);
+        assert!(sounds(&c.apply(Input::Tick, T0 + 131_000)).is_empty());
+
+        // The preview plays whether or not the sound is on, known names only.
+        set(&mut c, |s| s.sound.enabled = false);
+        let fx = cmd(
+            &mut c,
+            Command::SoundPreview {
+                name: "Ping".into(),
+            },
+            T0,
+        );
+        assert_eq!(sounds(&fx), ["Ping"]);
+        for bad in ["", "ping", "../Ping", "Glass.aiff", "/bin/sh"] {
+            let fx = cmd(&mut c, Command::SoundPreview { name: bad.into() }, T0);
+            assert!(sounds(&fx).is_empty(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn sound_settings_are_cleaned_up_and_old_settings_get_the_defaults() {
+        let mut c = core();
+        set(&mut c, |s| s.sound.name = "../../evil".into());
+        assert_eq!(c.settings().sound.name, DEFAULT_SOUND);
+        let old: Settings = serde_json::from_value(json!({"general": {}})).expect("loads");
+        assert_eq!(old.sound, SoundConfig::default());
+        assert!(old.sound.enabled);
+        let saved: Settings =
+            serde_json::from_value(json!({"sound": {"enabled": false, "name": "nope"}}))
+                .expect("loads");
+        let c = Core::new(Persisted {
+            settings: saved,
+            ..Persisted::default()
+        });
+        assert_eq!(c.settings().sound.name, DEFAULT_SOUND);
+        assert!(!c.settings().sound.enabled);
+        assert!(SOUNDS.contains(&DEFAULT_SOUND));
+        assert!(SOUNDS
+            .iter()
+            .all(|s| s.chars().all(|ch| ch.is_ascii_alphabetic())));
+        let command: Command =
+            serde_json::from_value(json!({"cmd":"sound_preview","name":"Tink"})).expect("parses");
+        assert_eq!(
+            command,
+            Command::SoundPreview {
+                name: "Tink".into()
+            }
+        );
     }
 
     #[test]

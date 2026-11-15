@@ -604,6 +604,7 @@ impl Loop {
                     self.ports.write_clipboard_rich(&text, &path)
                 }
                 Effect::SleepDisplay => self.ports.sleep_display(),
+                Effect::PlaySound(name) => self.ports.play_sound(name),
                 Effect::MediaCommand(command) => self.ports.media_command(command.code()),
                 Effect::Resolve(resolved) => {
                     if let Some((_, reply)) = self.waiters.remove(&resolved.request_id) {
@@ -738,6 +739,9 @@ pub(crate) mod testing {
         }
         fn sleep_display(&mut self) {
             self.0.lock().unwrap().calls.push("display:sleep".into());
+        }
+        fn play_sound(&mut self, name: &str) {
+            self.0.lock().unwrap().calls.push(format!("sound:{name}"));
         }
         fn power(&mut self) -> Option<PowerStatus> {
             let mut os = self.0.lock().unwrap();

@@ -258,6 +258,10 @@
       "two_places": true,
       "waiting_dot": true
     },
+    "sound": {
+      "enabled": true,
+      "name": "Glass"
+    },
     "peek": {
       "track_change": true,
       "time_warning_secs": 300,

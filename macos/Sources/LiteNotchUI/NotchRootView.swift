@@ -47,7 +47,7 @@ public struct NotchRootView: View {
         // Attached: the notch silhouette with concave ears. Floating: all
         // four corners rounded, `top` below the top of the screen.
         // Shrunk: a thin strip flush with the top edge, in either style.
-        let shape = layout.minimized
+        let shape = layout.minimized && !layout.hasNotch
             ? NotchShape(topRadius: NotchGeometry.minimizedEar, bottomRadius: NotchGeometry.minimizedBottomRadius)
             : layout.floating
             ? NotchShape(topRadius: 0, bottomRadius: bottom, topCorner: bottom, topInset: top)
@@ -167,6 +167,13 @@ struct ClosedActivityView: View {
         .accessibilityLabel(Text(verbatim: Self.spoken(content)))
     }
 
+    /// The pomodoro's icon: a timer while focusing, a leaf during a break,
+    /// so the two can be told apart at a glance. `title` is the core's
+    /// phase label (`Focus`, `Break`, `Long break`).
+    static func pomodoroSymbol(title: String) -> String {
+        title.localizedCaseInsensitiveContains("break") ? "leaf.fill" : "timer"
+    }
+
     /// What VoiceOver says for the closed notch.
     static func spoken(_ content: ClosedContent) -> String {
         var parts = [content.primary, content.secondary].compactMap { $0 }
@@ -177,7 +184,7 @@ struct ClosedActivityView: View {
 
     /// One row: one activity as its icon, then its value filling the rest;
     /// two side by side, the second dimmed. Then the dot.
-    @ViewBuilder private var row: some View {
+    @ViewBuilder var row: some View {
         if let c = content.primary {
             HStack(spacing: 0) {
                 if let s = content.secondary {
@@ -209,7 +216,7 @@ struct ClosedActivityView: View {
     }
 
     /// One activity: its icon. Two: the first one's icon and value.
-    @ViewBuilder private var left: some View {
+    @ViewBuilder var left: some View {
         if let c = content.primary {
             HStack(spacing: NotchGeometry.pairGap) {
                 icon(c)
@@ -220,7 +227,7 @@ struct ClosedActivityView: View {
     }
 
     /// One activity: its value. Two: the second one, dimmed. Then the dot.
-    @ViewBuilder private var right: some View {
+    @ViewBuilder var right: some View {
         HStack(spacing: NotchGeometry.pairGap) {
             if let s = content.secondary {
                 HStack(spacing: NotchGeometry.pairGap) {
@@ -242,7 +249,8 @@ struct ClosedActivityView: View {
     @ViewBuilder private func icon(_ compact: CompactView) -> some View {
         switch compact.kind {
         case .pomodoro:
-            Image(systemName: "timer").font(.system(size: 12, weight: .semibold)).foregroundStyle(NT.accentText)
+            Image(systemName: Self.pomodoroSymbol(title: compact.title))
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(NT.accentText)
         case .media:
             ArtworkView(path: artworkPath, size: artworkSize, radius: artworkInset == nil ? artworkSize / 4 : artworkSize / 2)
         case .caffeine:

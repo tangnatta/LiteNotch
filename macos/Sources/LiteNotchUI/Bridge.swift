@@ -48,6 +48,8 @@ public enum ShellCommand: Equatable {
     case pomodoroToggle, pomodoroSkip, pomodoroReset
     /// Pauses a running focus session; does nothing otherwise.
     case pomodoroPause
+    /// Plays a sound once, while the user is choosing one.
+    case soundPreview(name: String)
     case clipCopy(id: Int)
     /// Copy without the formatting it was copied with.
     case clipCopyPlain(id: Int)
@@ -107,6 +109,7 @@ public enum ShellCommand: Equatable {
         case .pomodoroToggle: return c("pomodoro_toggle")
         case .pomodoroSkip: return c("pomodoro_skip")
         case .pomodoroPause: return c("pomodoro_pause")
+        case .soundPreview(let name): return c("sound_preview", ["name": name])
         case .pomodoroReset: return c("pomodoro_reset")
         case .clipCopy(let id): return c("clip_copy", ["id": id])
         case .clipCopyPlain(let id): return c("clip_copy_plain", ["id": id])

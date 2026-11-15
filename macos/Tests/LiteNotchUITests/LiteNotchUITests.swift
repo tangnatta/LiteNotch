@@ -243,7 +243,7 @@ final class CommandTests: XCTestCase {
         let inner = try XCTUnwrap(s["settings"] as? NSDictionary)
         XCTAssertEqual(Set(inner.allKeys as! [String]),
                        ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics",
-                        "calendar", "notch", "peek"])
+                        "calendar", "notch", "peek", "sound"])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
         XCTAssertEqual(inner["peek"] as? NSDictionary,
                        ["track_change": true, "time_warning_secs": 300,
@@ -509,8 +509,10 @@ final class GeometryTests: XCTestCase {
             XCTAssertEqual(bare.top(for: .closed), 0, "flush with the top edge")
             XCTAssertEqual(bare.size(for: .expanded, compact: nil).width, NotchGeometry.expandedSize.width, "opening is full size")
         }
-        // A hardware notch has to stay covered.
-        XCTAssertFalse(NotchLayout(style: .attached, notch: CGSize(width: 185, height: 38), hasNotch: true, minimized: true).minimized)
+        // A hardware notch has to stay covered: shrunk there, the shape is
+        // the bare notch, never the strip (see ClosedSpaceTests).
+        let housed = NotchLayout(style: .attached, notch: CGSize(width: 185, height: 38), hasNotch: true, minimized: true)
+        XCTAssertEqual(housed.size(for: .closed, content: ClosedContent(primary: nil)).height, 38)
     }
 
     func testWhenTheNotchShrinks() {
@@ -526,7 +528,8 @@ final class GeometryTests: XCTestCase {
         XCTAssertFalse(shrinks(.whenEmpty, dot), "the waiting dot is something to show")
         XCTAssertTrue(shrinks(.always, timer))
         XCTAssertFalse(shrinks(.always, timer, peek: true), "a peek still shows")
-        XCTAssertFalse(shrinks(.always, empty, notch: true), "never with a hardware notch")
+        XCTAssertTrue(shrinks(.always, timer, notch: true), "beside a notch: nothing at its sides")
+        XCTAssertFalse(shrinks(.whenEmpty, empty, notch: true), "an empty notch already is just the notch")
         XCTAssertFalse(shrinks(.unknown, empty))
     }
 

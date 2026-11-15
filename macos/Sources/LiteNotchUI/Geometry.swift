@@ -242,7 +242,7 @@ extension NotchGeometry {
     /// this is the width it always had; the dot adds a little.
     public static func wingWidth(for content: ClosedContent, floating: Bool) -> CGFloat {
         let dot = content.waiting ? waitingDotSpace : 0
-        guard let first = content.primary else { return content.waiting ? (floating ? 12 : loneDotWing) : 0 }
+        guard let first = content.primary else { return content.waiting ? (floating ? 16 : loneDotWing) : 0 }
         guard let second = content.secondary else {
             return (floating ? floatingWingWidth(for: first) : wingWidth(for: first)) + dot
         }
@@ -330,20 +330,24 @@ public struct NotchLayout: Equatable {
         self.notch = notch
         self.hasNotch = hasNotch
         self.menuBarHeight = menuBarHeight
-        self.minimized = minimized && !hasNotch
+        self.minimized = minimized
     }
 
     /// No camera housing to keep clear: the closed notch is one row, with no
     /// gap in the middle.
     public var oneRow: Bool { !hasNotch }
 
-    /// Whether the closed notch is shrunk for `shrink`. Only on a screen
-    /// without a notch. When empty: nothing to show and no waiting dot.
-    /// Always: everything but a peek, which is the point of a peek.
+    /// Whether the closed notch is shrunk for `shrink`. When empty: nothing
+    /// to show and no waiting dot. Always: everything but a peek, which is
+    /// the point of a peek.
+    ///
+    /// Around a hardware notch only Always means anything: with nothing to
+    /// show the shape already is the bare notch, and a strip thinner than
+    /// the camera housing could not be found with the pointer. There, the
+    /// shrunk shape is the bare notch with nothing beside it.
     public static func shrinks(_ shrink: ShrinkChoice, content: ClosedContent, peek: Bool, hasNotch: Bool) -> Bool {
-        guard !hasNotch else { return false }
         switch shrink {
-        case .whenEmpty: return content.isEmpty
+        case .whenEmpty: return !hasNotch && content.isEmpty
         case .always: return !peek
         case .off, .unknown: return false
         }
@@ -378,7 +382,13 @@ public struct NotchLayout: Equatable {
     /// (the other modes do not depend on it).
     public func size(for mode: NotchMode, content: ClosedContent) -> CGSize {
         guard mode == .closed else { return size(for: mode, compact: content.primary) }
-        if minimized { return NotchGeometry.minimizedSize }
+        if minimized {
+            // A strip where there is no notch; the bare notch where there is.
+            guard hasNotch else { return NotchGeometry.minimizedSize }
+            return floating
+                ? CGSize(width: centerWidth, height: top(for: .closed) + capsuleHeight)
+                : NotchGeometry.closedSize(notch: notch, wing: 0)
+        }
         if oneRow && content.primary != nil {
             // Never narrower than the idle shape, so something showing never
             // makes it smaller.
@@ -400,7 +410,9 @@ public struct NotchLayout: Equatable {
     public func top(for mode: NotchMode) -> CGFloat {
         guard floating else { return 0 }
         switch mode {
-        case .closed: return minimized ? 0 : NotchGeometry.floatingMargin
+        // The strip is flush with the top edge; beside a camera housing the
+        // shrunk shape is the ordinary capsule with nothing in it.
+        case .closed: return minimized && !hasNotch ? 0 : NotchGeometry.floatingMargin
         case .toast: return max(0, bar - NotchGeometry.floatingToastLift)
         case .expanded: return bar + NotchGeometry.floatingPanelDrop
         }

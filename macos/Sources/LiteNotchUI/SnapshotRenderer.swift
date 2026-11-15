@@ -78,6 +78,9 @@ public enum SnapshotRenderer {
                 try add("floating-pair-closed", floating, expanded: false)
                 try add("floating-notchless-pair-closed", floating, expanded: false, notchless: true)
                 try add("floating-pair-expanded-settings-notch", floating, tab: .settings, section: .notch)
+                // The same pane on a display without a camera housing: one row.
+                try add("floating-notchless-pair-expanded-settings-notch", floating, tab: .settings, section: .notch, notchless: true)
+                try add("notchless-pair-expanded-settings-notch", vm, tab: .settings, section: .notch, notchless: true)
             }
             if name == "calendar" {
                 try add("calendar-expanded-settings-calendar", vm, tab: .settings, section: .calendar)

@@ -96,8 +96,8 @@ public enum NotchGeometry {
         return min(max(icon, value), 130)
     }
 
-    private static func textWidth(_ s: String) -> CGFloat {
-        CGFloat(min(s.count, 18)) * 6.4
+    private static func textWidth(_ s: String, chars: Int = 18) -> CGFloat {
+        CGFloat(min(s.count, chars)) * 6.4
     }
 
     public static func closedSize(notch: CGSize, wing: CGFloat) -> CGSize {
@@ -242,6 +242,57 @@ extension NotchGeometry {
         }
         return min(max(slot(first), slot(second) + dot), floating ? 90 : 104)
     }
+
+    // MARK: One row, on a screen without a notch
+
+    /// Room for the icon (or artwork) at the start of a row, and the gap after it.
+    public static let rowIcon: CGFloat = 20
+    public static let rowGap: CGFloat = 8
+    /// Space between two activities sharing a row.
+    public static let rowPairSpace: CGFloat = 14
+    public static let maxRowWidth: CGFloat = 340
+
+    /// Width of one activity's value when it has the row to itself; text
+    /// gets the room both wings and the gap had.
+    static func rowValueWidth(_ c: CompactView) -> CGFloat {
+        switch c.peek {
+        case .trackChanged: return 200
+        // `10:00 left`.
+        case .timeWarning: return 66
+        case .unknown, nil: break
+        }
+        switch c.kind {
+        case .idle, .unknown: return 0
+        // `1:24:59` in semibold digits.
+        case .pomodoro, .caffeine, .timer, .calendar: return 48
+        case .meeting: return 54
+        case .media: return 24
+        case .approval: return textWidth(c.value, chars: 32) + (c.count > 1 ? 20 : 0)
+        case .banner, .agent: return textWidth(c.title, chars: 32)
+        }
+    }
+
+    /// Without a notch there is no camera to keep clear: what the closed
+    /// notch shows as one row (padding at both ends included). One activity
+    /// is its icon, then its value through the middle; two sit side by side,
+    /// each as icon and time, as they would around a notch. 0 when empty.
+    public static func rowWidth(for content: ClosedContent, floating: Bool) -> CGFloat {
+        guard let first = content.primary else { return 0 }
+        let edge: CGFloat = floating ? floatingWingPadding : 12
+        let dot = content.waiting ? waitingDotSpace : 0
+        let inner: CGFloat
+        if let second = content.secondary {
+            let icon: CGFloat = floating ? 16 : 18
+            func slot(_ c: CompactView) -> CGFloat {
+                let value = pairValueWidth(c)
+                return icon + (value > 0 ? pairGap + value : 0)
+            }
+            inner = slot(first) + rowPairSpace + slot(second)
+        } else {
+            inner = rowIcon + rowGap + rowValueWidth(first)
+        }
+        return min(2 * edge + inner + dot, maxRowWidth)
+    }
 }
 
 /// Where each state sits for one panel, in either style. Pure: everything
@@ -265,6 +316,10 @@ public struct NotchLayout: Equatable {
         self.menuBarHeight = menuBarHeight
         self.minimized = minimized && !hasNotch
     }
+
+    /// No camera housing to keep clear: the closed notch is one row, with no
+    /// gap in the middle.
+    public var oneRow: Bool { !hasNotch }
 
     /// Whether the closed notch is shrunk for `shrink`. Only on a screen
     /// without a notch. When empty: nothing to show and no waiting dot.
@@ -308,6 +363,15 @@ public struct NotchLayout: Equatable {
     public func size(for mode: NotchMode, content: ClosedContent) -> CGSize {
         guard mode == .closed else { return size(for: mode, compact: content.primary) }
         if minimized { return NotchGeometry.minimizedSize }
+        if oneRow && content.primary != nil {
+            // Never narrower than the idle shape, so something showing never
+            // makes it smaller.
+            let row = NotchGeometry.rowWidth(for: content, floating: floating)
+            if floating {
+                return CGSize(width: max(centerWidth, row), height: top(for: .closed) + capsuleHeight)
+            }
+            return CGSize(width: max(notch.width, row) + 2 * NotchGeometry.closedEar, height: notch.height)
+        }
         let wing = wingWidth(for: content)
         if floating {
             return CGSize(width: centerWidth + 2 * wing, height: top(for: .closed) + capsuleHeight)

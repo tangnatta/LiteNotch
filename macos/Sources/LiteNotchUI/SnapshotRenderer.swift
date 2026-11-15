@@ -30,7 +30,11 @@ public enum SnapshotRenderer {
             let name = f.deletingPathExtension().lastPathComponent
             let vm = try ViewModel.decode(Data(contentsOf: f))
             try add("\(name)-closed", vm, expanded: false)
-            if ["idle", "pomodoro", "media", "banner"].contains(name) {
+            if ["idle", "pomodoro", "media", "banner", "pair", "peek-track", "peek-warning", "calendar"].contains(name) {
+                // Without a notch: one row, no gap in the middle.
+                try add("notchless-\(name)-closed", vm, expanded: false, notchless: true)
+            }
+            if ["idle", "pomodoro", "media", "banner", "pair"].contains(name) {
                 // The floating style, with a notch and on a 24 pt menu bar without one.
                 var floating = vm
                 floating.settings.appearance.notchStyle = .floating

@@ -381,6 +381,11 @@ pub enum Command {
         request_id: String,
         decision: Decision,
     },
+    /// The user went to this session (clicked it, or brought its terminal
+    /// window forward): it no longer needs the waiting dot.
+    AgentSeen {
+        session_id: String,
+    },
     CaffeineToggle,
     CaffeineActivate {
         mode: AwakeMode,
@@ -611,6 +616,9 @@ pub struct Core {
     calendar: Calendar,
     /// Makes each captured banner's group unique.
     system_seq: u64,
+    /// Waiting sessions the user has since gone to; they no longer count
+    /// for the dot until they wait again.
+    attended: std::collections::BTreeSet<String>,
     timer: Countdown,
     colors: Vec<String>,
     /// The lid is closed with no external display.
@@ -696,6 +704,7 @@ impl Core {
             calendar: Calendar::new(settings.calendar.clone()),
             timer: Countdown::new(timer_secs.unwrap_or(300)),
             system_seq: 0,
+            attended: std::collections::BTreeSet::new(),
             lid_shut: false,
             wanted_assertion: AwakeMode::Off,
             colors: colors
@@ -847,6 +856,12 @@ impl Core {
         };
         self.settle(now, &mut fx);
         let outcome = self.agents.on_hook(&event, now);
+        // Whatever the session does next, the user's last visit is over; and
+        // sessions that are gone need no record.
+        self.attended.remove(&event.session_id);
+        let sessions = self.agents.sessions();
+        self.attended
+            .retain(|id| sessions.iter().any(|s| s.id == *id));
         if !self.settings.agent.enabled {
             return (outcome, fx);
         }
@@ -1065,6 +1080,13 @@ impl Core {
                         now,
                     );
                     fx.push(Effect::Resolve(resolved));
+                }
+            }
+            Command::AgentSeen { session_id } => {
+                if self.agents.sessions().iter().any(|s| s.id == session_id) {
+                    self.notify
+                        .mark_group_read("agent", &format!("agent-{session_id}"));
+                    self.attended.insert(session_id);
                 }
             }
             Command::CaffeineToggle => {
@@ -1621,13 +1643,12 @@ impl Core {
         let today = day_index(now, self.utc_offset_secs);
         let (compact, compact_secondary) =
             self.compact(&pomodoro, &media, &inbox, &agents, &caffeine, now);
-        let waiting = self.settings.notch.waiting_dot
-            && self.settings.agent.enabled
-            && (agents
-                .sessions
-                .iter()
-                .any(|s| s.status == AgentStatus::WaitingInput)
-                || self
+        let waiting =
+            self.settings.notch.waiting_dot
+                && self.settings.agent.enabled
+                && (agents.sessions.iter().any(|s| {
+                    s.status == AgentStatus::WaitingInput && !self.attended.contains(&s.id)
+                }) || self
                     .notify
                     .history()
                     .iter()
@@ -2270,6 +2291,72 @@ mod tests {
         );
         cmd(&mut c, Command::NotifyMarkRead, T0 + 3);
         assert!(!c.view(T0 + 3).waiting);
+    }
+
+    /// Reported: the dot stayed after clicking the waiting session.
+    #[test]
+    fn going_to_a_waiting_session_clears_its_dot_until_it_waits_again() {
+        let mut c = core();
+        let waits = |c: &mut Core, id: &str, at: u64| {
+            hook(
+                c,
+                json!({"hook_event_name":"Notification","session_id":id,"cwd":"/work/api","notification_type":"idle_prompt","message":"Claude is waiting"}),
+                at,
+            );
+        };
+        waits(&mut c, "s1", T0);
+        waits(&mut c, "s2", T0 + 1);
+        assert!(c.view(T0 + 1).waiting);
+
+        cmd(
+            &mut c,
+            Command::AgentSeen {
+                session_id: "s1".into(),
+            },
+            T0 + 2,
+        );
+        assert!(c.view(T0 + 2).waiting, "s2 is still waiting");
+        cmd(
+            &mut c,
+            Command::AgentSeen {
+                session_id: "s2".into(),
+            },
+            T0 + 3,
+        );
+        let v = c.view(T0 + 3);
+        assert!(!v.waiting);
+        assert!(
+            v.inbox.history.iter().all(|n| n.read),
+            "their notices count as read"
+        );
+        assert!(
+            v.agents
+                .sessions
+                .iter()
+                .all(|s| s.status == AgentStatus::WaitingInput),
+            "the sessions themselves have not changed"
+        );
+
+        // It waits again later: the dot is back.
+        waits(&mut c, "s1", T0 + 10);
+        assert!(c.view(T0 + 10).waiting);
+        // A session that does not exist is ignored.
+        cmd(
+            &mut c,
+            Command::AgentSeen {
+                session_id: "nope".into(),
+            },
+            T0 + 11,
+        );
+        assert!(c.view(T0 + 11).waiting);
+        let command: Command =
+            serde_json::from_value(json!({"cmd":"agent_seen","session_id":"s1"})).expect("parses");
+        assert_eq!(
+            command,
+            Command::AgentSeen {
+                session_id: "s1".into()
+            }
+        );
     }
 
     #[test]

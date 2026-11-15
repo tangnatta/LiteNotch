@@ -67,6 +67,8 @@ public enum ShellCommand: Equatable {
     /// The upcoming events, read by `CalendarObserver`; replaces the last list.
     case calendarEvents([CalendarEventInput])
     case agentDecide(requestId: String, decision: Decision)
+    /// The user went to this session: it no longer needs the waiting dot.
+    case agentSeen(sessionId: String)
     case caffeineToggle
     case caffeineActivate(mode: AwakeMode, durationSecs: Int?)
     case caffeineLid(on: Bool)
@@ -123,6 +125,7 @@ public enum ShellCommand: Equatable {
         case .notifySystem(let app, let title, let body):
             return c("notify_system", ["app": app, "title": title, "body": body])
         case .calendarEvents(let events): return c("calendar_events", ["events": events.map(\.object)])
+        case .agentSeen(let id): return c("agent_seen", ["session_id": id])
         case .agentDecide(let id, let d): return c("agent_decide", ["request_id": id, "decision": d.rawValue])
         case .caffeineToggle: return c("caffeine_toggle")
         case .caffeineActivate(let mode, let secs):
@@ -531,6 +534,8 @@ public final class PanelState: ObservableObject {
     /// answers a showing banner; the inbox keeps the item.
     public func openNotification(_ n: NotificationItem, isBanner: Bool) {
         send(.notifyOpened(id: n.id))
+        // Going to a session from its notice is attending to it.
+        if let session = AgentAttention.session(of: n) { send(.agentSeen(sessionId: session)) }
         if isBanner && n.open != nil { send(.notifyDismissBanner) }
         follow(n.open)
     }
@@ -547,6 +552,9 @@ public final class PanelState: ObservableObject {
 
     /// A click on a session row: brings its terminal forward when known.
     public func openSession(_ s: AgentSession) {
+        // Clicking the session is attending to it, whether or not its
+        // terminal is known.
+        send(.agentSeen(sessionId: s.id))
         guard let app = s.app else { return }
         follow(.app(bundleId: app, tty: s.tty))
     }

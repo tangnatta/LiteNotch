@@ -545,7 +545,7 @@ struct MiniStepper: View {
     /// normal text colour and the first digit replaces it.
     private func begin() {
         original = value
-        typed = "\(value)"
+        typed = Self.startingText(value)
         requestKeyboard(true)
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { event in
             let height = event.window?.contentView?.bounds.height ?? 0
@@ -565,9 +565,19 @@ struct MiniStepper: View {
     /// The value follows the text as it is typed, so nothing is lost when
     /// the typing ends without Return (a click elsewhere, the panel closing).
     private func apply(_ text: String?) {
-        guard let text, let v = Self.typedValue(text, range: range), v != value else { return }
-        value = v
+        if let v = Self.liveValue(text, current: value, range: range) { value = v }
     }
+
+    /// The value to set while `text` is being typed, or nil to leave it:
+    /// every keystroke that makes a number counts, with no Return needed.
+    static func liveValue(_ text: String?, current: Int, range: ClosedRange<Int>) -> Int? {
+        guard let text, let v = typedValue(text, range: range), v != current else { return nil }
+        return v
+    }
+
+    /// What the field holds when typing starts: the current value, so it is
+    /// drawn as ordinary text, not as a dimmed placeholder.
+    static func startingText(_ value: Int) -> String { "\(value)" }
 
     /// Ends the typing and keeps what was typed.
     private func finish() {

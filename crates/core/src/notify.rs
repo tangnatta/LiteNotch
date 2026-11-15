@@ -314,6 +314,15 @@ impl NotificationCenter {
         }
     }
 
+    /// Marks every item of one source and group as read.
+    pub fn mark_group_read(&mut self, source: &str, group: &str) {
+        for n in &mut self.history {
+            if n.source == source && n.group.as_deref() == Some(group) {
+                n.read = true;
+            }
+        }
+    }
+
     pub fn mark_all_read(&mut self) {
         for n in &mut self.history {
             n.read = true;

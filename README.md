@@ -97,7 +97,9 @@ countdown to the meeting first and your focus time beside it.
 
 - A permission request or a notification still takes the whole notch while
   it is up.
-- A small dot appears while a Claude Code session is waiting for you.
+- A small dot appears while a Claude Code session is waiting for you. It
+  goes when you click that session in the notch, answer it, or bring its
+  terminal window to the front.
 - When a meeting starts during a focus session, its notification has a
   **Pause focus** button.
 - During a focus session only what cannot wait comes through: permission

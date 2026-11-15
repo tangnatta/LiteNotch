@@ -243,7 +243,7 @@ final class CommandTests: XCTestCase {
         let inner = try XCTUnwrap(s["settings"] as? NSDictionary)
         XCTAssertEqual(Set(inner.allKeys as! [String]),
                        ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics",
-                        "calendar"])
+                        "calendar", "notch"])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
         XCTAssertEqual(inner["appearance"] as? NSDictionary,
                        ["theme": "system", "accent": "#FF9E0A", "notch_style": "attached", "closed_notch": "dark",
@@ -680,7 +680,7 @@ final class HoverAndClickTests: XCTestCase {
         XCTAssertEqual(model.tab, .settings)
         XCTAssertEqual(model.settingsSection, .timer)
         XCTAssertEqual(bridge.sent.last, #"{"cmd":"tab_opened","tab":"settings"}"#)
-        XCTAssertEqual(SettingsSection.allCases.count, 9)
+        XCTAssertEqual(SettingsSection.allCases.count, 10)
     }
 }
 
@@ -2040,7 +2040,9 @@ final class AppearanceOptionsTests: XCTestCase {
         let attached = try panel()
         XCTAssertFalse(attached.layout.floating)
         XCTAssertEqual(attached.targetSize,
-                       NotchGeometry.size(for: attached.mode, compact: attached.view?.compact, notch: attached.notch))
+                       NotchGeometry.closedSize(notch: attached.notch,
+                                                wing: NotchGeometry.wingWidth(for: ClosedContent(view: attached.view),
+                                                                              floating: false)))
         XCTAssertTrue(attached.shapeContains(CGPoint(x: 1, y: 0)))
 
         let floating = try panel { $0.appearance.notchStyle = .floating }

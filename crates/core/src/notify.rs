@@ -71,6 +71,17 @@ pub struct Notification {
     /// What clicking it opens; filled in by the core's view.
     #[serde(default)]
     pub open: Option<OpenTarget>,
+    /// A button the banner offers; filled in by the core's view.
+    #[serde(default)]
+    pub action: Option<BannerAction>,
+}
+
+/// Something a banner can offer to do in one click.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BannerAction {
+    /// Pause the running focus session (a meeting is starting).
+    PauseFocus,
 }
 
 /// Where a click on a notification or session takes the user.
@@ -196,6 +207,7 @@ impl NotificationCenter {
             created_ms: now,
             read: false,
             open: None,
+            action: None,
         };
         let priority = item.priority;
         match existing {

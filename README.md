@@ -86,6 +86,29 @@ Quick controls on the right of the bar:
   password once; turns itself off when LiteNotch quits).
 - **Bell:** the inbox. **Gear:** settings.
 
+### What the closed notch shows
+
+When several things are running, the closed notch shows the most pressing
+one on the left and the next one, dimmed, on the right. Out of the box the
+order is: a meeting agenda you are running, an event about to start, a
+countdown timer, a focus session, music, keep awake, a working agent. So
+with a focus session running and a meeting five minutes away, you see the
+countdown to the meeting first and your focus time beside it.
+
+- A permission request or a notification still takes the whole notch while
+  it is up.
+- A small dot appears while a Claude Code session is waiting for you.
+- When a meeting starts during a focus session, its notification has a
+  **Pause focus** button.
+- During a focus session only what cannot wait comes through: permission
+  requests, meeting reminders, finished timers and the last usage warning.
+  The rest is delivered at the break.
+
+Change any of this in **Settings › Notch**: reorder the list, switch an
+activity off to keep it on Home only, show one activity instead of two, or
+turn the dot off. The preview at the top shows the result for a few typical
+situations.
+
 ### Calendar
 
 Turn on **Settings › Calendar › Show calendar events** and LiteNotch follows

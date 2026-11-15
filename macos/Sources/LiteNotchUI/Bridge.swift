@@ -46,6 +46,8 @@ public struct AgendaLine: Equatable {
 /// Rust `Command` enum deserializes.
 public enum ShellCommand: Equatable {
     case pomodoroToggle, pomodoroSkip, pomodoroReset
+    /// Pauses a running focus session; does nothing otherwise.
+    case pomodoroPause
     case clipCopy(id: Int)
     /// Copy without the formatting it was copied with.
     case clipCopyPlain(id: Int)
@@ -100,6 +102,7 @@ public enum ShellCommand: Equatable {
         switch self {
         case .pomodoroToggle: return c("pomodoro_toggle")
         case .pomodoroSkip: return c("pomodoro_skip")
+        case .pomodoroPause: return c("pomodoro_pause")
         case .pomodoroReset: return c("pomodoro_reset")
         case .clipCopy(let id): return c("clip_copy", ["id": id])
         case .clipCopyPlain(let id): return c("clip_copy_plain", ["id": id])
@@ -160,7 +163,7 @@ public enum ShellCommand: Equatable {
 
 /// Categories of the Settings tab.
 public enum SettingsSection: String, CaseIterable, Equatable {
-    case general, timer, music, notifications, calendar, clipboard, agents, keepAwake, privacy
+    case general, notch, timer, music, notifications, calendar, clipboard, agents, keepAwake, privacy
 }
 
 /// The two halves of the Agents tab.
@@ -470,7 +473,7 @@ public final class PanelState: ObservableObject {
 
     /// Target size of the current shape (not animated); used for hit testing.
     public var targetSize: CGSize {
-        layout.size(for: mode, compact: view?.compact)
+        layout.size(for: mode, content: ClosedContent(view: view))
     }
 
     /// Whether a point (from the top-left of the shape's area) takes the
@@ -530,6 +533,16 @@ public final class PanelState: ObservableObject {
         send(.notifyOpened(id: n.id))
         if isBanner && n.open != nil { send(.notifyDismissBanner) }
         follow(n.open)
+    }
+
+    /// A banner's own button. It answers the banner too.
+    public func banner(_ n: NotificationItem, perform action: BannerAction) {
+        switch action {
+        case .pauseFocus: send(.pomodoroPause)
+        case .unknown: return
+        }
+        send(.notifyOpened(id: n.id))
+        send(.notifyDismissBanner)
     }
 
     /// A click on a session row: brings its terminal forward when known.

@@ -64,6 +64,28 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   the core and no view-model pushes. The only poll is the pasteboard change
   counter (500 ms, off when clipboard history is disabled). Keep it that way:
   anything that changes every second must not go into the view model.
+- **What the closed notch shows** (`Core::compact`, `settings.notch`). A
+  pending approval, then a banner, take it alone. Otherwise the running
+  activities are ranked by `notch.order` (default `LIVE_ORDER`: meeting
+  agenda, event about to start, countdown, pomodoro, media, keep awake,
+  working agent; deadlines other people wait on, then ones the user set,
+  then things that are merely on), those in `notch.hidden` left out. The
+  first is `compact`; with `notch.two_places` the second is
+  `compact_secondary`. `waiting` (the dot, `notch.waiting_dot`) is true
+  while a session is `WaitingInput` or an agent notification is unread.
+  The shell draws one activity exactly as before (icon left, value right);
+  two as icon + time on each side, the second dimmed
+  (`ClosedActivityView`, widths in `NotchGeometry.wingWidth(for:floating:)`).
+  Nothing rotates. Settings › Notch (`NotchPriority.swift`) edits the
+  order with a preview drawn by the real closed-notch view; its
+  `NotchPriority.resolve` repeats the core's rule and both are tested
+  against the same cases. The banner that an event is starting carries
+  `action: pause_focus` while a focus session runs; its button sends
+  `pomodoro_pause` (pause only, never resume).
+  Focus policy: only High passes a focus session. High are approvals'
+  own path, calendar notices, finished timers and pomodoro phases, and the
+  95 % usage warning; agent "needs input"/"finished" and the 80 % warning
+  are Normal and arrive in the "While you were focusing" summary.
 - **Shell layout.** Tabs: Home (dashboard: now playing, timer, agents,
   inbox), Music, Timer, Clipboard, Agents (Sessions | Usage) on the left of
   the notch; keep-awake toggle (cup icon), Inbox, Settings on the right.
@@ -284,6 +306,12 @@ scripts/         build-app.sh, bench.sh, coverage.sh
     payload and adds its own.
   - The socket lives in a 0700 directory with mode 0600; server and CLI both
     check the peer uid. A request line must arrive within 5 s in total.
+- Every tab must fit the space the open panel gives it (220 pt high);
+  anything longer scrolls inside a `NotchScroll`. A fixed column that is
+  too tall pushes the whole tab past the bottom edge, and the scroll view
+  beside it then cannot reach its last rows: the Settings section list
+  did this once it had ten entries. `OverflowTests` checks every tab,
+  pane and Settings section; add new ones there.
 - Anything that moves continuously in the shell (the equaliser bars) must be
   a Core Animation layer animation, not a SwiftUI animation: the SwiftUI
   version re-rendered the notch every frame and cost 9 % CPU while music
@@ -319,6 +347,7 @@ the physical memory footprint:
 | floating | the Floating style with a countdown running | ≤ 1.0 % | ≤ 30 MB |
 | glass | the panel open on Home, drawn with Liquid Glass | ≤ 1.5 % | ≤ 40 MB |
 | calendar | an event about to start (the closed notch counts down to it) | ≤ 1.0 % | ≤ 30 MB |
+| pair | two countdowns side by side in the closed notch | ≤ 1.0 % | ≤ 30 MB |
 
 Bundle ≤ 15 MB; Rust line coverage ≥ 90 %. The app reads a few
 `LITENOTCH_BENCH_*` variables (start-up commands, open the panel, a stand-in
@@ -367,6 +396,9 @@ the plain animation.
   only once ever needs a launchd daemon via SMAppService, which needs a
   Developer ID; it would replace the prompt and the helper.
 
+- Two activities in the closed notch, the waiting dot, the Pause focus
+  button and Settings › Notch are covered by unit tests and snapshots
+  only; none has been used in the running app.
 - The calendar: the core's alerts and the observer's logic are unit-tested
   (the observer against a fake store). Not exercised: the real EventKit
   store, macOS's permission question, and a real event coming due in the

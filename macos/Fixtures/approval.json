@@ -7,6 +7,8 @@
     "total_secs": null,
     "count": 1
   },
+  "compact_secondary": null,
+  "waiting": false,
   "attention": true,
   "pomodoro": {
     "phase": "focus",
@@ -108,7 +110,8 @@
         "ttl_secs": null,
         "created_ms": 1794400000003,
         "read": true,
-        "open": null
+        "open": null,
+        "action": null
       },
       {
         "id": 1,
@@ -124,7 +127,8 @@
           "kind": "tab",
           "tab": "agents",
           "pane": "sessions"
-        }
+        },
+        "action": null
       }
     ],
     "unread": 0,
@@ -432,6 +436,20 @@
       "enabled": false,
       "alert_minutes": 5,
       "alert_at_start": true
+    },
+    "notch": {
+      "order": [
+        "meeting",
+        "calendar",
+        "timer",
+        "pomodoro",
+        "media",
+        "caffeine",
+        "agent"
+      ],
+      "hidden": [],
+      "two_places": true,
+      "waiting_dot": true
     }
   }
 }

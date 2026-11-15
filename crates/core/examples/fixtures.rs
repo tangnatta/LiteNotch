@@ -242,7 +242,32 @@ fn main() {
         T0,
     );
     c.apply(Input::Command(Command::NotifyDismissBanner), T0 + 10);
+    // The same moment with a focus session running: two things to show.
+    let mut pair = Core::new(c.persisted());
+    pair.apply(Input::Command(Command::PomodoroToggle), T0);
+    pair.apply(
+        Input::Command(Command::CalendarEvents {
+            events: vec![event(
+                "e1",
+                "Design review",
+                "Work",
+                "#1BADF8",
+                "Room 3",
+                4,
+                30,
+            )],
+        }),
+        T0,
+    );
+    pair.apply(Input::Command(Command::NotifyDismissBanner), T0 + 10);
+    pair.hook(
+        &json!({"hook_event_name":"Notification","session_id":"s9","cwd":"/Users/me/Github/api",
+            "notification_type":"idle_prompt","message":"Claude is waiting for your input"})
+        .to_string(),
+        T0 + 11,
+    );
     out.push(("calendar", c));
+    out.push(("pair", pair));
 
     for (name, core) in out {
         let json =

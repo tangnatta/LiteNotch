@@ -7,6 +7,15 @@
     "total_secs": null,
     "count": 0
   },
+  "compact_secondary": {
+    "kind": "agent",
+    "title": "LiteNotch",
+    "value": "working",
+    "ends_at_ms": null,
+    "total_secs": null,
+    "count": 1
+  },
+  "waiting": false,
   "attention": false,
   "pomodoro": {
     "phase": "idle",
@@ -108,7 +117,8 @@
         "ttl_secs": null,
         "created_ms": 1794400000003,
         "read": true,
-        "open": null
+        "open": null,
+        "action": null
       },
       {
         "id": 1,
@@ -124,7 +134,8 @@
           "kind": "tab",
           "tab": "agents",
           "pane": "sessions"
-        }
+        },
+        "action": null
       }
     ],
     "unread": 0,
@@ -408,6 +419,20 @@
       "enabled": false,
       "alert_minutes": 5,
       "alert_at_start": true
+    },
+    "notch": {
+      "order": [
+        "meeting",
+        "calendar",
+        "timer",
+        "pomodoro",
+        "media",
+        "caffeine",
+        "agent"
+      ],
+      "hidden": [],
+      "two_places": true,
+      "waiting_dot": true
     }
   }
 }

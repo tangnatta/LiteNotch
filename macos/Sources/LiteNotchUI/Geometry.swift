@@ -162,6 +162,69 @@ extension NotchGeometry {
     }
 }
 
+/// What the closed notch shows: up to two running activities and the dot
+/// that says an agent is waiting.
+public struct ClosedContent: Equatable {
+    public var primary: CompactView?
+    public var secondary: CompactView?
+    public var waiting: Bool
+
+    public init(primary: CompactView?, secondary: CompactView? = nil, waiting: Bool = false) {
+        let shown = primary.flatMap { $0.kind == .idle || $0.kind == .unknown ? nil : $0 }
+        self.primary = shown
+        // A second activity needs a first one beside it.
+        self.secondary = shown == nil ? nil : secondary
+        self.waiting = waiting
+    }
+
+    public init(view: ViewModel?) {
+        self.init(primary: view?.compact, secondary: view?.compactSecondary, waiting: view?.waiting ?? false)
+    }
+
+    /// Nothing to draw: the bare notch.
+    public var isEmpty: Bool { primary == nil && !waiting }
+}
+
+extension NotchGeometry {
+    /// The waiting dot and the space before it.
+    public static let waitingDot: CGFloat = 6
+    public static let waitingDotSpace: CGFloat = 11
+    /// Space between an icon and its value when two activities share the notch.
+    public static let pairGap: CGFloat = 5
+
+    /// Width of the value drawn after the icon when two activities share
+    /// the notch; 0 when only the icon is drawn.
+    public static func pairValueWidth(_ c: CompactView) -> CGFloat {
+        switch c.kind {
+        // `24:59` in 12 pt semibold digits is about 36 pt.
+        case .pomodoro, .timer, .calendar: return 38
+        // `+12:34` over time; a pause mark when paused.
+        case .meeting: return c.endsAtMs != nil ? 46 : 12
+        case .caffeine: return c.endsAtMs != nil ? 38 : 0
+        case .media: return 18
+        case .agent: return c.count > 1 ? 12 : 0
+        case .idle, .approval, .banner, .unknown: return 0
+        }
+    }
+
+    /// Width of one wing for what the closed notch shows. With one activity
+    /// this is the width it always had; the dot adds a little.
+    public static func wingWidth(for content: ClosedContent, floating: Bool) -> CGFloat {
+        let dot = content.waiting ? waitingDotSpace : 0
+        guard let first = content.primary else { return content.waiting ? (floating ? 12 : 20) : 0 }
+        guard let second = content.secondary else {
+            return (floating ? floatingWingWidth(for: first) : wingWidth(for: first)) + dot
+        }
+        let pad: CGFloat = floating ? floatingWingPadding : 12
+        let icon: CGFloat = floating ? 16 : 18
+        func slot(_ c: CompactView) -> CGFloat {
+            let value = pairValueWidth(c)
+            return pad + icon + (value > 0 ? pairGap + value : 0) + 4
+        }
+        return min(max(slot(first), slot(second) + dot), floating ? 90 : 104)
+    }
+}
+
 /// Where each state sits for one panel, in either style. Pure: everything
 /// it needs about the screen comes in as values.
 public struct NotchLayout: Equatable {
@@ -198,6 +261,21 @@ public struct NotchLayout: Equatable {
 
     public func wingWidth(for compact: CompactView) -> CGFloat {
         floating ? NotchGeometry.floatingWingWidth(for: compact) : NotchGeometry.wingWidth(for: compact)
+    }
+
+    public func wingWidth(for content: ClosedContent) -> CGFloat {
+        NotchGeometry.wingWidth(for: content, floating: floating)
+    }
+
+    /// Size of the area the shape takes for what the closed notch shows
+    /// (the other modes do not depend on it).
+    public func size(for mode: NotchMode, content: ClosedContent) -> CGSize {
+        guard mode == .closed else { return size(for: mode, compact: content.primary) }
+        let wing = wingWidth(for: content)
+        if floating {
+            return CGSize(width: centerWidth + 2 * wing, height: top(for: .closed) + capsuleHeight)
+        }
+        return NotchGeometry.closedSize(notch: notch, wing: wing)
     }
 
     /// Empty space between the top of the screen and the shape; always 0

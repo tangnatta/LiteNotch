@@ -7,6 +7,8 @@
     "total_secs": null,
     "count": 0
   },
+  "compact_secondary": null,
+  "waiting": false,
   "attention": true,
   "pomodoro": {
     "phase": "idle",
@@ -95,7 +97,8 @@
       "ttl_secs": null,
       "created_ms": 1794400000010,
       "read": false,
-      "open": null
+      "open": null,
+      "action": null
     },
     "history": [
       {
@@ -108,7 +111,8 @@
         "ttl_secs": null,
         "created_ms": 1794400000010,
         "read": false,
-        "open": null
+        "open": null,
+        "action": null
       },
       {
         "id": 2,
@@ -120,7 +124,8 @@
         "ttl_secs": null,
         "created_ms": 1794400000003,
         "read": true,
-        "open": null
+        "open": null,
+        "action": null
       },
       {
         "id": 1,
@@ -136,7 +141,8 @@
           "kind": "tab",
           "tab": "agents",
           "pane": "sessions"
-        }
+        },
+        "action": null
       }
     ],
     "unread": 1,
@@ -420,6 +426,20 @@
       "enabled": false,
       "alert_minutes": 5,
       "alert_at_start": true
+    },
+    "notch": {
+      "order": [
+        "meeting",
+        "calendar",
+        "timer",
+        "pomodoro",
+        "media",
+        "caffeine",
+        "agent"
+      ],
+      "hidden": [],
+      "two_places": true,
+      "waiting_dot": true
     }
   }
 }

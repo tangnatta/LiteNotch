@@ -69,11 +69,12 @@ public struct NotchRootView: View {
             }
             switch mode {
             case .closed:
-                if let c = model.view?.compact, c.kind != .idle, c.kind != .unknown {
+                let content = ClosedContent(view: model.view)
+                if !content.isEmpty {
                     Group {
                         if layout.floating {
-                            ClosedActivityView(compact: c, notchWidth: layout.centerWidth, ear: 0,
-                                               wing: layout.wingWidth(for: c),
+                            ClosedActivityView(content: content, notchWidth: layout.centerWidth, ear: 0,
+                                               wing: layout.wingWidth(for: content),
                                                edgePadding: NotchGeometry.floatingWingPadding,
                                                artworkSize: min(20, layout.capsuleHeight - 4),
                                                artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
@@ -81,8 +82,8 @@ public struct NotchRootView: View {
                                 .frame(height: layout.capsuleHeight)
                                 .padding(.top, top)
                         } else {
-                            ClosedActivityView(compact: c, notchWidth: model.notch.width, ear: ear,
-                                               wing: layout.wingWidth(for: c),
+                            ClosedActivityView(content: content, notchWidth: model.notch.width, ear: ear,
+                                               wing: layout.wingWidth(for: content),
                                                artworkPath: model.view?.media?.artworkPath)
                         }
                     }
@@ -94,7 +95,8 @@ public struct NotchRootView: View {
                     ToastView(banner: b, top: layout.floating ? top : model.notch.height,
                               rowHeight: NotchGeometry.toastExtraHeight - (layout.floating ? 0 : 6), ear: ear,
                               open: { model.openNotification(b, isBanner: true) },
-                              dismiss: { model.send(.notifyDismissBanner) })
+                              dismiss: { model.send(.notifyDismissBanner) },
+                              act: { model.banner(b, perform: $0) })
                         .environment(\.colorScheme, closedScheme)
                         .transition(.opacity)
                 }
@@ -126,7 +128,7 @@ public struct NotchRootView: View {
 // MARK: - Closed with an activity
 
 struct ClosedActivityView: View {
-    let compact: CompactView
+    let content: ClosedContent
     let notchWidth: CGFloat
     let ear: CGFloat
     let wing: CGFloat
@@ -138,23 +140,60 @@ struct ClosedActivityView: View {
     var artworkInset: CGFloat?
     var artworkPath: String?
 
+    private var paired: Bool { content.secondary != nil }
+
     var body: some View {
         HStack(spacing: 0) {
-            leftIcon
-                .padding(.leading, compact.kind == .media ? artworkInset ?? edgePadding : edgePadding)
-                .frame(width: wing, alignment: .leading)
+            left.frame(width: wing, alignment: .leading)
             Color.clear.frame(width: notchWidth)
-            rightValue
-                .padding(.trailing, edgePadding)
-                .frame(width: wing, alignment: .trailing)
+            right.frame(width: wing, alignment: .trailing)
         }
         .padding(.horizontal, ear)
         .frame(maxHeight: .infinity)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: "\(compact.title) \(compact.value)"))
+        .accessibilityLabel(Text(verbatim: Self.spoken(content)))
     }
 
-    @ViewBuilder private var leftIcon: some View {
+    /// What VoiceOver says for the closed notch.
+    static func spoken(_ content: ClosedContent) -> String {
+        var parts = [content.primary, content.secondary].compactMap { $0 }
+            .map { "\($0.title) \($0.value)".trimmingCharacters(in: .whitespaces) }
+        if content.waiting { parts.append("An agent is waiting for you") }
+        return parts.joined(separator: ". ")
+    }
+
+    /// One activity: its icon. Two: the first one's icon and value.
+    @ViewBuilder private var left: some View {
+        if let c = content.primary {
+            HStack(spacing: NotchGeometry.pairGap) {
+                icon(c)
+                if paired { value(c) }
+            }
+            .padding(.leading, c.kind == .media ? artworkInset ?? edgePadding : edgePadding)
+        }
+    }
+
+    /// One activity: its value. Two: the second one, dimmed. Then the dot.
+    @ViewBuilder private var right: some View {
+        HStack(spacing: NotchGeometry.pairGap) {
+            if let s = content.secondary {
+                HStack(spacing: NotchGeometry.pairGap) {
+                    icon(s)
+                    value(s)
+                }
+                .opacity(0.7)
+            } else if let c = content.primary {
+                value(c)
+            }
+            if content.waiting {
+                Circle().fill(NT.accentText)
+                    .frame(width: NotchGeometry.waitingDot, height: NotchGeometry.waitingDot)
+            }
+        }
+        .padding(.trailing, edgePadding)
+    }
+
+    @ViewBuilder private func icon(_ compact: CompactView) -> some View {
         switch compact.kind {
         case .pomodoro:
             Image(systemName: "timer").font(.system(size: 12, weight: .semibold)).foregroundStyle(NT.accentText)
@@ -179,38 +218,25 @@ struct ClosedActivityView: View {
         }
     }
 
-    @ViewBuilder private var rightValue: some View {
+    /// The text (or bars) for an activity. Sharing the notch, anything
+    /// that is not a time is left to the icon.
+    @ViewBuilder private func value(_ compact: CompactView) -> some View {
         switch compact.kind {
-        case .pomodoro:
-            if let end = compact.endsAtMs {
-                EverySecond { now in
-                    VText(Format.countdown(seconds: Format.secondsLeft(until: end, nowMs: now)))
-                        .wingText(mono: true)
-                }
-            } else {
-                VText(compact.value).wingText(mono: true)
-            }
+        case .pomodoro, .timer, .calendar:
+            countdown(compact, mono: true)
         case .media:
             MediaBars(active: true)
         case .caffeine:
-            if let end = compact.endsAtMs {
-                EverySecond { now in
-                    VText(Format.countdown(seconds: Format.secondsLeft(until: end, nowMs: now)))
-                        .wingText(mono: true)
-                }
-            } else {
+            if compact.endsAtMs != nil {
+                countdown(compact, mono: true)
+            } else if !paired {
                 VText(compact.value).wingText(mono: false)
             }
         case .agent:
-            VText(compact.title).wingText(mono: false)
-        case .timer, .calendar:
-            if let end = compact.endsAtMs {
-                EverySecond { now in
-                    VText(Format.countdown(seconds: Format.secondsLeft(until: end, nowMs: now)))
-                        .wingText(mono: true)
-                }
-            } else {
-                VText(compact.value).wingText(mono: true)
+            if !paired {
+                VText(compact.title).wingText(mono: false)
+            } else if compact.count > 1 {
+                Text(verbatim: "\(compact.count)").wingText(mono: true)
             }
         case .meeting:
             if let end = compact.endsAtMs {
@@ -218,6 +244,8 @@ struct ClosedActivityView: View {
                     let left = Format.signedSecondsLeft(until: end, nowMs: now)
                     VText(Format.signedCountdown(left)).wingText(mono: true, tint: left < 0 ? NT.deny : NT.text1)
                 }
+            } else if paired {
+                Image(systemName: "pause.fill").font(.system(size: 9, weight: .bold)).foregroundStyle(NT.text1)
             } else {
                 VText(compact.value).wingText(mono: false)
             }
@@ -236,6 +264,19 @@ struct ClosedActivityView: View {
             VText(compact.title).wingText(mono: false)
         case .idle, .unknown:
             EmptyView()
+        }
+    }
+
+    /// The time left, counted down here once a second; the stored value
+    /// (a paused timer's) when there is no end time.
+    @ViewBuilder private func countdown(_ compact: CompactView, mono: Bool) -> some View {
+        if let end = compact.endsAtMs {
+            EverySecond { now in
+                VText(Format.countdown(seconds: Format.secondsLeft(until: end, nowMs: now)))
+                    .wingText(mono: mono)
+            }
+        } else {
+            VText(compact.value).wingText(mono: mono)
         }
     }
 }
@@ -337,6 +378,8 @@ struct ToastView: View {
     let ear: CGFloat
     let open: () -> Void
     let dismiss: () -> Void
+    /// Runs the banner's own button.
+    var act: (BannerAction) -> Void = { _ in }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -356,7 +399,12 @@ struct ToastView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Open")
-                if let tag = Format.sourceTag(banner.source) {
+                if banner.action == .pauseFocus {
+                    TextPill(title: "Pause focus", tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold) {
+                        act(.pauseFocus)
+                    }
+                    .help("Pause the focus session while you are in the meeting")
+                } else if let tag = Format.sourceTag(banner.source) {
                     VText(tag).nfont(.caption).foregroundStyle(NT.text3).lineLimit(1)
                 }
                 IconButton(symbol: "xmark", label: "Dismiss", size: NGlyph.small, action: dismiss)

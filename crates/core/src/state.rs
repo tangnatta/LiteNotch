@@ -21,8 +21,8 @@ use crate::countdown::{Countdown, TimerRun, TimerView};
 use crate::media::{Media, MediaCommand, NowPlaying};
 use crate::meeting::{AgendaInput, Meeting, MeetingEvent, MeetingRun, MeetingView, SavedAgenda};
 use crate::notify::{
-    Notification, NotificationCenter, NotificationInput, NotifyConfig, NotifyEvent, OpenTarget,
-    Priority,
+    BannerAction, Notification, NotificationCenter, NotificationInput, NotifyConfig, NotifyEvent,
+    OpenTarget, Priority,
 };
 use crate::pomodoro::{Phase, Pomodoro, PomodoroConfig, PomodoroEvent, PomodoroStats, RunState};
 use crate::usage::{local_day_start_ms, Usage, UsageRecord, UsageSnapshot};
@@ -57,6 +57,9 @@ const RESERVED_SOURCES: &[&str] = &[
     "color",
     "calendar",
 ];
+/// How the "starting now" notice of a calendar event begins; the banner
+/// with this body offers to pause a running focus session.
+const CALENDAR_STARTING: &str = "Starting now";
 /// Usage percentages that raise an alert, lowest first.
 const USAGE_ALERT_LEVELS: [u8; 2] = [80, 95];
 
@@ -203,6 +206,68 @@ pub struct Settings {
     pub agent: AgentConfig,
     pub analytics: AnalyticsConfig,
     pub calendar: CalendarConfig,
+    pub notch: NotchConfig,
+}
+
+/// The running activities the closed notch can show, in the default order:
+/// what other people are waiting on, then what the user timed, then what
+/// merely is on.
+pub const LIVE_ORDER: [ActivityKind; 7] = [
+    ActivityKind::Meeting,
+    ActivityKind::Calendar,
+    ActivityKind::Timer,
+    ActivityKind::Pomodoro,
+    ActivityKind::Media,
+    ActivityKind::Caffeine,
+    ActivityKind::Agent,
+];
+
+/// What the closed notch shows when several things are running.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NotchConfig {
+    /// The running activities, most important first. Always all of
+    /// `LIVE_ORDER`, each once.
+    pub order: Vec<ActivityKind>,
+    /// Activities never shown in the closed notch (they stay on Home).
+    pub hidden: Vec<ActivityKind>,
+    /// Show the second activity beside the first.
+    pub two_places: bool,
+    /// A dot while an agent is waiting for the user.
+    pub waiting_dot: bool,
+}
+
+impl Default for NotchConfig {
+    fn default() -> Self {
+        Self {
+            order: LIVE_ORDER.to_vec(),
+            hidden: Vec::new(),
+            two_places: true,
+            waiting_dot: true,
+        }
+    }
+}
+
+impl NotchConfig {
+    /// A usable config from whatever was sent or saved: unknown and repeated
+    /// entries dropped, missing activities added at their default place.
+    pub fn normalized(mut self) -> Self {
+        let mut order: Vec<ActivityKind> = Vec::new();
+        for kind in self.order.iter().chain(LIVE_ORDER.iter()) {
+            if LIVE_ORDER.contains(kind) && !order.contains(kind) {
+                order.push(*kind);
+            }
+        }
+        self.order = order;
+        let mut hidden: Vec<ActivityKind> = Vec::new();
+        for kind in &self.hidden {
+            if LIVE_ORDER.contains(kind) && !hidden.contains(kind) {
+                hidden.push(*kind);
+            }
+        }
+        self.hidden = hidden;
+        self
+    }
 }
 
 /// What is written to disk.
@@ -238,6 +303,8 @@ pub enum Tab {
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Command {
     PomodoroToggle,
+    /// Pause a running focus session; nothing otherwise.
+    PomodoroPause,
     PomodoroSkip,
     PomodoroReset,
     ClipCopy {
@@ -409,6 +476,9 @@ pub enum ActivityKind {
     Timer,
     /// An event is about to start; counts down to it.
     Calendar,
+    /// Not one this version knows (settings written by a newer one).
+    #[serde(other)]
+    Unknown,
 }
 
 /// What the closed notch shows.
@@ -506,6 +576,10 @@ pub struct CaffeineView {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ViewModel {
     pub compact: CompactView,
+    /// A second running activity to show beside `compact`.
+    pub compact_secondary: Option<CompactView>,
+    /// An agent is waiting for the user: the closed notch shows a dot.
+    pub waiting: bool,
     /// Something needs the user now (approval or banner): open the notch.
     pub attention: bool,
     pub pomodoro: PomodoroView,
@@ -599,6 +673,10 @@ impl Core {
             timer_secs,
             ..
         } = saved;
+        let settings = Settings {
+            notch: settings.notch.clone().normalized(),
+            ..settings
+        };
         let mut pomodoro = Pomodoro::new(settings.pomodoro.clone());
         pomodoro.restore_stats(stats);
         let clipboard = match clipboard.filter(|_| settings.general.persist_clipboard) {
@@ -813,7 +891,9 @@ impl Core {
                         source: "agent".into(),
                         title: format!("{project} needs input"),
                         body: truncate_chars(&sanitize(body), 160),
-                        priority: Priority::High,
+                        // Not High: it waits for the break during a focus
+                        // session, and the notch's dot shows it meanwhile.
+                        priority: Priority::Normal,
                         group: Some(format!("agent-{}", event.session_id)),
                         ttl_secs: None,
                     },
@@ -835,6 +915,12 @@ impl Core {
                     self.count(Feature::PomodoroStart, now);
                 }
                 self.pomodoro_events(events, now);
+            }
+            Command::PomodoroPause => {
+                if self.pomodoro.is_focus_running() {
+                    let events = self.pomodoro.toggle(now);
+                    self.pomodoro_events(events, now);
+                }
             }
             Command::PomodoroSkip => {
                 let events = self.pomodoro.skip(now);
@@ -1050,6 +1136,7 @@ impl Core {
         self.caffeine.set_config(settings.caffeine.clone());
         self.agents.set_config(settings.agent.clone());
         self.calendar.set_config(settings.calendar.clone());
+        settings.notch = settings.notch.normalized();
         if !settings.media.enabled {
             self.media.set(None);
         }
@@ -1105,7 +1192,7 @@ impl Core {
     fn calendar_alert(&mut self, alert: CalendarAlert, now: u64) {
         let (event, when) = match alert {
             CalendarAlert::Soon { event, minutes } => (event, format!("Starts in {minutes} min")),
-            CalendarAlert::Started { event } => (event, "Starting now".to_string()),
+            CalendarAlert::Started { event } => (event, CALENDAR_STARTING.to_string()),
         };
         let body = if event.location.is_empty() {
             when
@@ -1422,7 +1509,13 @@ impl Core {
                         source: "usage".into(),
                         title: format!("{label} limit at {:.0}%", window.used_pct),
                         body: "Claude usage is getting close to the limit.".into(),
-                        priority: Priority::High,
+                        // The first level can wait for the end of a focus
+                        // session; the last one means work is about to stop.
+                        priority: if level >= USAGE_ALERT_LEVELS[USAGE_ALERT_LEVELS.len() - 1] {
+                            Priority::High
+                        } else {
+                            Priority::Normal
+                        },
                         group: Some(format!("usage-{i}")),
                         ttl_secs: None,
                     },
@@ -1498,7 +1591,10 @@ impl Core {
             ..n.clone()
         };
         let inbox = InboxView {
-            banner: self.notify.current_banner().map(with_target),
+            banner: self.notify.current_banner().map(|n| Notification {
+                action: self.banner_action(n),
+                ..with_target(n)
+            }),
             history: self
                 .notify
                 .history()
@@ -1523,10 +1619,24 @@ impl Core {
             guard: caf.guard,
         };
         let today = day_index(now, self.utc_offset_secs);
-        let compact = self.compact(&pomodoro, &media, &inbox, &agents, &caffeine, now);
+        let (compact, compact_secondary) =
+            self.compact(&pomodoro, &media, &inbox, &agents, &caffeine, now);
+        let waiting = self.settings.notch.waiting_dot
+            && self.settings.agent.enabled
+            && (agents
+                .sessions
+                .iter()
+                .any(|s| s.status == AgentStatus::WaitingInput)
+                || self
+                    .notify
+                    .history()
+                    .iter()
+                    .any(|n| n.source == "agent" && !n.read));
         ViewModel {
             attention: matches!(compact.kind, ActivityKind::Approval | ActivityKind::Banner),
             compact,
+            compact_secondary,
+            waiting,
             pomodoro,
             media,
             clipboard,
@@ -1553,9 +1663,21 @@ impl Core {
         }
     }
 
-    /// Picks the one activity the closed notch shows:
-    /// approval > banner > meeting > timer > pomodoro > imminent event >
-    /// media > caffeine > working agent.
+    /// The button a banner offers, if any: the notice that an event is
+    /// starting offers to pause a focus session that is running.
+    fn banner_action(&self, n: &Notification) -> Option<BannerAction> {
+        (n.source == "calendar"
+            && n.body.starts_with(CALENDAR_STARTING)
+            && self.pomodoro.is_focus_running())
+        .then_some(BannerAction::PauseFocus)
+    }
+
+    /// What the closed notch shows, and what it shows beside that.
+    ///
+    /// A pending approval, then a banner, take the notch alone. Otherwise
+    /// the running activities are ranked by `settings.notch.order` (those in
+    /// `hidden` left out): the first is shown, and with `two_places` the
+    /// second beside it.
     fn compact(
         &self,
         pomodoro: &PomodoroView,
@@ -1564,7 +1686,7 @@ impl Core {
         agents: &AgentsView,
         caffeine: &CaffeineView,
         now: u64,
-    ) -> CompactView {
+    ) -> (CompactView, Option<CompactView>) {
         let view = |kind, title: &str, value: &str| CompactView {
             kind,
             title: title.to_string(),
@@ -1574,15 +1696,20 @@ impl Core {
             count: 0,
         };
         if let Some(request) = agents.pending.first() {
-            return CompactView {
+            let approval = CompactView {
                 count: agents.pending.len() as u32,
                 ends_at_ms: Some(request.expires_ms),
                 ..view(ActivityKind::Approval, &request.project, &request.tool_name)
             };
+            return (approval, None);
         }
         if let Some(banner) = &inbox.banner {
-            return view(ActivityKind::Banner, &banner.title, &banner.source);
+            return (
+                view(ActivityKind::Banner, &banner.title, &banner.source),
+                None,
+            );
         }
+        let mut live: Vec<CompactView> = Vec::new();
         if let Some(name) = self.meeting.current_name() {
             let m = self.meeting.view();
             let value = if m.run_state == MeetingRun::Paused {
@@ -1590,10 +1717,16 @@ impl Core {
             } else {
                 String::new()
             };
-            return CompactView {
+            live.push(CompactView {
                 ends_at_ms: m.ends_at_ms,
                 ..view(ActivityKind::Meeting, name, &value)
-            };
+            });
+        }
+        if let Some(event) = self.calendar.imminent(now) {
+            live.push(CompactView {
+                ends_at_ms: Some(event.start_ms),
+                ..view(ActivityKind::Calendar, &event.title, "")
+            });
         }
         let timer = self.timer.view();
         if matches!(timer.run_state, TimerRun::Running | TimerRun::Paused) {
@@ -1602,11 +1735,11 @@ impl Core {
             } else {
                 String::new()
             };
-            return CompactView {
+            live.push(CompactView {
                 ends_at_ms: timer.ends_at_ms,
                 total_secs: Some(timer.duration_secs),
                 ..view(ActivityKind::Timer, "Timer", &value)
-            };
+            });
         }
         if pomodoro.phase != Phase::Idle {
             let value = if pomodoro.ends_at_ms.is_some() {
@@ -1614,20 +1747,14 @@ impl Core {
             } else {
                 mmss(pomodoro.remaining_secs)
             };
-            return CompactView {
+            live.push(CompactView {
                 ends_at_ms: pomodoro.ends_at_ms,
                 total_secs: Some(pomodoro.total_secs),
                 ..view(ActivityKind::Pomodoro, phase_label(pomodoro.phase), &value)
-            };
-        }
-        if let Some(event) = self.calendar.imminent(now) {
-            return CompactView {
-                ends_at_ms: Some(event.start_ms),
-                ..view(ActivityKind::Calendar, &event.title, "")
-            };
+            });
         }
         if let Some(m) = media.as_ref().filter(|m| m.playing) {
-            return view(ActivityKind::Media, &m.title, &m.artist);
+            live.push(view(ActivityKind::Media, &m.title, &m.artist));
         }
         if caffeine.mode != AwakeMode::Off {
             let value = if caffeine.lid == LidState::On {
@@ -1635,10 +1762,10 @@ impl Core {
             } else {
                 ""
             };
-            return CompactView {
+            live.push(CompactView {
                 ends_at_ms: caffeine.until_ms,
                 ..view(ActivityKind::Caffeine, "Awake", value)
-            };
+            });
         }
         let working: Vec<&AgentSession> = agents
             .sessions
@@ -1646,12 +1773,26 @@ impl Core {
             .filter(|s| s.status == AgentStatus::Working)
             .collect();
         if let Some(session) = working.first() {
-            return CompactView {
+            live.push(CompactView {
                 count: working.len() as u32,
                 ..view(ActivityKind::Agent, &session.project, "working")
-            };
+            });
         }
-        view(ActivityKind::Idle, "", "")
+        let notch = &self.settings.notch;
+        live.retain(|c| !notch.hidden.contains(&c.kind));
+        live.sort_by_key(|c| {
+            notch
+                .order
+                .iter()
+                .position(|k| *k == c.kind)
+                .unwrap_or(usize::MAX)
+        });
+        let mut live = live.into_iter();
+        let first = live
+            .next()
+            .unwrap_or_else(|| view(ActivityKind::Idle, "", ""));
+        let second = live.next().filter(|_| notch.two_places);
+        (first, second)
     }
 }
 
@@ -1875,6 +2016,303 @@ mod tests {
         let old: Settings = serde_json::from_value(json!({"general": {}})).expect("loads");
         assert!(!old.calendar.enabled);
         assert_eq!(old.calendar.alert_minutes, 5);
+    }
+
+    fn set(c: &mut Core, change: impl FnOnce(&mut Settings)) {
+        let mut settings = c.settings().clone();
+        change(&mut settings);
+        cmd(
+            c,
+            Command::SetSettings {
+                settings: Box::new(settings),
+            },
+            T0,
+        );
+    }
+
+    fn kinds(v: &ViewModel) -> (ActivityKind, Option<ActivityKind>) {
+        (v.compact.kind, v.compact_secondary.as_ref().map(|c| c.kind))
+    }
+
+    fn music(c: &mut Core) {
+        c.apply(
+            Input::NowPlaying(Some(NowPlaying {
+                app: "Music".into(),
+                title: "Weightless".into(),
+                playing: true,
+                ..NowPlaying::default()
+            })),
+            T0,
+        );
+    }
+
+    /// The case that started this: a focus session is running and a meeting
+    /// is five minutes away.
+    #[test]
+    fn an_event_about_to_start_goes_first_and_the_focus_session_stays_beside_it() {
+        let mut c = with_calendar();
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        let start = T0 + 20 * 60_000;
+        cmd(
+            &mut c,
+            Command::CalendarEvents {
+                events: vec![event("e1", "Design review", start, 30)],
+            },
+            T0,
+        );
+        // Far off: the notch is the focus session's alone.
+        assert_eq!(kinds(&c.view(T0)), (ActivityKind::Pomodoro, None));
+
+        let at = start - 5 * 60_000;
+        c.apply(Input::Tick, at);
+        let v = c.view(at);
+        assert_eq!(kinds(&v), (ActivityKind::Banner, None), "the reminder");
+        assert_eq!(v.inbox.banner.as_ref().and_then(|b| b.action), None);
+        cmd(&mut c, Command::NotifyDismissBanner, at + 1);
+        let v = c.view(at + 1);
+        assert_eq!(
+            kinds(&v),
+            (ActivityKind::Calendar, Some(ActivityKind::Pomodoro))
+        );
+        assert_eq!(v.compact.ends_at_ms, Some(start));
+        let focus = v.compact_secondary.expect("focus is second");
+        assert_eq!(focus.ends_at_ms, Some(T0 + 1_500_000));
+
+        // At the start the banner offers to pause the focus session.
+        c.apply(Input::Tick, start);
+        let v = c.view(start);
+        let banner = v.inbox.banner.expect("starting now");
+        assert_eq!(banner.action, Some(BannerAction::PauseFocus));
+        cmd(&mut c, Command::PomodoroPause, start + 1);
+        let v = c.view(start + 1);
+        assert_eq!(v.pomodoro.run_state, RunState::Paused);
+        assert_eq!(
+            v.inbox.banner.and_then(|b| b.action),
+            None,
+            "nothing left to pause"
+        );
+        // Pausing again does not resume it, as a toggle would.
+        cmd(&mut c, Command::PomodoroPause, start + 2);
+        assert_eq!(c.view(start + 2).pomodoro.run_state, RunState::Paused);
+        cmd(&mut c, Command::NotifyDismissBanner, start + 3);
+        assert_eq!(kinds(&c.view(start + 3)), (ActivityKind::Pomodoro, None));
+    }
+
+    #[test]
+    fn a_starting_event_offers_no_pause_when_no_focus_session_runs() {
+        let mut c = with_calendar();
+        let start = T0 + 60_000;
+        cmd(
+            &mut c,
+            Command::CalendarEvents {
+                events: vec![event("e1", "Design review", start, 30)],
+            },
+            T0,
+        );
+        c.apply(Input::Tick, start);
+        let banner = c.view(start).inbox.banner.expect("starting now");
+        assert!(banner.body.starts_with(CALENDAR_STARTING));
+        assert_eq!(banner.action, None);
+        // A break is not a focus session.
+        cmd(&mut c, Command::PomodoroPause, start + 1);
+        assert_eq!(c.view(start + 1).pomodoro.run_state, RunState::Stopped);
+    }
+
+    #[test]
+    fn two_running_things_share_the_notch_and_more_wait_on_home() {
+        let mut c = core();
+        music(&mut c);
+        assert_eq!(kinds(&c.view(T0)), (ActivityKind::Media, None));
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        assert_eq!(
+            kinds(&c.view(T0)),
+            (ActivityKind::Pomodoro, Some(ActivityKind::Media))
+        );
+        cmd(&mut c, Command::TimerToggle, T0);
+        assert_eq!(
+            kinds(&c.view(T0)),
+            (ActivityKind::Timer, Some(ActivityKind::Pomodoro))
+        );
+        cmd(&mut c, Command::CaffeineToggle, T0);
+        assert_eq!(
+            kinds(&c.view(T0)),
+            (ActivityKind::Timer, Some(ActivityKind::Pomodoro))
+        );
+
+        // One place only: as before two places existed.
+        set(&mut c, |s| s.notch.two_places = false);
+        assert_eq!(kinds(&c.view(T0)), (ActivityKind::Timer, None));
+    }
+
+    #[test]
+    fn an_approval_or_a_banner_takes_the_notch_alone() {
+        let mut c = core();
+        music(&mut c);
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        c.apply(Input::OwnNotify(note("Deploy done", Priority::High)), T0);
+        assert_eq!(kinds(&c.view(T0)), (ActivityKind::Banner, None));
+        permission(&mut c, "s1", "ls", T0 + 1);
+        assert_eq!(kinds(&c.view(T0 + 1)), (ActivityKind::Approval, None));
+    }
+
+    #[test]
+    fn the_user_can_reorder_and_hide_what_the_notch_shows() {
+        let mut c = core();
+        music(&mut c);
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        cmd(&mut c, Command::TimerToggle, T0);
+        set(&mut c, |s| {
+            s.notch.order = vec![ActivityKind::Media, ActivityKind::Pomodoro];
+            s.notch.hidden = vec![ActivityKind::Timer];
+        });
+        assert_eq!(
+            kinds(&c.view(T0)),
+            (ActivityKind::Media, Some(ActivityKind::Pomodoro))
+        );
+        // What was left out of the order keeps its default place after it.
+        let order = &c.settings().notch.order;
+        assert_eq!(order.len(), LIVE_ORDER.len());
+        assert_eq!(
+            order[..3],
+            [
+                ActivityKind::Media,
+                ActivityKind::Pomodoro,
+                ActivityKind::Meeting
+            ]
+        );
+        // Hiding everything leaves the notch empty, with the activities running.
+        set(&mut c, |s| s.notch.hidden = LIVE_ORDER.to_vec());
+        let v = c.view(T0);
+        assert_eq!(kinds(&v), (ActivityKind::Idle, None));
+        assert_eq!(v.pomodoro.run_state, RunState::Running);
+    }
+
+    #[test]
+    fn notch_settings_are_cleaned_up_and_old_settings_get_the_defaults() {
+        let messy = NotchConfig {
+            order: vec![
+                ActivityKind::Agent,
+                ActivityKind::Banner,
+                ActivityKind::Agent,
+                ActivityKind::Unknown,
+                ActivityKind::Media,
+            ],
+            hidden: vec![
+                ActivityKind::Approval,
+                ActivityKind::Media,
+                ActivityKind::Media,
+            ],
+            two_places: false,
+            waiting_dot: false,
+        }
+        .normalized();
+        assert_eq!(
+            messy.order,
+            [
+                ActivityKind::Agent,
+                ActivityKind::Media,
+                ActivityKind::Meeting,
+                ActivityKind::Calendar,
+                ActivityKind::Timer,
+                ActivityKind::Pomodoro,
+                ActivityKind::Caffeine,
+            ]
+        );
+        assert_eq!(messy.hidden, [ActivityKind::Media]);
+        assert_eq!(NotchConfig::default().normalized(), NotchConfig::default());
+
+        let old: Settings = serde_json::from_value(json!({"general": {}})).expect("loads");
+        assert_eq!(old.notch, NotchConfig::default());
+        assert_eq!(old.notch.order, LIVE_ORDER);
+        // A kind a newer version wrote does not stop the settings loading.
+        let newer: Settings = serde_json::from_value(
+            json!({"notch": {"order": ["hologram", "media"], "hidden": ["hologram"]}}),
+        )
+        .expect("loads");
+        let c = Core::new(Persisted {
+            settings: newer,
+            ..Persisted::default()
+        });
+        assert_eq!(c.settings().notch.order[0], ActivityKind::Media);
+        assert!(c.settings().notch.hidden.is_empty());
+        assert_eq!(
+            serde_json::to_value(NotchConfig::default()).expect("serializes"),
+            json!({"order": ["meeting", "calendar", "timer", "pomodoro", "media", "caffeine", "agent"],
+                   "hidden": [], "two_places": true, "waiting_dot": true})
+        );
+    }
+
+    #[test]
+    fn a_dot_shows_while_an_agent_waits_and_its_notice_waits_out_a_focus_session() {
+        let mut c = core();
+        assert!(!c.view(T0).waiting);
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        hook(
+            &mut c,
+            json!({"hook_event_name":"Notification","session_id":"s1","cwd":"/work/api","notification_type":"idle_prompt","message":"Claude is waiting"}),
+            T0 + 1,
+        );
+        let v = c.view(T0 + 1);
+        assert!(v.inbox.banner.is_none(), "held: focus is running");
+        assert!(v.waiting, "but the dot says someone is waiting");
+        assert_eq!(kinds(&v), (ActivityKind::Pomodoro, None));
+
+        // The user can turn the dot off.
+        set(&mut c, |s| s.notch.waiting_dot = false);
+        assert!(!c.view(T0 + 1).waiting);
+        set(&mut c, |s| s.notch.waiting_dot = true);
+
+        // Answering the session clears it.
+        hook(
+            &mut c,
+            json!({"hook_event_name":"UserPromptSubmit","session_id":"s1","cwd":"/work/api","prompt":"go on"}),
+            T0 + 2,
+        );
+        cmd(&mut c, Command::NotifyMarkRead, T0 + 3);
+        assert!(!c.view(T0 + 3).waiting);
+    }
+
+    #[test]
+    fn a_finished_agent_keeps_the_dot_until_its_notice_is_read() {
+        let mut c = core();
+        hook(
+            &mut c,
+            json!({"hook_event_name":"UserPromptSubmit","session_id":"s1","cwd":"/work/api","prompt":"fix it"}),
+            T0,
+        );
+        assert!(!c.view(T0).waiting, "working is not waiting");
+        hook(
+            &mut c,
+            json!({"hook_event_name":"Stop","session_id":"s1","cwd":"/work/api","last_assistant_message":"Done."}),
+            T0 + 1,
+        );
+        assert!(c.view(T0 + 1).waiting);
+        cmd(&mut c, Command::NotifyDismissBanner, T0 + 2);
+        cmd(&mut c, Command::NotifyMarkRead, T0 + 3);
+        let v = c.view(T0 + 3);
+        let still_waiting = v
+            .agents
+            .sessions
+            .iter()
+            .any(|s| s.status == AgentStatus::WaitingInput);
+        assert_eq!(v.waiting, still_waiting);
+    }
+
+    #[test]
+    fn only_the_last_usage_warning_interrupts_a_focus_session() {
+        let mut c = core();
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        let status = |pct: f64| {
+            Input::Statusline(json!({"rate_limits":{"five_hour":{"used_percentage":pct,"resets_at":1_700_010_000}}}).to_string())
+        };
+        c.apply(status(81.0), T0 + 1);
+        assert!(
+            c.view(T0 + 1).inbox.banner.is_none(),
+            "80 % waits for the break"
+        );
+        c.apply(status(96.0), T0 + 2);
+        let banner = c.view(T0 + 2).inbox.banner.expect("95 % comes through");
+        assert_eq!(banner.priority, Priority::High);
     }
 
     #[test]
@@ -2519,7 +2957,7 @@ mod tests {
         let banner = c.view(T0 + 20).inbox.banner.unwrap();
         assert_eq!(
             (banner.title.as_str(), banner.priority),
-            ("api needs input", Priority::High)
+            ("api needs input", Priority::Normal)
         );
         // The same session replaces its earlier notification instead of stacking.
         assert_eq!(

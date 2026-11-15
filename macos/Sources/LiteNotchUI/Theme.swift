@@ -452,6 +452,12 @@ struct MiniStepper: View {
     @Environment(\.requestKeyboard) private var requestKeyboard
     /// The text being typed; nil when showing the value.
     @State private var typed: String?
+    /// The value when typing began, for Escape.
+    @State private var original = 0
+    /// The field's frame in the window, top-left origin.
+    @State private var fieldFrame = CGRect.zero
+    /// Watches for a click elsewhere while typing.
+    @State private var clickMonitor: Any?
     @FocusState private var focused: Bool
 
     /// What typed text sets the value to: a whole number, clamped to the
@@ -464,6 +470,13 @@ struct MiniStepper: View {
         return min(max(n, range.lowerBound), range.upperBound)
     }
 
+    /// Whether a click ends the typing: any click that is not on the field.
+    /// `windowPoint` is AppKit's (origin bottom-left), `field` is SwiftUI's
+    /// global frame (origin top-left).
+    static func clickEndsTyping(windowPoint: CGPoint, contentHeight: CGFloat, field: CGRect) -> Bool {
+        !field.contains(CGPoint(x: windowPoint.x, y: contentHeight - windowPoint.y))
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             stepButton("minus", delta: -step, name: "Decrease")
@@ -473,23 +486,29 @@ struct MiniStepper: View {
         .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(verbatim: label))
+        .onDisappear(perform: finish)
     }
 
     @ViewBuilder private var number: some View {
         if typed != nil {
             TextField("", text: Binding(get: { typed ?? "" },
-                                        set: { typed = String($0.filter { $0.isASCII && $0.isNumber }.prefix(4)) }),
-                      prompt: Text(verbatim: "\(value)"))
+                                        set: { typed = String($0.filter { $0.isASCII && $0.isNumber }.prefix(4)) }))
                 .textFieldStyle(.plain)
                 .multilineTextAlignment(.center)
                 .font(NType.bodyMedium.font)
                 .monospacedDigit()
                 .foregroundStyle(NT.text1)
                 .frame(width: 34, height: 22)
+                .background(GeometryReader { g in
+                    Color.clear
+                        .onAppear { fieldFrame = g.frame(in: .global) }
+                        .onChange(of: g.frame(in: .global)) { _, f in fieldFrame = f }
+                })
                 .focused($focused)
-                .onSubmit(commit)
-                .onExitCommand(perform: cancel)
-                .onChange(of: focused) { _, f in if !f { commit() } }
+                .onSubmit(finish)
+                .onExitCommand(perform: revert)
+                .onChange(of: typed) { _, text in apply(text) }
+                .onChange(of: focused) { _, f in if !f { finish() } }
                 .accessibilityLabel(Text(verbatim: label))
         } else {
             Button(action: begin) {
@@ -506,29 +525,57 @@ struct MiniStepper: View {
         }
     }
 
+    /// Typing starts from the current value, selected, so it shows in the
+    /// normal text colour and the first digit replaces it.
     private func begin() {
-        typed = ""
+        original = value
+        typed = "\(value)"
         requestKeyboard(true)
-        DispatchQueue.main.async { focused = true }
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { event in
+            let height = event.window?.contentView?.bounds.height ?? 0
+            if Self.clickEndsTyping(windowPoint: event.locationInWindow, contentHeight: height, field: fieldFrame) {
+                finish()
+            }
+            return event
+        }
+        DispatchQueue.main.async {
+            focused = true
+            DispatchQueue.main.async {
+                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+            }
+        }
     }
 
-    private func commit() {
+    /// The value follows the text as it is typed, so nothing is lost when
+    /// the typing ends without Return (a click elsewhere, the panel closing).
+    private func apply(_ text: String?) {
+        guard let text, let v = Self.typedValue(text, range: range), v != value else { return }
+        value = v
+    }
+
+    /// Ends the typing and keeps what was typed.
+    private func finish() {
         guard let text = typed else { return }
-        if let v = Self.typedValue(text, range: range) { value = v }
-        cancel()
-    }
-
-    private func cancel() {
-        guard typed != nil else { return }
+        apply(text)
         typed = nil
         focused = false
+        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
+        clickMonitor = nil
         requestKeyboard(false)
+    }
+
+    /// Escape: back to the value from before the typing.
+    private func revert() {
+        guard typed != nil else { return }
+        typed = "\(original)"
+        if value != original { value = original }
+        finish()
     }
 
     private func stepButton(_ symbol: String, delta: Int, name: String) -> some View {
         Button {
             // A number being typed is applied first, then stepped.
-            commit()
+            finish()
             value = min(max(value + delta, range.lowerBound), range.upperBound)
         } label: {
             Image(systemName: symbol).glyph(9, .bold)

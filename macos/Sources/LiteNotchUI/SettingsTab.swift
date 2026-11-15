@@ -277,11 +277,18 @@ struct SettingsTab: View {
         stepper("Rounds before a long break", $draft.pomodoro.roundsBeforeLong, 1...12)
         toggle("Auto-start breaks", $draft.pomodoro.autoStartBreaks)
         toggle("Auto-start focus", $draft.pomodoro.autoStartFocus)
+        Hairline().padding(.vertical, 2)
+        wideRow("Heads-up before it ends", caption: "Pomodoro and timer show the time left for a moment.") {
+            SegmentedPill(options: [(0, "Off"), (60, "1"), (180, "3"), (300, "5"), (600, "10 min")],
+                          selection: $draft.peek.timeWarningSecs, label: "Heads-up before it ends", height: 22)
+        }
     }
 
     @ViewBuilder private var music: some View {
         toggle("Show now playing", $draft.media.enabled,
                caption: "Shows and controls what\u{2019}s playing in any app.")
+        toggle("Show a new song for a moment", $draft.peek.trackChange,
+               caption: "The closed notch shows the title when the song changes.")
     }
 
     @ViewBuilder private var notifications: some View {
@@ -496,6 +503,23 @@ struct SettingsTab: View {
             control()
         }
         .frame(minHeight: 22)
+    }
+
+    /// A row whose control is too wide to share a line with its caption:
+    /// title and caption on top, the control below, so neither is cut off.
+    private func wideRow<C: View>(_ title: String, caption: String = "",
+                                  @ViewBuilder _ control: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: title).nfont(.body).foregroundStyle(NT.text1)
+                if !caption.isEmpty {
+                    Text(verbatim: caption).nfont(.caption).foregroundStyle(NT.text3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            control()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// A row whose text is a warning (amber, with an icon).

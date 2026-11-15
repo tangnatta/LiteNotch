@@ -27,6 +27,10 @@ use crate::notify::{
 use crate::pomodoro::{Phase, Pomodoro, PomodoroConfig, PomodoroEvent, PomodoroStats, RunState};
 use crate::usage::{local_day_start_ms, Usage, UsageRecord, UsageSnapshot};
 
+mod presentation;
+use presentation::Peek;
+pub use presentation::{PeekConfig, PeekKind, PEEK_MS};
+
 /// Version of the persisted file layout.
 pub const PERSIST_VERSION: u32 = 1;
 
@@ -207,6 +211,7 @@ pub struct Settings {
     pub analytics: AnalyticsConfig,
     pub calendar: CalendarConfig,
     pub notch: NotchConfig,
+    pub peek: PeekConfig,
 }
 
 /// The running activities the closed notch can show, in the default order:
@@ -491,6 +496,9 @@ pub struct CompactView {
     pub ends_at_ms: Option<u64>,
     pub total_secs: Option<u32>,
     pub count: u32,
+    /// Set while this is a peek: shown for a moment, then the activity
+    /// underneath returns.
+    pub peek: Option<PeekKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -627,6 +635,10 @@ pub struct Core {
     hooks_installed: Option<bool>,
     statusline_installed: Option<bool>,
     dirty: bool,
+    peek: Option<Peek>,
+    /// Time left on each countdown (`Clock`) at the last settle, so a peek
+    /// fires once when a mark is crossed.
+    clock_seen: [Option<u64>; 2],
 }
 
 impl Default for Core {
@@ -711,6 +723,8 @@ impl Core {
             hooks_installed: None,
             statusline_installed: None,
             dirty: false,
+            peek: None,
+            clock_seen: [None; 2],
         }
     }
 
@@ -767,6 +781,7 @@ impl Core {
             self.meeting.next_deadline(),
             self.timer.next_deadline(),
             self.calendar.next_deadline(),
+            self.peek_deadline(),
         ]
         .into_iter()
         .flatten()
@@ -821,7 +836,9 @@ impl Core {
             }
             Input::NowPlaying(playing) => {
                 let enabled = self.settings.media.enabled;
-                self.media.set(playing.filter(|_| enabled));
+                if self.media.set(playing.filter(|_| enabled)) {
+                    self.track_changed(now);
+                }
             }
             Input::UsageResetToday => self.usage.reset_today(),
             Input::Clamshell {
@@ -1147,6 +1164,7 @@ impl Core {
         settings.caffeine = self.caffeine.config().clone();
         settings.agent = self.agents.config().clone();
         settings.calendar = self.calendar.config().clone();
+        settings.peek = settings.peek.sanitized();
         self.settings = settings;
         self.dirty = true;
         self.count(Feature::SettingsChange, now);
@@ -1185,6 +1203,7 @@ impl Core {
         self.sync_dnd(now);
         let events = self.notify.tick(now);
         self.notify_events(events, now);
+        self.settle_peeks(now);
     }
 
     /// A reminder or a start. High priority: a meeting is worth breaking
@@ -1674,7 +1693,8 @@ impl Core {
 
     /// What the closed notch shows, and what it shows beside that.
     ///
-    /// A pending approval, then a banner, take the notch alone. Otherwise
+    /// A pending approval, then a banner, then a peek, take the notch
+    /// alone. Otherwise
     /// the running activities are ranked by `settings.notch.order` (those in
     /// `hidden` left out): the first is shown, and with `two_places` the
     /// second beside it.
@@ -1694,6 +1714,7 @@ impl Core {
             ends_at_ms: None,
             total_secs: None,
             count: 0,
+            peek: None,
         };
         if let Some(request) = agents.pending.first() {
             let approval = CompactView {
@@ -1708,6 +1729,11 @@ impl Core {
                 view(ActivityKind::Banner, &banner.title, &banner.source),
                 None,
             );
+        }
+        // A peek (a new song, a countdown about to end) has the notch to
+        // itself for its few seconds.
+        if let Some(peek) = self.peek_view(pomodoro, media) {
+            return (peek, None);
         }
         let mut live: Vec<CompactView> = Vec::new();
         if let Some(name) = self.meeting.current_name() {
@@ -2034,6 +2060,8 @@ mod tests {
         (v.compact.kind, v.compact_secondary.as_ref().map(|c| c.kind))
     }
 
+    /// Music that started a moment ago, its new-song peek already over
+    /// (these tests are about the ranking).
     fn music(c: &mut Core) {
         c.apply(
             Input::NowPlaying(Some(NowPlaying {
@@ -2042,8 +2070,9 @@ mod tests {
                 playing: true,
                 ..NowPlaying::default()
             })),
-            T0,
+            T0 - PEEK_MS,
         );
+        c.apply(Input::Tick, T0);
     }
 
     /// The case that started this: a focus session is running and a meeting
@@ -2338,6 +2367,11 @@ mod tests {
         assert_eq!(v.compact.ends_at_ms, Some(T0 + 1_500_000));
         assert_eq!(v.compact.total_secs, Some(1500));
         assert!(v.inbox.dnd, "focus silences low-priority notifications");
+        // The 5-minute warning comes first, then the end of the phase.
+        assert_eq!(c.next_deadline(), Some(T0 + 1_200_000));
+        c.apply(Input::Tick, T0 + 1_200_000);
+        assert_eq!(c.next_deadline(), Some(T0 + 1_200_000 + PEEK_MS));
+        c.apply(Input::Tick, T0 + 1_200_000 + PEEK_MS);
         assert_eq!(c.next_deadline(), Some(T0 + 1_500_000));
 
         c.apply(Input::Tick, T0 + 1_500_000);

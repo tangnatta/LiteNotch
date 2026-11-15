@@ -5,7 +5,8 @@
     "value": "Marconi Union",
     "ends_at_ms": null,
     "total_secs": null,
-    "count": 0
+    "count": 0,
+    "peek": null
   },
   "compact_secondary": {
     "kind": "agent",
@@ -13,7 +14,8 @@
     "value": "working",
     "ends_at_ms": null,
     "total_secs": null,
-    "count": 1
+    "count": 1,
+    "peek": null
   },
   "waiting": false,
   "attention": false,
@@ -433,6 +435,10 @@
       "hidden": [],
       "two_places": true,
       "waiting_dot": true
+    },
+    "peek": {
+      "track_change": true,
+      "time_warning_secs": 300
     }
   }
 }

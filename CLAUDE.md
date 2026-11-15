@@ -49,8 +49,8 @@ scripts/         build-app.sh, bench.sh, coverage.sh
 ## How it works
 
 - **Rust owns everything except pixels.** `core::state::Core` holds the
-  feature modules (pomodoro, clipboard, notify, caffeine, media, agent, usage,
-  calendar, analytics). Inputs go in with a timestamp (`apply(Input, now_ms)`,
+  feature modules (pomodoro, timer, meeting, clipboard, colours, notify,
+  caffeine, media, agent, usage, calendar, analytics). Inputs go in with a timestamp (`apply(Input, now_ms)`,
   `hook(json, now_ms)`); `Effect`s come out for the platform layer; `view(now)`
   builds the `ViewModel` the shell renders.
 - **Shell ⇄ core** is JSON over three C functions (`crates/app/src/ffi.rs`,
@@ -65,7 +65,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   counter (500 ms, off when clipboard history is disabled). Keep it that way:
   anything that changes every second must not go into the view model.
 - **What the closed notch shows** (`Core::compact`, `settings.notch`). A
-  pending approval, then a banner, take it alone. Otherwise the running
+  pending approval, then a banner, then a peek, take it alone. Otherwise the running
   activities are ranked by `notch.order` (default `LIVE_ORDER`: meeting
   agenda, event about to start, countdown, pomodoro, media, keep awake,
   working agent; deadlines other people wait on, then ones the user set,
@@ -86,6 +86,12 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   own path, calendar notices, finished timers and pomodoro phases, and the
   95 % usage warning; agent "needs input"/"finished" and the 80 % warning
   are Normal and arrive in the "While you were focusing" summary.
+  Peeks (`state/presentation.rs`): about 4 s on one of the user's own
+  activities, then gone: the track changed (`peek.track_change`) or a
+  running countdown has `peek.time_warning_secs` left. Never in the inbox,
+  not held by focus. A countdown peek fires when time left crosses the
+  mark while running; pausing keeps time left still, so it never repeats.
+  Warning times join `next_deadline`, so peeks add no polling.
 - **Shell layout.** Tabs: Home (dashboard: now playing, timer, agents,
   inbox), Music, Timer, Clipboard, Agents (Sessions | Usage) on the left of
   the notch; keep-awake toggle (cup icon), Inbox, Settings on the right.
@@ -312,7 +318,8 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   beside it then cannot reach its last rows: the Settings section list
   did this once it had ten entries. `OverflowTests` checks every tab,
   pane and Settings section; add new ones there.
-- Anything that moves continuously in the shell (the equaliser bars) must be
+- Anything that moves continuously in the shell (the equaliser bars, the
+  scrolling title of a track-change peek, `MarqueeText`) must be
   a Core Animation layer animation, not a SwiftUI animation: the SwiftUI
   version re-rendered the notch every frame and cost 9 % CPU while music
   played. `scripts/bench.sh` only measures idle, so check by hand with

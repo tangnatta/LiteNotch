@@ -218,9 +218,24 @@ struct ClosedActivityView: View {
         }
     }
 
+    /// A peek's own text, otherwise the activity's.
+    @ViewBuilder private func value(_ compact: CompactView) -> some View {
+        switch compact.peek {
+        case .trackChanged where compact.kind == .media:
+            MarqueeText(text: compact.value.isEmpty ? compact.title : "\(compact.title) — \(compact.value)")
+        case .timeWarning where compact.endsAtMs != nil:
+            EverySecond { now in
+                let left = Format.countdown(seconds: Format.secondsLeft(until: compact.endsAtMs ?? 0, nowMs: now))
+                VText(left + " left").wingText(mono: true, tint: NT.accentText)
+            }
+        default:
+            activityValue(compact)
+        }
+    }
+
     /// The text (or bars) for an activity. Sharing the notch, anything
     /// that is not a time is left to the icon.
-    @ViewBuilder private func value(_ compact: CompactView) -> some View {
+    @ViewBuilder private func activityValue(_ compact: CompactView) -> some View {
         switch compact.kind {
         case .pomodoro, .timer, .calendar:
             countdown(compact, mono: true)
@@ -278,6 +293,143 @@ struct ClosedActivityView: View {
         } else {
             VText(compact.value).wingText(mono: mono)
         }
+    }
+}
+
+/// One line of text that scrolls when it does not fit. Like the equaliser
+/// bars it is a Core Animation layer animation, run by the window server, so
+/// SwiftUI does not redraw the notch on every frame. It is only on screen
+/// for the few seconds of a peek.
+struct MarqueeText: View {
+    let text: String
+    @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        if snapshot || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            VText(text).wingText(mono: false)
+        } else {
+            MarqueeLayer(text: text, color: NSColor(NT.text1).resolved(dark: scheme == .dark))
+                .frame(height: 16)
+        }
+    }
+}
+
+private struct MarqueeLayer: NSViewRepresentable {
+    let text: String
+    let color: CGColor
+
+    func makeNSView(context: Context) -> MarqueeNSView {
+        let view = MarqueeNSView(frame: .zero)
+        view.configure(text: text, color: color)
+        return view
+    }
+
+    func updateNSView(_ nsView: MarqueeNSView, context: Context) {
+        nsView.configure(text: text, color: color)
+    }
+}
+
+final class MarqueeNSView: NSView {
+    private var text = ""
+    private var color: CGColor = .white
+    private var textWidth: CGFloat = 0
+    /// What the layers were last built for. While the wing springs open the
+    /// size changes on nearly every frame; only a change in whether the text
+    /// scrolls (or in height) rebuilds, so the scroll does not restart.
+    private var builtFor: (scrolls: Bool, height: CGFloat)?
+    private let strip = CALayer()
+    static let font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    /// Points per second, and the pause before it starts moving.
+    static let speed: CGFloat = 40
+    static let delay: CFTimeInterval = 0.5
+    static let gap: CGFloat = 28
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.masksToBounds = true
+        layer?.addSublayer(strip)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    /// Clicks go through to the notch, which opens on a click.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func configure(text: String, color: CGColor) {
+        guard text != self.text || color != self.color else { return }
+        self.text = text
+        self.color = color
+        textWidth = ceil(NSAttributedString(string: text, attributes: [.font: Self.font]).size().width)
+        builtFor = nil
+        needsLayout = true
+    }
+
+    /// Moved to a display with another scale: redraw the text sharp.
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        builtFor = nil
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let scrolls = textWidth > bounds.width
+        if let built = builtFor, built.scrolls == scrolls, built.height == bounds.height {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer?.mask?.frame = bounds
+            CATransaction.commit()
+            return
+        }
+        builtFor = (scrolls, bounds.height)
+        rebuild()
+    }
+
+    private func rebuild() {
+        let str = NSAttributedString(string: text, attributes: [
+            .font: Self.font,
+            .foregroundColor: NSColor(cgColor: color) ?? .white,
+        ])
+        let size = str.size()
+        let w = ceil(size.width), h = ceil(size.height)
+        let y = ((bounds.height - h) / 2).rounded()
+        let scale = window?.backingScaleFactor ?? 2
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        strip.removeAllAnimations()
+        strip.sublayers?.forEach { $0.removeFromSuperlayer() }
+        let scrolls = textWidth > bounds.width
+        let copies: [CGFloat] = scrolls ? [0, w + Self.gap] : [0]
+        for x in copies {
+            let t = CATextLayer()
+            t.string = str
+            t.contentsScale = scale
+            t.frame = CGRect(x: x, y: y, width: w, height: h)
+            strip.addSublayer(t)
+        }
+        strip.frame = CGRect(x: 0, y: 0, width: (copies.last ?? 0) + w, height: bounds.height)
+        if scrolls {
+            let travel = w + Self.gap
+            let move = CABasicAnimation(keyPath: "transform.translation.x")
+            move.fromValue = 0
+            move.toValue = -travel
+            move.duration = CFTimeInterval(travel / Self.speed)
+            move.beginTime = CACurrentMediaTime() + Self.delay
+            move.repeatCount = .infinity
+            strip.add(move, forKey: "marquee")
+            let fade = CAGradientLayer()
+            fade.startPoint = CGPoint(x: 0, y: 0.5)
+            fade.endPoint = CGPoint(x: 1, y: 0.5)
+            fade.colors = [CGColor.clear, CGColor.black, CGColor.black, CGColor.clear]
+            fade.locations = [0, 0.06, 0.92, 1]
+            fade.frame = bounds
+            layer?.mask = fade
+        } else {
+            layer?.mask = nil
+        }
+        CATransaction.commit()
     }
 }
 

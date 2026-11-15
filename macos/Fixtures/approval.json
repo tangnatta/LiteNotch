@@ -5,7 +5,8 @@
     "value": "Bash",
     "ends_at_ms": 1794400120010,
     "total_secs": null,
-    "count": 1
+    "count": 1,
+    "peek": null
   },
   "compact_secondary": null,
   "waiting": false,
@@ -450,6 +451,10 @@
       "hidden": [],
       "two_places": true,
       "waiting_dot": true
+    },
+    "peek": {
+      "track_change": true,
+      "time_warning_secs": 300
     }
   }
 }

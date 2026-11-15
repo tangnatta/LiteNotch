@@ -22,6 +22,15 @@ public enum ActivityKind: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// Something a banner offers to do in one click.
+public enum BannerAction: String, LenientEnum {
+    /// Pause the running focus session (a meeting is starting).
+    case pauseFocus = "pause_focus"
+    case unknown
+    static var unknownCase: BannerAction { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
 public enum Phase: String, LenientEnum {
     case idle, focus
     case shortBreak = "short_break"
@@ -279,6 +288,27 @@ public struct AnalyticsConfig: Codable, Equatable {
     public var share: Bool
 }
 
+/// Mirrors `state::NotchConfig`: what the closed notch shows when several
+/// things are running.
+public struct NotchConfig: Codable, Equatable {
+    /// The running activities, most important first.
+    public var order: [ActivityKind]
+    /// Activities kept out of the closed notch.
+    public var hidden: [ActivityKind]
+    /// Show the second activity beside the first.
+    public var twoPlaces: Bool
+    /// A dot while an agent is waiting for the user.
+    public var waitingDot: Bool
+
+    /// The default order; mirrors `state::LIVE_ORDER`.
+    public static let liveOrder: [ActivityKind] = [.meeting, .calendar, .timer, .pomodoro, .media, .caffeine, .agent]
+    public static let `default` = NotchConfig(order: liveOrder, hidden: [], twoPlaces: true, waitingDot: true)
+
+    public init(order: [ActivityKind], hidden: [ActivityKind], twoPlaces: Bool, waitingDot: Bool) {
+        self.order = order; self.hidden = hidden; self.twoPlaces = twoPlaces; self.waitingDot = waitingDot
+    }
+}
+
 /// Mirrors `calendar::CalendarConfig`.
 public struct CalendarConfig: Codable, Equatable {
     public var enabled: Bool
@@ -300,6 +330,7 @@ public struct Settings: Codable, Equatable {
     public var agent: AgentConfig
     public var analytics: AnalyticsConfig
     public var calendar: CalendarConfig
+    public var notch: NotchConfig
 }
 
 extension Settings {
@@ -315,6 +346,7 @@ extension Settings {
         agent = try c.decode(AgentConfig.self, forKey: .agent)
         analytics = try c.decode(AnalyticsConfig.self, forKey: .analytics)
         calendar = (try? c.decodeIfPresent(CalendarConfig.self, forKey: .calendar)) ?? .default
+        notch = (try? c.decodeIfPresent(NotchConfig.self, forKey: .notch)) ?? .default
     }
 }
 
@@ -455,11 +487,15 @@ public struct NotificationItem: Codable, Equatable, Identifiable {
     public var read: Bool
     /// What a click opens; nil means it only opens the inbox.
     public var open: OpenTarget?
+    /// A button the banner offers.
+    public var action: BannerAction?
 
     public init(id: Int, source: String, title: String, body: String, priority: Priority, group: String?,
-                ttlSecs: Int?, createdMs: Int, read: Bool, open: OpenTarget? = nil) {
+                ttlSecs: Int?, createdMs: Int, read: Bool, open: OpenTarget? = nil,
+                action: BannerAction? = nil) {
         self.id = id; self.source = source; self.title = title; self.body = body; self.priority = priority
         self.group = group; self.ttlSecs = ttlSecs; self.createdMs = createdMs; self.read = read; self.open = open
+        self.action = action
     }
 
     public init(from decoder: Decoder) throws {
@@ -475,6 +511,7 @@ public struct NotificationItem: Codable, Equatable, Identifiable {
         read = try c.decode(Bool.self, forKey: .read)
         // A target this shell does not know just means "no target".
         open = (try? c.decodeIfPresent(OpenTarget.self, forKey: .open)) ?? nil
+        action = (try? c.decodeIfPresent(BannerAction.self, forKey: .action)) ?? nil
     }
 }
 
@@ -758,6 +795,10 @@ public struct FeatureCount: Codable, Equatable {
 
 public struct ViewModel: Codable, Equatable {
     public var compact: CompactView
+    /// A second running activity shown beside `compact`.
+    public var compactSecondary: CompactView?
+    /// An agent is waiting for the user: the closed notch shows a dot.
+    public var waiting: Bool
     public var attention: Bool
     public var pomodoro: PomodoroView
     public var media: MediaView?
@@ -780,6 +821,8 @@ extension ViewModel {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         compact = try c.decode(CompactView.self, forKey: .compact)
+        compactSecondary = try? c.decodeIfPresent(CompactView.self, forKey: .compactSecondary)
+        waiting = (try? c.decodeIfPresent(Bool.self, forKey: .waiting)) ?? false
         attention = try c.decode(Bool.self, forKey: .attention)
         pomodoro = try c.decode(PomodoroView.self, forKey: .pomodoro)
         media = try c.decodeIfPresent(MediaView.self, forKey: .media)

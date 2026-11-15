@@ -4,6 +4,7 @@ extension SettingsSection {
     var title: String {
         switch self {
         case .general: return "General"
+        case .notch: return "Notch"
         case .timer: return "Timer"
         case .music: return "Music"
         case .notifications: return "Notifications"
@@ -18,6 +19,7 @@ extension SettingsSection {
     var symbol: String {
         switch self {
         case .general: return "gearshape"
+        case .notch: return "rectangle.topthird.inset.filled"
         case .timer: return "timer"
         case .music: return "music.note"
         case .notifications: return "bell"
@@ -113,6 +115,7 @@ struct SettingsTab: View {
     @ViewBuilder private var pane: some View {
         switch model.settingsSection {
         case .general: general
+        case .notch: NotchPriorityPane(config: $draft.notch, floating: draft.appearance.notchStyle == .floating)
         case .timer: timer
         case .music: music
         case .notifications: notifications

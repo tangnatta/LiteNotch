@@ -41,6 +41,26 @@ public enum SnapshotRenderer {
                     try add("floating-notchless-pomodoro-expanded-home", floating, notchless: true)
                 }
             }
+            if name == "pair" {
+                try add("pair-expanded-settings-notch", vm, tab: .settings, section: .notch)
+                // The meeting starts: the banner offers to pause the focus session.
+                var starting = vm
+                starting.inbox.banner = NotificationItem(id: 99, source: "calendar", title: "Design review",
+                                                         body: "Starting now \u{b7} Room 3", priority: .high, group: nil,
+                                                         ttlSecs: nil, createdMs: snapshotNowMs, read: false,
+                                                         open: .tab(.home, pane: nil), action: .pauseFocus)
+                try add("pair-starting-toast", starting, expanded: false)
+                // Only the dot: nothing running, an agent waiting.
+                var dot = vm
+                dot.compact = CompactView(kind: .idle, title: "", value: "", endsAtMs: nil, totalSecs: nil, count: 0)
+                dot.compactSecondary = nil
+                try add("waiting-dot-closed", dot, expanded: false)
+                var floating = vm
+                floating.settings.appearance.notchStyle = .floating
+                try add("floating-pair-closed", floating, expanded: false)
+                try add("floating-notchless-pair-closed", floating, expanded: false, notchless: true)
+                try add("floating-pair-expanded-settings-notch", floating, tab: .settings, section: .notch)
+            }
             if name == "calendar" {
                 try add("calendar-expanded-settings-calendar", vm, tab: .settings, section: .calendar)
             }

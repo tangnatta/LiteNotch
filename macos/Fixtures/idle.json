@@ -7,6 +7,8 @@
     "total_secs": null,
     "count": 0
   },
+  "compact_secondary": null,
+  "waiting": false,
   "attention": false,
   "pomodoro": {
     "phase": "idle",
@@ -239,6 +241,20 @@
       "enabled": false,
       "alert_minutes": 5,
       "alert_at_start": true
+    },
+    "notch": {
+      "order": [
+        "meeting",
+        "calendar",
+        "timer",
+        "pomodoro",
+        "media",
+        "caffeine",
+        "agent"
+      ],
+      "hidden": [],
+      "two_places": true,
+      "waiting_dot": true
     }
   }
 }

@@ -1,15 +1,19 @@
 import Foundation
 import LiteNotchUI
 
-let args = CommandLine.arguments
+var args = CommandLine.arguments
+// `--previews` writes the README's frame sequences instead (scripts/previews.sh).
+let previews = args.count > 1 && args[1] == "--previews"
+if previews { args.remove(at: 1) }
 guard args.count == 3 else {
-    FileHandle.standardError.write(Data("usage: LiteNotchSnapshot <fixtures-dir> <out-dir>\n".utf8))
+    FileHandle.standardError.write(Data("usage: LiteNotchSnapshot [--previews] <fixtures-dir> <out-dir>\n".utf8))
     exit(2)
 }
 do {
     let written = try MainActor.assumeIsolated {
-        try SnapshotRenderer.renderAll(fixturesDir: URL(fileURLWithPath: args[1]),
-                                       outDir: URL(fileURLWithPath: args[2]))
+        let fixtures = URL(fileURLWithPath: args[1]), out = URL(fileURLWithPath: args[2])
+        return previews ? try PreviewRenderer.renderAll(fixturesDir: fixtures, outDir: out)
+                        : try SnapshotRenderer.renderAll(fixturesDir: fixtures, outDir: out)
     }
     for u in written { print(u.path) }
     print("rendered \(written.count) images")

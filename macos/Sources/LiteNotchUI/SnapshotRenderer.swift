@@ -299,6 +299,7 @@ public enum SnapshotRenderer {
     static func write(_ vm: ViewModel, expanded: Bool, tab: Tab, section: SettingsSection = .general,
                       pane: AgentsPane = .sessions, timerPane: TimerPane = .focus, clipPreview: Int? = nil,
                       accessibilityNeeded: Bool = false, notchless: Bool = false,
+                      nowMs: Int = snapshotNowMs, backdrop: Bool = false,
                       size: CGSize, to url: URL) throws -> URL? {
         let model = AppModel(bridge: MockBridge())
         if notchless {
@@ -309,7 +310,7 @@ public enum SnapshotRenderer {
         model.setForSnapshot(vm, expanded: expanded, tab: tab, section: section, pane: pane,
                              timerPane: timerPane, clipPreview: clipPreview,
                              accessibilityNeeded: accessibilityNeeded)
-        let offset = snapshotNowMs - Int(Date().timeIntervalSince1970 * 1000)
+        let offset = nowMs - Int(Date().timeIntervalSince1970 * 1000)
         // "System" renders dark; light variants set the theme explicitly.
         let scheme: ColorScheme = vm.settings.appearance.theme == .light ? .light : .dark
         let root = NotchRootView(model: model.primary)
@@ -317,7 +318,7 @@ public enum SnapshotRenderer {
             .environment(\.isSnapshot, true)
             .environment(\.clockOffsetMs, offset)
             .frame(width: size.width, height: size.height, alignment: .top)
-            .background(Color(white: 0.5))
+            .background(backdrop ? AnyView(PreviewRenderer.backdrop) : AnyView(Color(white: 0.5)))
         let renderer = ImageRenderer(content: root)
         renderer.scale = 2
         guard let cg = renderer.cgImage else { return nil }

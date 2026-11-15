@@ -13,7 +13,7 @@ battery.
 
 | | LiteNotch |
 |---|---|
-| App size | 6.5 MB |
+| App size | 7 MB |
 | Memory while idle | 15 MB |
 | CPU while idle | under 0.5 % |
 
@@ -63,30 +63,89 @@ LiteNotch has no Dock icon. It lives in the notch; quit it from
 
 ## Using it
 
+<img src="docs/preview/overview.gif" width="680" alt="The closed notch showing what's playing, then opening on Home, Timer, Clipboard and Agents">
+
 **Open the notch** by moving the pointer onto it, or by clicking it. Move
 away or click anywhere else to close it. Tabs on the left side of the bar
-switch views; the icons on the right are quick controls.
+switch views; the icons on the right are quick controls. **Home** shows
+everything at a glance: what's playing, your timer, your next calendar
+event, your AI sessions and the latest notification. Click any of them to go
+there.
 
-| Where | What it does |
-|---|---|
-| **Home** | Everything at a glance: what's playing, your timer, your next calendar event (if you turn the calendar on), your AI sessions and the latest notification. Click any of them to go there. |
-| **Music** | Artwork, progress and play / pause / skip for whatever is playing, in any app: Music, Spotify, or a browser tab. While something plays, the closed notch shows its artwork. |
-| **Timer** | A sound plays when a timer, a focus session or a break ends (choose it, or turn it off, in **Settings › Timer**). Three timers. **Focus** is a pomodoro: work, short break, repeat. **Meeting** runs an agenda item by item (stand-up, sprint review, planning, retro, or your own) and shows when an item runs over. **Timer** is a plain countdown: click the time in the circle and type `25`, `1:30` or `1h 30m`. Any `− 12 +` number (an agenda item's minutes, a timer length) can be clicked and typed too. |
-| **Clipboard** | Everything you copy, searchable. Click an item to copy it again. Text copied with formatting keeps it; the **Aa** button copies it as plain text. Images and files show a preview. Pin what you want to keep. Password-manager copies are skipped. |
-| **Agents** | For Claude Code users: see each session's status, approve or deny its requests without switching windows, and see your usage limits and a 7-day summary. See [Claude Code](#claude-code). |
-| **Inbox** | Notifications from LiteNotch, Claude Code, and, if you allow it, other apps. Click one to open where it came from. |
-| **Settings** | Everything adjustable, by feature: how the notch looks (see [Appearance](#appearance)), the [calendar](#calendar), timer lengths, clipboard size, keep-awake options, and more. |
+The previews on this page are drawn by the app's own screens with sample
+data, a second at a time. They leave out motion: in the app the notch
+springs open, the bars move with the music and long titles scroll.
 
-Quick controls on the right of the bar:
+### Music
 
-- **Eyedropper:** pick a colour from anywhere on screen. It's copied as
-  `#RRGGBB`, and recent colours sit at the top of Clipboard.
-- **Cup:** keep the Mac awake. Options in **Settings › Keep awake** include a
-  timer, a battery limit, and staying awake with the lid closed (asks for your
-  password once; turns itself off when LiteNotch quits).
-- **Bell:** the inbox. **Gear:** settings.
+<img src="docs/preview/music.gif" width="680" alt="A new song's title shown for a moment in the closed notch, then the Music tab">
+
+Artwork, progress and play / pause / skip for whatever is playing, in any
+app: Music, Spotify, or a browser tab. While something plays, the closed
+notch shows its artwork, and a new song shows its title for a moment.
+
+### Focus timer
+
+<img src="docs/preview/focus.gif" width="680" alt="A focus session counting down in the closed notch and on the Timer tab, then the five-minutes-left heads-up and the line after a break">
+
+**Focus** is a pomodoro: work, short break, repeat. The closed notch counts
+down, with a timer icon while you focus and a leaf during a break. A sound
+plays when a session or a break ends (choose it, or turn it off, in
+**Settings › Timer**).
+
+### Meeting timer
+
+<img src="docs/preview/meeting.gif" width="680" alt="A sprint review agenda, running item by item, then an item running over in red">
+
+**Meeting** runs an agenda item by item (stand-up, sprint review, planning,
+retro, or your own) and shows when an item runs over.
+
+### Countdown
+
+<img src="docs/preview/countdown.gif" width="680" alt="A plain countdown set, started and shown in the closed notch">
+
+**Timer** is a plain countdown: click the time in the circle and type `25`,
+`1:30` or `1h 30m`. Any `− 12 +` number (an agenda item's minutes, a timer
+length) can be clicked and typed too.
+
+### Clipboard
+
+<img src="docs/preview/clipboard.gif" width="680" alt="Clipboard history with previews of an image and of copied files, and recent colours">
+
+Everything you copy, searchable. Click an item to copy it again. Text copied
+with formatting keeps it; the **Aa** button copies it as plain text. Images
+and files show a preview. Pin what you want to keep. Password-manager copies
+are skipped. The **eyedropper** in the bar picks a colour from anywhere on
+screen: it's copied as `#RRGGBB`, and recent colours sit at the top.
+
+### Agents
+
+<img src="docs/preview/agents.gif" width="680" alt="A Claude Code permission request with Deny, Answer in Terminal and Allow, the session list, the waiting dot and the usage page">
+
+For Claude Code users: approve or deny each session's requests without
+switching windows, see what every session is doing, and see your usage
+limits and a 7-day summary. See [Claude Code](#claude-code).
+
+### Inbox
+
+<img src="docs/preview/inbox.gif" width="680" alt="A notification dropping from the notch, then the inbox">
+
+Notifications from LiteNotch, Claude Code, and, if you allow it, other apps
+(the **bell**). Click one to open where it came from.
+
+### Keep awake
+
+<img src="docs/preview/keep-awake.gif" width="680" alt="The cup in the closed notch while the Mac is kept awake, then the keep-awake settings">
+
+The **cup** keeps the Mac awake. Options in **Settings › Keep awake** include
+a timer, a battery limit, and staying awake with the lid closed (asks for
+your password once; turns itself off when LiteNotch quits).
+
+The **gear** opens Settings: everything adjustable, by feature.
 
 ### What the closed notch shows
+
+<img src="docs/preview/notch-priority.gif" width="680" alt="The closed notch counting down to a meeting with the focus session beside it, then Settings › Notch with its preview">
 
 When several things are running, the closed notch shows the most pressing
 one on the left and the next one, dimmed, on the right. Out of the box the
@@ -111,7 +170,29 @@ activity off to keep it on Home only, show one activity instead of two, or
 turn the dot off. The preview at the top shows the result for a few typical
 situations.
 
+### Heads-ups and reminders
+
+<img src="docs/preview/peeks.gif" width="680" alt="The closed notch showing, one after another: a new song, five minutes left, the eye break face, a reminder to walk, and a line after a break">
+
+For a few seconds the closed notch can show one thing, then go back to what
+it was showing. These never land in the inbox. All are set in
+**Settings › Timer** (the song one in **Settings › Music**):
+
+- **Heads-up before it ends:** a focus session or countdown shows the time
+  left 1, 3, 5 or 10 minutes before it ends.
+- **A new song:** its title, when the track changes.
+- **A line after a break:** a short line of encouragement when a break
+  ends.
+- **Eye break** (off unless you turn it on): every few minutes at the
+  screen, a blinking face and "Look away".
+- **Move** (off unless you turn it on): stretch, walk or drink water, counted
+  either from the start of a focus session or from time at the Mac.
+
+Reminders pause while the screen is locked or asleep.
+
 ### Calendar
+
+<img src="docs/preview/calendar.gif" width="680" alt="Home showing the next event, the closed notch counting down to it, and the notification with a Pause focus button when it starts">
 
 Turn on **Settings › Calendar › Show calendar events** and LiteNotch follows
 the calendars you have in the Calendar app (iCloud, Google, Exchange, and so
@@ -129,6 +210,8 @@ All-day events, cancelled events and invitations you declined are left out.
 LiteNotch only reads your calendars; it never changes them.
 
 ### Appearance
+
+<img src="docs/preview/appearance.gif" width="680" alt="The attached notch, the floating capsule, one row on a display without a notch, the shrunk strip, the light theme and other accent colours">
 
 All under **Settings › General**. The defaults are the original look.
 
@@ -184,13 +267,9 @@ copies (a test build, the app from a different folder), LiteNotch tells you
 at start and **Settings › Agents** offers **Remove them**; connecting also
 replaces any other copy's hooks.
 
-To also see your **usage limits**, make LiteNotch your Claude Code status
-line, wrapping the one you already have if you like:
-
-```json
-{ "statusLine": { "type": "command",
-    "command": "'/Applications/LiteNotch.app/Contents/Helpers/litenotch' statusline -- your-existing-command" } }
-```
+To also see your **usage limits**, click **Show usage limits** in
+**Settings › Agents**. It makes LiteNotch your Claude Code status line and
+keeps the one you already have; **Stop showing usage limits** gives it back.
 
 The command-line tool can post to the notch from scripts too:
 
@@ -226,6 +305,8 @@ export PATH=/opt/homebrew/opt/rustup/bin:$PATH
 scripts/build-app.sh          # → dist/LiteNotch.app
 open dist/LiteNotch.app
 ```
+
+`scripts/previews.sh` redraws the previews on this page (needs `ffmpeg`).
 
 Developers: [CLAUDE.md](CLAUDE.md) covers the architecture, commands,
 tests, performance budgets (`scripts/bench.sh`) and the release process.

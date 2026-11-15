@@ -248,7 +248,7 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(inner["peek"] as? NSDictionary, ["track_change": true, "time_warning_secs": 300])
         XCTAssertEqual(inner["appearance"] as? NSDictionary,
                        ["theme": "system", "accent": "#FF9E0A", "notch_style": "attached", "closed_notch": "dark",
-                        "material": "solid"])
+                        "material": "solid", "shrink": "off"])
         XCTAssertEqual((inner["media"] as! NSDictionary)["enabled"] as? Bool, true)
         XCTAssertEqual((inner["notify"] as! NSDictionary)["system"] as? Bool, false)
         XCTAssertEqual(Tab.allCases.map(\.rawValue), ["home", "music", "timer", "clipboard", "agents", "inbox", "settings"])
@@ -367,6 +367,35 @@ final class GeometryTests: XCTestCase {
             XCTAssertTrue(layout.contains(CGPoint(x: 1, y: 0), mode: mode, in: layout.size(for: mode, compact: pomo)))
         }
         XCTAssertEqual(layout.wingWidth(for: pomo), NotchGeometry.wingWidth(for: pomo))
+    }
+
+    func testShrinkIsAThinStripAtTheTopWithoutANotch() {
+        for style in [NotchStyle.attached, .floating] {
+            let bare = NotchLayout(style: style, notch: NotchGeometry.fallbackSize, hasNotch: false,
+                                   menuBarHeight: 24, minimized: true)
+            XCTAssertEqual(bare.size(for: .closed, content: ClosedContent(primary: nil)), CGSize(width: 120, height: 8))
+            XCTAssertEqual(bare.top(for: .closed), 0, "flush with the top edge")
+            XCTAssertEqual(bare.size(for: .expanded, compact: nil).width, NotchGeometry.expandedSize.width, "opening is full size")
+        }
+        // A hardware notch has to stay covered.
+        XCTAssertFalse(NotchLayout(style: .attached, notch: CGSize(width: 185, height: 38), hasNotch: true, minimized: true).minimized)
+    }
+
+    func testWhenTheNotchShrinks() {
+        let empty = ClosedContent(primary: nil)
+        let timer = ClosedContent(primary: CompactView(kind: .timer, title: "Timer", value: "", endsAtMs: 1, totalSecs: 60, count: 0))
+        let dot = ClosedContent(primary: nil, waiting: true)
+        func shrinks(_ s: ShrinkChoice, _ c: ClosedContent, peek: Bool = false, notch: Bool = false) -> Bool {
+            NotchLayout.shrinks(s, content: c, peek: peek, hasNotch: notch)
+        }
+        XCTAssertFalse(shrinks(.off, empty), "Default: never")
+        XCTAssertTrue(shrinks(.whenEmpty, empty))
+        XCTAssertFalse(shrinks(.whenEmpty, timer))
+        XCTAssertFalse(shrinks(.whenEmpty, dot), "the waiting dot is something to show")
+        XCTAssertTrue(shrinks(.always, timer))
+        XCTAssertFalse(shrinks(.always, timer, peek: true), "a peek still shows")
+        XCTAssertFalse(shrinks(.always, empty, notch: true), "never with a hardware notch")
+        XCTAssertFalse(shrinks(.unknown, empty))
     }
 
     func testFloatingLayoutSitsInsideTheMenuBar() {
@@ -1040,7 +1069,7 @@ final class NewCommandTests: XCTestCase {
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, true)
         XCTAssertEqual(inner["appearance"] as? NSDictionary,
                        ["theme": "light", "accent": "#30D158", "notch_style": "floating", "closed_notch": "dark",
-                        "material": "solid"])
+                        "material": "solid", "shrink": "off"])
     }
 
     func testClosedNotchFollowsTheThemeOnlyWhenAsked() throws {

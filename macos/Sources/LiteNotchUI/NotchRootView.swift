@@ -46,7 +46,10 @@ public struct NotchRootView: View {
         }()
         // Attached: the notch silhouette with concave ears. Floating: all
         // four corners rounded, `top` below the top of the screen.
-        let shape = layout.floating
+        // Shrunk: a thin strip flush with the top edge, in either style.
+        let shape = layout.minimized
+            ? NotchShape(topRadius: NotchGeometry.minimizedEar, bottomRadius: NotchGeometry.minimizedBottomRadius)
+            : layout.floating
             ? NotchShape(topRadius: 0, bottomRadius: bottom, topCorner: bottom, topInset: top)
             : NotchShape(topRadius: ear, bottomRadius: bottom)
 
@@ -70,7 +73,7 @@ public struct NotchRootView: View {
             switch mode {
             case .closed:
                 let content = ClosedContent(view: model.view)
-                if !content.isEmpty {
+                if !content.isEmpty && !layout.minimized {
                     Group {
                         if layout.floating {
                             ClosedActivityView(content: content, notchWidth: layout.centerWidth, ear: 0,

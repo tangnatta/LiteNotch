@@ -118,6 +118,11 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   hardware notch (`safeAreaInsets.top > 0`, `PanelState.hasNotch`)
   they are always black and that row is hidden, since the camera housing
   cannot turn white.
+  `appearance.shrink` (Settings › General › Shrink, also only without a notch):
+  Off (default), WhenEmpty (nothing to show and no waiting dot) or Always
+  (except during a peek) turns the closed shape into a 120 x 8 pt strip
+  flush with the top edge, in either style (`NotchLayout.minimized`,
+  decided by `NotchLayout.shrinks`; never with a hardware notch).
   `appearance.material` (Settings → General → Panel): Solid (default) or
   Glass, macOS 26 Liquid Glass for the open panel only; the closed notch
   and toast stay black to blend with the hardware notch. Glass needs a

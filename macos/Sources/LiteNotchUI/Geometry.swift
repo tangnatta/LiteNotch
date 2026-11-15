@@ -38,6 +38,12 @@ public enum NotchGeometry {
     public static let toastExtraHeight: CGFloat = 44
     /// Slack around the largest state so spring overshoot is never clipped.
     public static let panelMargin: CGFloat = 24
+    /// The shrunk closed notch on a screen without a notch
+    /// (`appearance.shrink`): a thin strip flush with the top edge, only
+    /// there to show where the notch is.
+    public static let minimizedSize = CGSize(width: 120, height: 8)
+    public static let minimizedEar: CGFloat = 4
+    public static let minimizedBottomRadius: CGFloat = 4
 
     /// The notch rectangle, or a centred pill when the screen has no notch.
     public static func notchRect(screenFrame: CGRect, safeAreaTop: CGFloat,
@@ -247,12 +253,29 @@ public struct NotchLayout: Equatable {
     public var hasNotch: Bool
     /// Height of the menu bar; 0 when it is hidden or unknown.
     public var menuBarHeight: CGFloat
+    /// Closed and shrunk to the thin strip, in either style. Never set with
+    /// a hardware notch, which the shape has to cover.
+    public var minimized: Bool
 
-    public init(style: NotchStyle, notch: CGSize, hasNotch: Bool = true, menuBarHeight: CGFloat = 0) {
+    public init(style: NotchStyle, notch: CGSize, hasNotch: Bool = true, menuBarHeight: CGFloat = 0,
+                minimized: Bool = false) {
         self.style = style
         self.notch = notch
         self.hasNotch = hasNotch
         self.menuBarHeight = menuBarHeight
+        self.minimized = minimized && !hasNotch
+    }
+
+    /// Whether the closed notch is shrunk for `shrink`. Only on a screen
+    /// without a notch. When empty: nothing to show and no waiting dot.
+    /// Always: everything but a peek, which is the point of a peek.
+    public static func shrinks(_ shrink: ShrinkChoice, content: ClosedContent, peek: Bool, hasNotch: Bool) -> Bool {
+        guard !hasNotch else { return false }
+        switch shrink {
+        case .whenEmpty: return content.isEmpty
+        case .always: return !peek
+        case .off, .unknown: return false
+        }
     }
 
     public var floating: Bool { style == .floating }
@@ -284,6 +307,7 @@ public struct NotchLayout: Equatable {
     /// (the other modes do not depend on it).
     public func size(for mode: NotchMode, content: ClosedContent) -> CGSize {
         guard mode == .closed else { return size(for: mode, compact: content.primary) }
+        if minimized { return NotchGeometry.minimizedSize }
         let wing = wingWidth(for: content)
         if floating {
             return CGSize(width: centerWidth + 2 * wing, height: top(for: .closed) + capsuleHeight)
@@ -296,7 +320,7 @@ public struct NotchLayout: Equatable {
     public func top(for mode: NotchMode) -> CGFloat {
         guard floating else { return 0 }
         switch mode {
-        case .closed: return NotchGeometry.floatingMargin
+        case .closed: return minimized ? 0 : NotchGeometry.floatingMargin
         case .toast: return max(0, bar - NotchGeometry.floatingToastLift)
         case .expanded: return bar + NotchGeometry.floatingPanelDrop
         }

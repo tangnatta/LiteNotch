@@ -36,6 +36,20 @@ public enum SnapshotRenderer {
                 floating.settings.appearance.notchStyle = .floating
                 try add("floating-\(name)-closed", floating, expanded: false)
                 try add("floating-notchless-\(name)-closed", floating, expanded: false, notchless: true)
+                if name == "idle" {
+                    // Shrink when empty, without a notch: the strip, in both styles.
+                    var shrunk = vm
+                    shrunk.settings.appearance.shrink = .whenEmpty
+                    try add("notchless-idle-shrunk-closed", shrunk, expanded: false, notchless: true)
+                    shrunk.settings.appearance.notchStyle = .floating
+                    try add("floating-notchless-idle-shrunk-closed", shrunk, expanded: false, notchless: true)
+                }
+                if name == "pomodoro" {
+                    // Shrink always: the strip even with a timer running.
+                    var shrunk = vm
+                    shrunk.settings.appearance.shrink = .always
+                    try add("notchless-pomodoro-shrunk-closed", shrunk, expanded: false, notchless: true)
+                }
                 if name == "pomodoro" {
                     try add("floating-pomodoro-expanded-home", floating)
                     try add("floating-notchless-pomodoro-expanded-home", floating, notchless: true)

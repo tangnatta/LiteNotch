@@ -136,6 +136,7 @@ All under **Settings › General**. The defaults are the original look.
 | **Accent** | The accent colour you chose in macOS (it follows when you change it there), plain black/white to match the theme, one of four presets, or your own: the rainbow swatch opens a strip to drag along, with an eyedropper beside it to take a colour from the screen. |
 | **Notch** | **Attached** hangs from the top edge in the notch's own shape. **Floating** is a small capsule inside the menu bar, with notifications and the open panel floating just below it; it suits a Mac or an external display without a notch. |
 | **Closed notch** | **Always dark**, or **Match theme** so the closed notch and notifications turn white in the light theme. Offered only on a display without a notch: around a real notch, which is always black, it stays dark. |
+| **Shrink** | Only on a display without a notch. **Default** keeps the closed notch as it is. **When empty** shrinks it to a thin strip at the top edge while it has nothing to show. **Always** keeps it a strip whenever it is closed, except for the few seconds of a new song or a timer about to end. |
 | **Panel** | **Solid**, or **Glass** to draw the open panel with macOS 26's Liquid Glass. Approval requests are always shown on the solid panel so they stay readable. |
 
 ### What macOS may ask for

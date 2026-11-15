@@ -46,6 +46,8 @@ pub trait Ports: Send {
     /// thread. `None`: stop.
     fn watch_lid(&mut self, sink: Option<Box<dyn Fn(display::Clamshell) + Send>>);
     fn sleep_display(&mut self);
+    /// Starts playing one of the system's alert sounds.
+    fn play_sound(&mut self, name: &str);
 }
 
 pub fn capture_from(raw: RawClip) -> ClipCapture {
@@ -312,6 +314,10 @@ impl Ports for MacPorts {
 
     fn sleep_display(&mut self) {
         std::thread::spawn(display::sleep_display);
+    }
+
+    fn play_sound(&mut self, name: &str) {
+        litenotch_platform::sound::play(name);
     }
 
     fn write_clipboard_rich(&mut self, text: &str, path: &str) {

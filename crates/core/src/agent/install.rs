@@ -47,6 +47,113 @@ fn command_for(cli_path: &str) -> String {
     format!("'{}' hook", cli_path.replace('\'', "'\\''"))
 }
 
+/// Splits a shell word in single quotes (as `command_for` writes it) off the
+/// front of `s`: the text it stands for, and what follows it.
+pub(crate) fn leading_quoted(s: &str) -> Option<(String, &str)> {
+    let mut rest = s.strip_prefix('\'')?;
+    let mut out = String::new();
+    loop {
+        let i = rest.find('\'')?;
+        out.push_str(&rest[..i]);
+        rest = &rest[i + 1..];
+        // `'\''` inside the word is one quote character.
+        match rest.strip_prefix("\\''") {
+            Some(more) => {
+                out.push('\'');
+                rest = more;
+            }
+            None => return Some((out, rest)),
+        }
+    }
+}
+
+/// True for the path of a `litenotch` command-line tool, wherever it is.
+pub(crate) fn is_litenotch_cli(path: &str) -> bool {
+    path.rsplit('/').next() == Some("litenotch")
+}
+
+/// The CLI path of a LiteNotch hook command (`'<path>/litenotch' hook`), from
+/// any copy of the app; `None` for anything else.
+fn litenotch_hook_cli(command: &str) -> Option<String> {
+    let (path, rest) = leading_quoted(command)?;
+    (rest == " hook" && is_litenotch_cli(&path)).then_some(path)
+}
+
+/// Removes hook entries whose command `drop` accepts, and the groups and
+/// events that this empties. Returns whether anything was removed.
+fn remove_hooks(root: &mut Map<String, Value>, drop: impl Fn(&str) -> bool) -> bool {
+    let mut any = false;
+    let mut hooks_now_empty = false;
+    if let Some(hooks) = root.get_mut("hooks").and_then(Value::as_object_mut) {
+        let mut empty_events = Vec::new();
+        for (event, groups) in hooks.iter_mut() {
+            let Some(groups) = groups.as_array_mut() else {
+                continue;
+            };
+            let mut event_changed = false;
+            groups.retain_mut(|g| {
+                let Some(hs) = g.get_mut("hooks").and_then(Value::as_array_mut) else {
+                    return true;
+                };
+                let before = hs.len();
+                hs.retain(|h| !h.get("command").and_then(Value::as_str).is_some_and(&drop));
+                let removed = hs.len() != before;
+                event_changed |= removed;
+                // Drop only groups we emptied, never ones that were already empty.
+                !(removed && hs.is_empty())
+            });
+            any |= event_changed;
+            if groups.is_empty() && event_changed {
+                empty_events.push(event.clone());
+            }
+        }
+        for e in empty_events {
+            hooks.remove(&e);
+        }
+        hooks_now_empty = any && hooks.is_empty();
+    }
+    if hooks_now_empty {
+        root.remove("hooks");
+    }
+    any
+}
+
+/// The CLI paths of LiteNotch hooks registered by other copies of the app
+/// (a test build, an old install location), each once, sorted. Every one of
+/// them runs on every Claude Code event, and all report to whichever
+/// LiteNotch is running, so they are never wanted.
+pub fn other_hook_clis(settings_json: &str, cli_path: &str) -> Vec<String> {
+    let Ok(root) = parse_root(settings_json) else {
+        return Vec::new();
+    };
+    let mut found = std::collections::BTreeSet::new();
+    if let Some(hooks) = root.get("hooks").and_then(Value::as_object) {
+        for groups in hooks.values().filter_map(Value::as_array) {
+            for hs in groups.iter().filter_map(|g| g.get("hooks")?.as_array()) {
+                for cli in hs
+                    .iter()
+                    .filter_map(|h| litenotch_hook_cli(h.get("command")?.as_str()?))
+                {
+                    if cli != cli_path {
+                        found.insert(cli);
+                    }
+                }
+            }
+        }
+    }
+    found.into_iter().collect()
+}
+
+/// Removes the hooks of every other copy of LiteNotch, keeping `cli_path`'s
+/// own and everything that is not LiteNotch's; idempotent.
+pub fn remove_other_hooks(settings_json: &str, cli_path: &str) -> Result<String, InstallError> {
+    let mut root = parse_root(settings_json)?;
+    remove_hooks(&mut root, |cmd| {
+        litenotch_hook_cli(cmd).is_some_and(|cli| cli != cli_path)
+    });
+    Ok(render(root))
+}
+
 fn parse_root(settings_json: &str) -> Result<Map<String, Value>, InstallError> {
     if settings_json.trim().is_empty() {
         return Ok(Map::new());
@@ -73,13 +180,19 @@ fn group_has_command(group: &Value, cmd: &str) -> bool {
         })
 }
 
-/// Adds LiteNotch hooks to `settings_json`, keeping everything else; idempotent.
+/// Adds LiteNotch hooks to `settings_json`, replacing those of any other
+/// copy of LiteNotch and keeping everything else; idempotent.
 pub fn install(settings_json: &str, cli_path: &str) -> Result<String, InstallError> {
     if cli_path.is_empty() {
         return Err(InstallError::EmptyCliPath);
     }
     let cmd = command_for(cli_path);
     let mut root = parse_root(settings_json)?;
+    // One copy of LiteNotch at a time: another copy's hooks would run as
+    // well, on every event, and report to this one.
+    remove_hooks(&mut root, |c| {
+        litenotch_hook_cli(c).is_some_and(|cli| cli != cli_path)
+    });
     let hooks = root
         .entry("hooks")
         .or_insert_with(|| Value::Object(Map::new()))
@@ -106,39 +219,7 @@ pub fn install(settings_json: &str, cli_path: &str) -> Result<String, InstallErr
 pub fn uninstall(settings_json: &str, cli_path: &str) -> Result<String, InstallError> {
     let cmd = command_for(cli_path);
     let mut root = parse_root(settings_json)?;
-    let mut hooks_now_empty = false;
-    if let Some(hooks) = root.get_mut("hooks").and_then(Value::as_object_mut) {
-        let mut changed = false;
-        let mut empty_events = Vec::new();
-        for (event, groups) in hooks.iter_mut() {
-            let Some(groups) = groups.as_array_mut() else {
-                continue;
-            };
-            let mut event_changed = false;
-            groups.retain_mut(|g| {
-                let Some(hs) = g.get_mut("hooks").and_then(Value::as_array_mut) else {
-                    return true;
-                };
-                let before = hs.len();
-                hs.retain(|h| h.get("command").and_then(Value::as_str) != Some(cmd.as_str()));
-                let removed = hs.len() != before;
-                event_changed |= removed;
-                // Drop only groups we emptied, never ones that were already empty.
-                !(removed && hs.is_empty())
-            });
-            changed |= event_changed;
-            if groups.is_empty() && event_changed {
-                empty_events.push(event.clone());
-            }
-        }
-        for e in empty_events {
-            hooks.remove(&e);
-        }
-        hooks_now_empty = changed && hooks.is_empty();
-    }
-    if hooks_now_empty {
-        root.remove("hooks");
-    }
+    remove_hooks(&mut root, |c| c == cmd);
     Ok(render(root))
 }
 
@@ -164,6 +245,135 @@ mod tests {
     use super::*;
 
     const CLI: &str = "/usr/local/bin/litenotch";
+
+    const OLD: &str = "/Users/me/Downloads/LiteNotch-old.app/Contents/Helpers/litenotch";
+    const DEV: &str = "/Users/me/src/dist/LiteNotch.app/Contents/Helpers/litenotch";
+
+    fn litenotch_commands(settings: &str) -> Vec<String> {
+        let root: Value = serde_json::from_str(settings).unwrap();
+        let mut out = Vec::new();
+        for groups in root["hooks"]
+            .as_object()
+            .into_iter()
+            .flat_map(|h| h.values())
+        {
+            for g in groups.as_array().unwrap() {
+                for h in g["hooks"].as_array().unwrap() {
+                    let c = h["command"].as_str().unwrap();
+                    if c.contains("litenotch") {
+                        out.push(c.to_owned());
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Reported: every copy of LiteNotch that was ever connected (test
+    /// builds, an old location) left its hooks behind, so one Claude Code
+    /// event started five hook processes.
+    #[test]
+    fn connecting_replaces_the_hooks_of_other_copies() {
+        let two = install(&install("{}", OLD).unwrap(), DEV).unwrap();
+        assert_eq!(
+            litenotch_commands(&two).len(),
+            EVENTS.len(),
+            "DEV replaced OLD"
+        );
+        let three = install(&two, CLI).unwrap();
+        let commands = litenotch_commands(&three);
+        assert_eq!(commands.len(), EVENTS.len(), "one hook per event");
+        assert!(commands
+            .iter()
+            .all(|c| c == "'/usr/local/bin/litenotch' hook"));
+        assert!(is_installed(&three, CLI));
+        assert!(!is_installed(&three, OLD) && !is_installed(&three, DEV));
+        assert!(other_hook_clis(&three, CLI).is_empty());
+        assert_eq!(install(&three, CLI).unwrap(), three, "idempotent");
+    }
+
+    #[test]
+    fn other_copies_are_found_and_removed_without_touching_anything_else() {
+        // What a settings file looked like before: three copies side by side,
+        // next to hooks that are not LiteNotch's.
+        let mine = r#"{"hooks":{"Stop":[{"matcher":"*","hooks":[
+            {"type":"command","command":"say done"},
+            {"type":"command","command":"'/opt/tools/litenotch-helper' hook"},
+            {"type":"command","command":"/usr/bin/litenotch hook"}]}]},"model":"x"}"#;
+        let mut settings = mine.to_owned();
+        for cli in [OLD, DEV, CLI] {
+            // The old behaviour: add without looking at the others.
+            let cmd = command_for(cli);
+            let mut root = parse_root(&settings).unwrap();
+            let hooks = root["hooks"].as_object_mut().unwrap();
+            for (event, timeout) in EVENTS {
+                hooks
+                    .entry(event)
+                    .or_insert_with(|| json!([]))
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!({"matcher":"*","hooks":[{"type":"command","command":cmd,"timeout":timeout}]}));
+            }
+            settings = render(root);
+        }
+        assert_eq!(other_hook_clis(&settings, CLI), [OLD, DEV]);
+        assert_eq!(other_hook_clis(&settings, "/nowhere/litenotch").len(), 3);
+
+        let cleaned = remove_other_hooks(&settings, CLI).unwrap();
+        assert!(other_hook_clis(&cleaned, CLI).is_empty());
+        assert!(is_installed(&cleaned, CLI), "this copy stays connected");
+        assert_eq!(
+            remove_other_hooks(&cleaned, CLI).unwrap(),
+            cleaned,
+            "idempotent"
+        );
+        // Commands that only look similar are not LiteNotch's and stay.
+        let root: Value = serde_json::from_str(&cleaned).unwrap();
+        let stop: Vec<&str> = root["hooks"]["Stop"][0]["hooks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| h["command"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            stop,
+            [
+                "say done",
+                "'/opt/tools/litenotch-helper' hook",
+                "/usr/bin/litenotch hook"
+            ]
+        );
+        assert_eq!(root["model"], "x");
+
+        // Not connected itself: removing the others leaves no LiteNotch hook.
+        let none = remove_other_hooks(&settings, "/nowhere/litenotch").unwrap();
+        assert!(litenotch_commands(&none)
+            .iter()
+            .all(|c| !c.ends_with("/litenotch' hook")));
+        assert!(other_hook_clis("not json", CLI).is_empty());
+    }
+
+    #[test]
+    fn a_quoted_word_is_read_back_exactly() {
+        for path in [
+            "/a/litenotch",
+            "/Apps/it's/litenotch",
+            "/x y/$HOME `id`/litenotch",
+        ] {
+            let cmd = command_for(path);
+            assert_eq!(
+                leading_quoted(&cmd),
+                Some((path.to_owned(), " hook")),
+                "{path}"
+            );
+            assert_eq!(litenotch_hook_cli(&cmd).as_deref(), Some(path));
+        }
+        assert_eq!(leading_quoted("no quotes"), None);
+        assert_eq!(leading_quoted("'unterminated"), None);
+        assert_eq!(litenotch_hook_cli("'/a/litenotch' hook --extra"), None);
+        assert_eq!(litenotch_hook_cli("'/a/other' hook"), None);
+        assert_eq!(litenotch_hook_cli("'/a/litenotch' statusline"), None);
+    }
 
     fn val(s: &str) -> Value {
         serde_json::from_str(s).unwrap()

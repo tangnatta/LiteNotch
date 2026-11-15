@@ -48,6 +48,8 @@ public enum ShellCommand: Equatable {
     case pomodoroToggle, pomodoroSkip, pomodoroReset
     /// Pauses a running focus session; does nothing otherwise.
     case pomodoroPause
+    /// Plays a sound once, while the user is choosing one.
+    case soundPreview(name: String)
     case clipCopy(id: Int)
     /// Copy without the formatting it was copied with.
     case clipCopyPlain(id: Int)
@@ -78,6 +80,8 @@ public enum ShellCommand: Equatable {
     case analyticsClear
     case setUtcOffset(secs: Int)
     case refresh
+    /// The screen locked or slept, or the user is back (`ScreenPresence`).
+    case screenAway(Bool)
     case meetingLoad(preset: String)
     /// The whole agenda; the core honours it only while no meeting runs.
     case meetingSet(title: String, items: [AgendaLine])
@@ -91,6 +95,8 @@ public enum ShellCommand: Equatable {
     /// Not part of the Rust `Command` enum: the app's bridge handles these
     /// (writing/removing the Claude Code hook entries) itself.
     case hooksInstall, hooksUninstall
+    /// Removes the hooks of other copies of LiteNotch from Claude Code's settings.
+    case hooksClean
     /// Makes LiteNotch Claude Code's status line (wrapping the one there),
     /// which is where usage limits come from; and the reverse.
     case statuslineInstall, statuslineUninstall
@@ -105,6 +111,7 @@ public enum ShellCommand: Equatable {
         case .pomodoroToggle: return c("pomodoro_toggle")
         case .pomodoroSkip: return c("pomodoro_skip")
         case .pomodoroPause: return c("pomodoro_pause")
+        case .soundPreview(let name): return c("sound_preview", ["name": name])
         case .pomodoroReset: return c("pomodoro_reset")
         case .clipCopy(let id): return c("clip_copy", ["id": id])
         case .clipCopyPlain(let id): return c("clip_copy_plain", ["id": id])
@@ -142,6 +149,7 @@ public enum ShellCommand: Equatable {
         case .analyticsClear: return c("analytics_clear")
         case .setUtcOffset(let s): return c("set_utc_offset", ["secs": s])
         case .refresh: return c("refresh")
+        case .screenAway(let away): return c("screen_away", ["away": away])
         case .meetingLoad(let id): return c("meeting_load", ["preset": id])
         case .meetingSet(let title, let items):
             return c("meeting_set", ["title": title,
@@ -152,6 +160,7 @@ public enum ShellCommand: Equatable {
         case .colorPicked(let hex): return c("color_picked", ["hex": hex])
         case .hooksInstall: return c("hooks_install")
         case .hooksUninstall: return c("hooks_uninstall")
+        case .hooksClean: return c("hooks_clean")
         case .statuslineInstall: return c("statusline_install")
         case .statuslineUninstall: return c("statusline_uninstall")
         }
@@ -470,8 +479,11 @@ public final class PanelState: ObservableObject {
 
     public var layout: NotchLayout {
         let style = view?.settings.appearance.notchStyle ?? .attached
+        let shrunk = mode == .closed && NotchLayout.shrinks(view?.settings.appearance.shrink ?? .off,
+                                                            content: ClosedContent(view: view),
+                                                            peek: view?.compact.peek != nil, hasNotch: hasNotch)
         return NotchLayout(style: style == .floating ? .floating : .attached,
-                           notch: notch, hasNotch: hasNotch, menuBarHeight: menuBarHeight)
+                           notch: notch, hasNotch: hasNotch, menuBarHeight: menuBarHeight, minimized: shrunk)
     }
 
     /// Target size of the current shape (not animated); used for hit testing.

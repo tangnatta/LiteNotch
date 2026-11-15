@@ -46,7 +46,10 @@ public struct NotchRootView: View {
         }()
         // Attached: the notch silhouette with concave ears. Floating: all
         // four corners rounded, `top` below the top of the screen.
-        let shape = layout.floating
+        // Shrunk: a thin strip flush with the top edge, in either style.
+        let shape = layout.minimized && !layout.hasNotch
+            ? NotchShape(topRadius: NotchGeometry.minimizedEar, bottomRadius: NotchGeometry.minimizedBottomRadius)
+            : layout.floating
             ? NotchShape(topRadius: 0, bottomRadius: bottom, topCorner: bottom, topInset: top)
             : NotchShape(topRadius: ear, bottomRadius: bottom)
 
@@ -70,7 +73,7 @@ public struct NotchRootView: View {
             switch mode {
             case .closed:
                 let content = ClosedContent(view: model.view)
-                if !content.isEmpty {
+                if !content.isEmpty && !layout.minimized {
                     Group {
                         if layout.floating {
                             ClosedActivityView(content: content, notchWidth: layout.centerWidth, ear: 0,
@@ -78,13 +81,15 @@ public struct NotchRootView: View {
                                                edgePadding: NotchGeometry.floatingWingPadding,
                                                artworkSize: min(20, layout.capsuleHeight - 4),
                                                artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
-                                               artworkPath: model.view?.media?.artworkPath)
+                                               artworkPath: model.view?.media?.artworkPath,
+                                               oneRow: layout.oneRow)
                                 .frame(height: layout.capsuleHeight)
                                 .padding(.top, top)
                         } else {
                             ClosedActivityView(content: content, notchWidth: model.notch.width, ear: ear,
                                                wing: layout.wingWidth(for: content),
-                                               artworkPath: model.view?.media?.artworkPath)
+                                               artworkPath: model.view?.media?.artworkPath,
+                                               oneRow: layout.oneRow)
                         }
                     }
                         .environment(\.colorScheme, closedScheme)
@@ -139,19 +144,34 @@ struct ClosedActivityView: View {
     /// capsule's top, bottom and end, so it nests inside the round end.
     var artworkInset: CGFloat?
     var artworkPath: String?
+    /// No notch: one row with no gap in the middle (`NotchLayout.oneRow`).
+    var oneRow = false
 
     private var paired: Bool { content.secondary != nil }
 
     var body: some View {
-        HStack(spacing: 0) {
-            left.frame(width: wing, alignment: .leading)
-            Color.clear.frame(width: notchWidth)
-            right.frame(width: wing, alignment: .trailing)
+        Group {
+            if oneRow, content.primary != nil {
+                row
+            } else {
+                HStack(spacing: 0) {
+                    left.frame(width: wing, alignment: .leading)
+                    Color.clear.frame(width: notchWidth)
+                    right.frame(width: wing, alignment: .trailing)
+                }
+            }
         }
         .padding(.horizontal, ear)
         .frame(maxHeight: .infinity)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: Self.spoken(content)))
+    }
+
+    /// The pomodoro's icon: a timer while focusing, a leaf during a break,
+    /// so the two can be told apart at a glance. `title` is the core's
+    /// phase label (`Focus`, `Break`, `Long break`).
+    static func pomodoroSymbol(title: String) -> String {
+        title.localizedCaseInsensitiveContains("break") ? "leaf.fill" : "timer"
     }
 
     /// What VoiceOver says for the closed notch.
@@ -162,8 +182,41 @@ struct ClosedActivityView: View {
         return parts.joined(separator: ". ")
     }
 
+    /// One row: one activity as its icon, then its value filling the rest;
+    /// two side by side, the second dimmed. Then the dot.
+    @ViewBuilder var row: some View {
+        if let c = content.primary {
+            HStack(spacing: 0) {
+                if let s = content.secondary {
+                    HStack(spacing: NotchGeometry.pairGap) {
+                        icon(c)
+                        value(c)
+                    }
+                    Spacer(minLength: NotchGeometry.rowPairSpace)
+                    HStack(spacing: NotchGeometry.pairGap) {
+                        icon(s)
+                        value(s)
+                    }
+                    .opacity(0.7)
+                } else {
+                    HStack(spacing: NotchGeometry.rowGap) {
+                        icon(c).frame(minWidth: NotchGeometry.rowIcon, alignment: .leading)
+                        value(c).frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                }
+                if content.waiting {
+                    Circle().fill(NT.accentText)
+                        .frame(width: NotchGeometry.waitingDot, height: NotchGeometry.waitingDot)
+                        .padding(.leading, NotchGeometry.waitingDotSpace - NotchGeometry.waitingDot)
+                }
+            }
+            .padding(.leading, c.kind == .media ? artworkInset ?? edgePadding : edgePadding)
+            .padding(.trailing, edgePadding)
+        }
+    }
+
     /// One activity: its icon. Two: the first one's icon and value.
-    @ViewBuilder private var left: some View {
+    @ViewBuilder var left: some View {
         if let c = content.primary {
             HStack(spacing: NotchGeometry.pairGap) {
                 icon(c)
@@ -174,7 +227,7 @@ struct ClosedActivityView: View {
     }
 
     /// One activity: its value. Two: the second one, dimmed. Then the dot.
-    @ViewBuilder private var right: some View {
+    @ViewBuilder var right: some View {
         HStack(spacing: NotchGeometry.pairGap) {
             if let s = content.secondary {
                 HStack(spacing: NotchGeometry.pairGap) {
@@ -196,7 +249,8 @@ struct ClosedActivityView: View {
     @ViewBuilder private func icon(_ compact: CompactView) -> some View {
         switch compact.kind {
         case .pomodoro:
-            Image(systemName: "timer").font(.system(size: 12, weight: .semibold)).foregroundStyle(NT.accentText)
+            Image(systemName: Self.pomodoroSymbol(title: compact.title))
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(NT.accentText)
         case .media:
             ArtworkView(path: artworkPath, size: artworkSize, radius: artworkInset == nil ? artworkSize / 4 : artworkSize / 2)
         case .caffeine:
@@ -213,14 +267,48 @@ struct ClosedActivityView: View {
             Circle().fill(NT.accentText).frame(width: 9, height: 9)
         case .banner:
             Image(systemName: "bell.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
+        case .nudge:
+            if compact.peek == .eyeBreak {
+                BlinkingFace()
+            } else {
+                Image(systemName: Self.nudgeSymbol(compact))
+                    .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
+            }
         case .idle, .unknown:
             EmptyView()
         }
     }
 
+    /// A peek's own text, otherwise the activity's.
+    @ViewBuilder private func value(_ compact: CompactView) -> some View {
+        switch compact.peek {
+        case .trackChanged where compact.kind == .media:
+            MarqueeText(text: compact.value.isEmpty ? compact.title : "\(compact.title) — \(compact.value)")
+        case .move, .quote:
+            MarqueeText(text: compact.value)
+        case .timeWarning where compact.endsAtMs != nil:
+            EverySecond { now in
+                let left = Format.countdown(seconds: Format.secondsLeft(until: compact.endsAtMs ?? 0, nowMs: now))
+                VText(left + " left").wingText(mono: true, tint: NT.accentText)
+            }
+        default:
+            activityValue(compact)
+        }
+    }
+
+    /// The Move reminder's kind is its title; a quote gets sparkles.
+    static func nudgeSymbol(_ compact: CompactView) -> String {
+        guard compact.peek == .move else { return "sparkles" }
+        switch compact.title {
+        case "Stretch": return "figure.flexibility"
+        case "Water": return "drop.fill"
+        default: return "figure.walk"
+        }
+    }
+
     /// The text (or bars) for an activity. Sharing the notch, anything
     /// that is not a time is left to the icon.
-    @ViewBuilder private func value(_ compact: CompactView) -> some View {
+    @ViewBuilder private func activityValue(_ compact: CompactView) -> some View {
         switch compact.kind {
         case .pomodoro, .timer, .calendar:
             countdown(compact, mono: true)
@@ -262,6 +350,8 @@ struct ClosedActivityView: View {
             }
         case .banner:
             VText(compact.title).wingText(mono: false)
+        case .nudge:
+            VText(compact.value).wingText(mono: false)
         case .idle, .unknown:
             EmptyView()
         }
@@ -278,6 +368,143 @@ struct ClosedActivityView: View {
         } else {
             VText(compact.value).wingText(mono: mono)
         }
+    }
+}
+
+/// One line of text that scrolls when it does not fit. Like the equaliser
+/// bars it is a Core Animation layer animation, run by the window server, so
+/// SwiftUI does not redraw the notch on every frame. It is only on screen
+/// for the few seconds of a peek.
+struct MarqueeText: View {
+    let text: String
+    @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        if snapshot || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            VText(text).wingText(mono: false)
+        } else {
+            MarqueeLayer(text: text, color: NSColor(NT.text1).resolved(dark: scheme == .dark))
+                .frame(height: 16)
+        }
+    }
+}
+
+private struct MarqueeLayer: NSViewRepresentable {
+    let text: String
+    let color: CGColor
+
+    func makeNSView(context: Context) -> MarqueeNSView {
+        let view = MarqueeNSView(frame: .zero)
+        view.configure(text: text, color: color)
+        return view
+    }
+
+    func updateNSView(_ nsView: MarqueeNSView, context: Context) {
+        nsView.configure(text: text, color: color)
+    }
+}
+
+final class MarqueeNSView: NSView {
+    private var text = ""
+    private var color: CGColor = .white
+    private var textWidth: CGFloat = 0
+    /// What the layers were last built for. While the wing springs open the
+    /// size changes on nearly every frame; only a change in whether the text
+    /// scrolls (or in height) rebuilds, so the scroll does not restart.
+    private var builtFor: (scrolls: Bool, height: CGFloat)?
+    private let strip = CALayer()
+    static let font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    /// Points per second, and the pause before it starts moving.
+    static let speed: CGFloat = 40
+    static let delay: CFTimeInterval = 0.5
+    static let gap: CGFloat = 28
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.masksToBounds = true
+        layer?.addSublayer(strip)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    /// Clicks go through to the notch, which opens on a click.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func configure(text: String, color: CGColor) {
+        guard text != self.text || color != self.color else { return }
+        self.text = text
+        self.color = color
+        textWidth = ceil(NSAttributedString(string: text, attributes: [.font: Self.font]).size().width)
+        builtFor = nil
+        needsLayout = true
+    }
+
+    /// Moved to a display with another scale: redraw the text sharp.
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        builtFor = nil
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let scrolls = textWidth > bounds.width
+        if let built = builtFor, built.scrolls == scrolls, built.height == bounds.height {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer?.mask?.frame = bounds
+            CATransaction.commit()
+            return
+        }
+        builtFor = (scrolls, bounds.height)
+        rebuild()
+    }
+
+    private func rebuild() {
+        let str = NSAttributedString(string: text, attributes: [
+            .font: Self.font,
+            .foregroundColor: NSColor(cgColor: color) ?? .white,
+        ])
+        let size = str.size()
+        let w = ceil(size.width), h = ceil(size.height)
+        let y = ((bounds.height - h) / 2).rounded()
+        let scale = window?.backingScaleFactor ?? 2
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        strip.removeAllAnimations()
+        strip.sublayers?.forEach { $0.removeFromSuperlayer() }
+        let scrolls = textWidth > bounds.width
+        let copies: [CGFloat] = scrolls ? [0, w + Self.gap] : [0]
+        for x in copies {
+            let t = CATextLayer()
+            t.string = str
+            t.contentsScale = scale
+            t.frame = CGRect(x: x, y: y, width: w, height: h)
+            strip.addSublayer(t)
+        }
+        strip.frame = CGRect(x: 0, y: 0, width: (copies.last ?? 0) + w, height: bounds.height)
+        if scrolls {
+            let travel = w + Self.gap
+            let move = CABasicAnimation(keyPath: "transform.translation.x")
+            move.fromValue = 0
+            move.toValue = -travel
+            move.duration = CFTimeInterval(travel / Self.speed)
+            move.beginTime = CACurrentMediaTime() + Self.delay
+            move.repeatCount = .infinity
+            strip.add(move, forKey: "marquee")
+            let fade = CAGradientLayer()
+            fade.startPoint = CGPoint(x: 0, y: 0.5)
+            fade.endPoint = CGPoint(x: 1, y: 0.5)
+            fade.colors = [CGColor.clear, CGColor.black, CGColor.black, CGColor.clear]
+            fade.locations = [0, 0.06, 0.92, 1]
+            fade.frame = bounds
+            layer?.mask = fade
+        } else {
+            layer?.mask = nil
+        }
+        CATransaction.commit()
     }
 }
 
@@ -355,6 +582,110 @@ private struct AnimatedBars: NSViewRepresentable {
         for bar in nsView.layer?.sublayers ?? [] where bar.backgroundColor != color {
             bar.backgroundColor = color
         }
+    }
+}
+
+/// `>_<` for an eye break, blinking now and then: the glyph swaps to
+/// `-_-` for a moment. Like the equaliser bars the swap is a Core
+/// Animation keyframe animation the window server runs, never a SwiftUI
+/// animation, and it is on screen only for the seconds of the peek.
+struct BlinkingFace: View {
+    static let face = ">_<"
+    static let shut = "-_-"
+    @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        if snapshot || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            VText(Self.face).wingText(mono: false, tint: NT.accentText)
+        } else {
+            BlinkingFaceLayer(color: NSColor(NT.accentText).resolved(dark: scheme == .dark))
+                .frame(width: BlinkingFaceNSView.size.width, height: BlinkingFaceNSView.size.height)
+        }
+    }
+}
+
+private struct BlinkingFaceLayer: NSViewRepresentable {
+    let color: CGColor
+
+    func makeNSView(context: Context) -> BlinkingFaceNSView {
+        let view = BlinkingFaceNSView(frame: NSRect(origin: .zero, size: BlinkingFaceNSView.size))
+        view.configure(color: color)
+        return view
+    }
+
+    func updateNSView(_ nsView: BlinkingFaceNSView, context: Context) {
+        nsView.configure(color: color)
+    }
+}
+
+final class BlinkingFaceNSView: NSView {
+    static let size = CGSize(width: 26, height: 16)
+    static let font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .bold)
+    /// One blink every `period` seconds.
+    static let period: CFTimeInterval = 1.6
+    /// The open face, then the shut one on top of it.
+    private let faces = [CATextLayer(), CATextLayer()]
+    private var color: CGColor?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        for f in faces { layer?.addSublayer(f) }
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    /// Clicks go through to the notch, which opens on a click.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// A discrete keyframe animation of one face's opacity: `open` is the
+    /// open face (shown most of the period), otherwise the shut face (shown
+    /// only during the blink). Discrete keyframes take one more key time
+    /// than values.
+    static func blink(open: Bool) -> CAKeyframeAnimation {
+        let a = CAKeyframeAnimation(keyPath: "opacity")
+        a.values = (open ? [1.0, 0.0, 1.0] : [0.0, 1.0, 0.0]) as [Double]
+        a.keyTimes = [0, 0.82, 0.92, 1]
+        a.calculationMode = .discrete
+        a.duration = period
+        a.repeatCount = .infinity
+        a.isRemovedOnCompletion = false
+        return a
+    }
+
+    func configure(color: CGColor) {
+        guard color != self.color else { return }
+        self.color = color
+        needsLayout = true
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (i, layer) in faces.enumerated() {
+            let str = NSAttributedString(string: i == 0 ? BlinkingFace.face : BlinkingFace.shut, attributes: [
+                .font: Self.font,
+                .foregroundColor: NSColor(cgColor: color ?? .white) ?? .white,
+            ])
+            let size = str.size()
+            layer.string = str
+            layer.alignmentMode = .center
+            layer.contentsScale = window?.backingScaleFactor ?? 2
+            layer.bounds = CGRect(x: 0, y: 0, width: ceil(size.width), height: ceil(size.height))
+            layer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+            layer.opacity = i == 0 ? 1 : 0
+            if layer.animation(forKey: "blink") == nil {
+                layer.add(Self.blink(open: i == 0), forKey: "blink")
+            }
+        }
+        CATransaction.commit()
     }
 }
 

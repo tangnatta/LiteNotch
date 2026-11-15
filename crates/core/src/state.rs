@@ -27,6 +27,12 @@ use crate::notify::{
 use crate::pomodoro::{Phase, Pomodoro, PomodoroConfig, PomodoroEvent, PomodoroStats, RunState};
 use crate::usage::{local_day_start_ms, Usage, UsageRecord, UsageSnapshot};
 
+mod presentation;
+use presentation::Peek;
+pub use presentation::{
+    CountTime, PeekConfig, PeekKind, BREAK_LINES, EYE_MS, MOVE_LINES, NUDGE_MS, PEEK_MS,
+};
+
 /// Version of the persisted file layout.
 pub const PERSIST_VERSION: u32 = 1;
 
@@ -133,6 +139,21 @@ pub enum ClosedNotch {
     Theme,
 }
 
+/// On a display without a notch, when the closed notch shrinks to a thin
+/// strip at the top edge (the shell draws it; a hardware notch never
+/// shrinks, since the shape must cover the camera).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Shrink {
+    /// Never: the original look.
+    #[default]
+    Off,
+    /// While there is nothing to show.
+    WhenEmpty,
+    /// Whenever it is closed, except for a peek.
+    Always,
+}
+
 /// What the open panel is drawn with. Glass is the macOS 26 Liquid Glass
 /// material; the shell falls back to Solid where the system (or the SDK it
 /// was built with) lacks it. The closed notch and the toast stay black in
@@ -156,6 +177,7 @@ pub struct Appearance {
     pub notch_style: NotchStyle,
     pub closed_notch: ClosedNotch,
     pub material: Material,
+    pub shrink: Shrink,
 }
 
 impl Default for Appearance {
@@ -166,6 +188,7 @@ impl Default for Appearance {
             notch_style: NotchStyle::Attached,
             closed_notch: ClosedNotch::Dark,
             material: Material::Solid,
+            shrink: Shrink::Off,
         }
     }
 }
@@ -207,6 +230,59 @@ pub struct Settings {
     pub analytics: AnalyticsConfig,
     pub calendar: CalendarConfig,
     pub notch: NotchConfig,
+    pub sound: SoundConfig,
+    pub peek: PeekConfig,
+}
+
+/// The system alert sounds a timer can end with.
+pub const SOUNDS: [&str; 14] = [
+    "Basso",
+    "Blow",
+    "Bottle",
+    "Frog",
+    "Funk",
+    "Glass",
+    "Hero",
+    "Morse",
+    "Ping",
+    "Pop",
+    "Purr",
+    "Sosumi",
+    "Submarine",
+    "Tink",
+];
+pub const DEFAULT_SOUND: &str = "Glass";
+
+/// `name` as one of `SOUNDS`, if it is one.
+pub fn known_sound(name: &str) -> Option<&'static str> {
+    SOUNDS.iter().copied().find(|s| *s == name)
+}
+
+/// A sound when a countdown timer, a focus session or a break ends.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SoundConfig {
+    pub enabled: bool,
+    /// One of `SOUNDS`.
+    pub name: String,
+}
+
+impl Default for SoundConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            name: DEFAULT_SOUND.into(),
+        }
+    }
+}
+
+impl SoundConfig {
+    fn normalized(self) -> Self {
+        Self {
+            name: known_sound(&self.name).unwrap_or(DEFAULT_SOUND).into(),
+            ..self
+        }
+    }
 }
 
 /// The running activities the closed notch can show, in the default order:
@@ -305,6 +381,10 @@ pub enum Command {
     PomodoroToggle,
     /// Pause a running focus session; nothing otherwise.
     PomodoroPause,
+    /// Play a sound once, so the user can hear it while choosing.
+    SoundPreview {
+        name: String,
+    },
     PomodoroSkip,
     PomodoroReset,
     ClipCopy {
@@ -408,6 +488,11 @@ pub enum Command {
     },
     /// Re-send the view model.
     Refresh,
+    /// The screen locked or slept (`true`), or the user is back. Eye
+    /// breaks and Move reminders are skipped while away.
+    ScreenAway {
+        away: bool,
+    },
 }
 
 /// Everything that can happen to the core.
@@ -439,6 +524,12 @@ pub enum Input {
     LidLost,
     UtcOffset(i32),
     HooksInstalled(Option<bool>),
+    /// Other copies of LiteNotch found in Claude Code's settings, and how
+    /// many of them are gone from disk.
+    OtherCopies {
+        found: u32,
+        missing: u32,
+    },
     StatuslineInstalled(Option<bool>),
     /// A notification from the runtime itself (not from the socket).
     OwnNotify(NotificationInput),
@@ -454,6 +545,8 @@ pub enum Effect {
     WriteClipboard(String),
     /// Turn the displays off (the lid was just closed in closed-lid mode).
     SleepDisplay,
+    /// Play this system alert sound (one of `SOUNDS`).
+    PlaySound(&'static str),
     /// Put the image in this file back on the pasteboard.
     WriteClipboardImage(String),
     /// Put text back with the formatting saved in `path`.
@@ -481,6 +574,10 @@ pub enum ActivityKind {
     Timer,
     /// An event is about to start; counts down to it.
     Calendar,
+    /// A wellbeing peek about no activity in particular (an eye break, a
+    /// Move reminder, a line after a break); `value` is the line. Never
+    /// ranked: it shows only as a peek.
+    Nudge,
     /// Not one this version knows (settings written by a newer one).
     #[serde(other)]
     Unknown,
@@ -496,6 +593,9 @@ pub struct CompactView {
     pub ends_at_ms: Option<u64>,
     pub total_secs: Option<u32>,
     pub count: u32,
+    /// Set while this is a peek: shown for a moment, then the activity
+    /// underneath returns.
+    pub peek: Option<PeekKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -568,6 +668,11 @@ pub struct AgentsView {
     /// Whether Claude Code's status line goes through LiteNotch, which is
     /// what brings the usage limits; `None` if unknown.
     pub statusline_installed: Option<bool>,
+    /// Other copies of LiteNotch (a test build, an old location) that are
+    /// also registered with Claude Code and so run on every event too.
+    pub other_copies: u32,
+    /// How many of those no longer exist on disk.
+    pub other_copies_missing: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -616,6 +721,8 @@ pub struct Core {
     calendar: Calendar,
     /// Makes each captured banner's group unique.
     system_seq: u64,
+    /// A timer or a pomodoro phase ended since the last effects went out.
+    ended: bool,
     /// Waiting sessions the user has since gone to; they no longer count
     /// for the dot until they wait again.
     attended: std::collections::BTreeSet<String>,
@@ -633,8 +740,25 @@ pub struct Core {
     /// Highest alert level already raised per usage window (5 h, 7 d).
     usage_alerted: [u8; 2],
     hooks_installed: Option<bool>,
+    other_copies: (u32, u32),
     statusline_installed: Option<bool>,
     dirty: bool,
+    peek: Option<Peek>,
+    /// Time left on each countdown (`Clock`) at the last settle, so a peek
+    /// fires once when a mark is crossed.
+    clock_seen: [Option<u64>; 2],
+    /// A peek waiting for a wellbeing peek to finish.
+    peek_next: Option<Peek>,
+    /// The screen is locked or asleep (from the shell).
+    away: bool,
+    /// Start of the current eye-break interval (screen time).
+    eye_since: Option<u64>,
+    /// Start of the current Move interval when it counts screen time.
+    move_since: Option<u64>,
+    /// The last Move line shown (`MOVE_LINES`), so the next is another kind.
+    move_last: Option<usize>,
+    /// When a break completed, while its line waits for the banner to go.
+    quote_due: Option<u64>,
 }
 
 impl Default for Core {
@@ -683,6 +807,7 @@ impl Core {
         } = saved;
         let settings = Settings {
             notch: settings.notch.clone().normalized(),
+            sound: settings.sound.clone().normalized(),
             ..settings
         };
         let mut pomodoro = Pomodoro::new(settings.pomodoro.clone());
@@ -704,6 +829,7 @@ impl Core {
             calendar: Calendar::new(settings.calendar.clone()),
             timer: Countdown::new(timer_secs.unwrap_or(300)),
             system_seq: 0,
+            ended: false,
             attended: std::collections::BTreeSet::new(),
             lid_shut: false,
             wanted_assertion: AwakeMode::Off,
@@ -718,8 +844,17 @@ impl Core {
             dnd: false,
             usage_alerted: [0; 2],
             hooks_installed: None,
+            other_copies: (0, 0),
             statusline_installed: None,
             dirty: false,
+            peek: None,
+            clock_seen: [None; 2],
+            peek_next: None,
+            away: false,
+            eye_since: None,
+            move_since: None,
+            move_last: None,
+            quote_due: None,
         }
     }
 
@@ -776,6 +911,7 @@ impl Core {
             self.meeting.next_deadline(),
             self.timer.next_deadline(),
             self.calendar.next_deadline(),
+            self.peek_deadline(),
         ]
         .into_iter()
         .flatten()
@@ -830,7 +966,9 @@ impl Core {
             }
             Input::NowPlaying(playing) => {
                 let enabled = self.settings.media.enabled;
-                self.media.set(playing.filter(|_| enabled));
+                if self.media.set(playing.filter(|_| enabled)) {
+                    self.track_changed(now);
+                }
             }
             Input::UsageResetToday => self.usage.reset_today(),
             Input::Clamshell {
@@ -839,11 +977,15 @@ impl Core {
             } => self.clamshell(closed, external_display, &mut fx),
             Input::UtcOffset(secs) => self.set_utc_offset(secs),
             Input::HooksInstalled(state) => self.hooks_installed = state,
+            Input::OtherCopies { found, missing } => {
+                self.other_copies = (found, missing.min(found))
+            }
             Input::StatuslineInstalled(state) => self.statusline_installed = state,
             Input::OwnNotify(input) => self.post(input, now),
             Input::Tick => {}
         }
         self.settle(now, &mut fx);
+        self.chime(&mut fx);
         fx
     }
 
@@ -918,7 +1060,18 @@ impl Core {
             _ => {}
         }
         self.settle(now, &mut fx);
+        self.chime(&mut fx);
         (outcome, fx)
+    }
+
+    /// One sound for whatever ended in this step (a timer and a phase at
+    /// the same instant still make one), if the user wants it.
+    fn chime(&mut self, fx: &mut Vec<Effect>) {
+        if std::mem::take(&mut self.ended) && self.settings.sound.enabled {
+            if let Some(name) = known_sound(&self.settings.sound.name) {
+                fx.push(Effect::PlaySound(name));
+            }
+        }
     }
 
     fn command(&mut self, cmd: Command, now: u64, fx: &mut Vec<Effect>) {
@@ -930,6 +1083,11 @@ impl Core {
                     self.count(Feature::PomodoroStart, now);
                 }
                 self.pomodoro_events(events, now);
+            }
+            Command::SoundPreview { name } => {
+                if let Some(name) = known_sound(&name) {
+                    fx.push(Effect::PlaySound(name));
+                }
             }
             Command::PomodoroPause => {
                 if self.pomodoro.is_focus_running() {
@@ -1118,6 +1276,7 @@ impl Core {
                 self.caffeine_effects(effects, now, fx);
             }
             Command::SetSettings { settings } => self.set_settings(*settings, now),
+            Command::ScreenAway { away } => self.away = away,
             Command::PanelOpened => self.count(Feature::PanelOpen, now),
             Command::TabOpened { tab } => self.count(
                 match tab {
@@ -1159,6 +1318,7 @@ impl Core {
         self.agents.set_config(settings.agent.clone());
         self.calendar.set_config(settings.calendar.clone());
         settings.notch = settings.notch.normalized();
+        settings.sound = settings.sound.normalized();
         if !settings.media.enabled {
             self.media.set(None);
         }
@@ -1169,6 +1329,7 @@ impl Core {
         settings.caffeine = self.caffeine.config().clone();
         settings.agent = self.agents.config().clone();
         settings.calendar = self.calendar.config().clone();
+        settings.peek = settings.peek.sanitized();
         self.settings = settings;
         self.dirty = true;
         self.count(Feature::SettingsChange, now);
@@ -1187,6 +1348,7 @@ impl Core {
         let events = self.meeting.tick(now);
         self.meeting_events(events, now);
         if self.timer.tick(now) {
+            self.ended = true;
             self.post(
                 NotificationInput {
                     source: "timer".into(),
@@ -1207,6 +1369,7 @@ impl Core {
         self.sync_dnd(now);
         let events = self.notify.tick(now);
         self.notify_events(events, now);
+        self.settle_peeks(now);
     }
 
     /// A reminder or a start. High priority: a meeting is worth breaking
@@ -1262,9 +1425,14 @@ impl Core {
                 Phase::Focus => {
                     self.count(Feature::PomodoroComplete, now);
                     self.dirty = true;
+                    self.ended = true;
                     ("Focus complete", "Time for a break.")
                 }
-                Phase::ShortBreak | Phase::LongBreak => ("Break over", "Ready for the next focus?"),
+                Phase::ShortBreak | Phase::LongBreak => {
+                    self.break_done(now);
+                    self.ended = true;
+                    ("Break over", "Ready for the next focus?")
+                }
                 Phase::Idle => continue,
             };
             self.post(
@@ -1631,6 +1799,8 @@ impl Core {
             sessions: self.agents.sessions().to_vec(),
             pending: self.agents.pending().to_vec(),
             hooks_installed: self.hooks_installed,
+            other_copies: self.other_copies.0,
+            other_copies_missing: self.other_copies.1,
             statusline_installed: self.statusline_installed,
         };
         let caf = self.caffeine.snapshot(now);
@@ -1695,7 +1865,8 @@ impl Core {
 
     /// What the closed notch shows, and what it shows beside that.
     ///
-    /// A pending approval, then a banner, take the notch alone. Otherwise
+    /// A pending approval, then a banner, then a peek, take the notch
+    /// alone. Otherwise
     /// the running activities are ranked by `settings.notch.order` (those in
     /// `hidden` left out): the first is shown, and with `two_places` the
     /// second beside it.
@@ -1715,6 +1886,7 @@ impl Core {
             ends_at_ms: None,
             total_secs: None,
             count: 0,
+            peek: None,
         };
         if let Some(request) = agents.pending.first() {
             let approval = CompactView {
@@ -1729,6 +1901,11 @@ impl Core {
                 view(ActivityKind::Banner, &banner.title, &banner.source),
                 None,
             );
+        }
+        // A peek (a new song, a countdown about to end, a wellbeing nudge)
+        // has the notch to itself for its few seconds.
+        if let Some(peek) = self.peek_view(pomodoro, media) {
+            return (peek, None);
         }
         let mut live: Vec<CompactView> = Vec::new();
         if let Some(name) = self.meeting.current_name() {
@@ -2055,6 +2232,8 @@ mod tests {
         (v.compact.kind, v.compact_secondary.as_ref().map(|c| c.kind))
     }
 
+    /// Music that started a moment ago, its new-song peek already over
+    /// (these tests are about the ranking).
     fn music(c: &mut Core) {
         c.apply(
             Input::NowPlaying(Some(NowPlaying {
@@ -2063,8 +2242,9 @@ mod tests {
                 playing: true,
                 ..NowPlaying::default()
             })),
-            T0,
+            T0 - PEEK_MS,
         );
+        c.apply(Input::Tick, T0);
     }
 
     /// The case that started this: a focus session is running and a meeting
@@ -2402,6 +2582,135 @@ mod tests {
         assert_eq!(banner.priority, Priority::High);
     }
 
+    fn sounds(fx: &[Effect]) -> Vec<&'static str> {
+        fx.iter()
+            .filter_map(|e| match e {
+                Effect::PlaySound(name) => Some(*name),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_sound_plays_when_a_timer_a_focus_session_or_a_break_ends() {
+        let mut c = core();
+        // Countdown timer.
+        cmd(&mut c, Command::TimerSet { secs: 60 }, T0);
+        assert!(
+            sounds(&cmd(&mut c, Command::TimerToggle, T0)).is_empty(),
+            "not at the start"
+        );
+        assert!(sounds(&c.apply(Input::Tick, T0 + 59_000)).is_empty());
+        assert_eq!(sounds(&c.apply(Input::Tick, T0 + 60_000)), ["Glass"]);
+        assert!(
+            sounds(&c.apply(Input::Tick, T0 + 61_000)).is_empty(),
+            "once"
+        );
+
+        // Focus, then the break that follows by itself.
+        let t = T0 + 100_000;
+        cmd(&mut c, Command::PomodoroToggle, t);
+        assert_eq!(
+            sounds(&c.apply(Input::Tick, t + 1_500_000)),
+            ["Glass"],
+            "focus ended"
+        );
+        // The 5-minute break started by itself.
+        let break_end = t + 1_500_000 + 300_000;
+        assert!(sounds(&c.apply(Input::Tick, break_end - 1000)).is_empty());
+        assert_eq!(
+            sounds(&c.apply(Input::Tick, break_end)),
+            ["Glass"],
+            "break ended"
+        );
+    }
+
+    #[test]
+    fn skipping_resetting_or_pausing_makes_no_sound() {
+        let mut c = core();
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        assert!(
+            sounds(&cmd(&mut c, Command::PomodoroToggle, T0 + 1000)).is_empty(),
+            "pause"
+        );
+        assert!(
+            sounds(&cmd(&mut c, Command::PomodoroSkip, T0 + 2000)).is_empty(),
+            "skip"
+        );
+        assert!(
+            sounds(&cmd(&mut c, Command::PomodoroReset, T0 + 3000)).is_empty(),
+            "reset"
+        );
+        cmd(&mut c, Command::TimerSet { secs: 60 }, T0);
+        cmd(&mut c, Command::TimerToggle, T0);
+        assert!(sounds(&cmd(&mut c, Command::TimerReset, T0 + 1000)).is_empty());
+    }
+
+    #[test]
+    fn the_sound_can_be_chosen_turned_off_and_heard_before_choosing() {
+        let mut c = core();
+        set(&mut c, |s| s.sound.name = "Hero".into());
+        cmd(&mut c, Command::TimerSet { secs: 60 }, T0);
+        cmd(&mut c, Command::TimerToggle, T0);
+        assert_eq!(sounds(&c.apply(Input::Tick, T0 + 60_000)), ["Hero"]);
+
+        set(&mut c, |s| s.sound.enabled = false);
+        cmd(&mut c, Command::TimerToggle, T0 + 70_000);
+        assert!(
+            sounds(&c.apply(Input::Tick, T0 + 130_000)).is_empty(),
+            "off"
+        );
+        // A sound that ended while off is not played later.
+        set(&mut c, |s| s.sound.enabled = true);
+        assert!(sounds(&c.apply(Input::Tick, T0 + 131_000)).is_empty());
+
+        // The preview plays whether or not the sound is on, known names only.
+        set(&mut c, |s| s.sound.enabled = false);
+        let fx = cmd(
+            &mut c,
+            Command::SoundPreview {
+                name: "Ping".into(),
+            },
+            T0,
+        );
+        assert_eq!(sounds(&fx), ["Ping"]);
+        for bad in ["", "ping", "../Ping", "Glass.aiff", "/bin/sh"] {
+            let fx = cmd(&mut c, Command::SoundPreview { name: bad.into() }, T0);
+            assert!(sounds(&fx).is_empty(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn sound_settings_are_cleaned_up_and_old_settings_get_the_defaults() {
+        let mut c = core();
+        set(&mut c, |s| s.sound.name = "../../evil".into());
+        assert_eq!(c.settings().sound.name, DEFAULT_SOUND);
+        let old: Settings = serde_json::from_value(json!({"general": {}})).expect("loads");
+        assert_eq!(old.sound, SoundConfig::default());
+        assert!(old.sound.enabled);
+        let saved: Settings =
+            serde_json::from_value(json!({"sound": {"enabled": false, "name": "nope"}}))
+                .expect("loads");
+        let c = Core::new(Persisted {
+            settings: saved,
+            ..Persisted::default()
+        });
+        assert_eq!(c.settings().sound.name, DEFAULT_SOUND);
+        assert!(!c.settings().sound.enabled);
+        assert!(SOUNDS.contains(&DEFAULT_SOUND));
+        assert!(SOUNDS
+            .iter()
+            .all(|s| s.chars().all(|ch| ch.is_ascii_alphabetic())));
+        let command: Command =
+            serde_json::from_value(json!({"cmd":"sound_preview","name":"Tink"})).expect("parses");
+        assert_eq!(
+            command,
+            Command::SoundPreview {
+                name: "Tink".into()
+            }
+        );
+    }
+
     #[test]
     fn a_fresh_core_is_idle_with_nothing_scheduled() {
         let c = core();
@@ -2425,6 +2734,11 @@ mod tests {
         assert_eq!(v.compact.ends_at_ms, Some(T0 + 1_500_000));
         assert_eq!(v.compact.total_secs, Some(1500));
         assert!(v.inbox.dnd, "focus silences low-priority notifications");
+        // The 5-minute warning comes first, then the end of the phase.
+        assert_eq!(c.next_deadline(), Some(T0 + 1_200_000));
+        c.apply(Input::Tick, T0 + 1_200_000);
+        assert_eq!(c.next_deadline(), Some(T0 + 1_200_000 + PEEK_MS));
+        c.apply(Input::Tick, T0 + 1_200_000 + PEEK_MS);
         assert_eq!(c.next_deadline(), Some(T0 + 1_500_000));
 
         c.apply(Input::Tick, T0 + 1_500_000);
@@ -3404,6 +3718,29 @@ mod tests {
         assert_eq!(c.view(T0).agents.hooks_installed, None);
         c.apply(Input::HooksInstalled(Some(true)), T0);
         assert_eq!(c.view(T0).agents.hooks_installed, Some(true));
+        // Other copies registered with Claude Code are passed through.
+        assert_eq!(c.view(T0).agents.other_copies, 0);
+        c.apply(
+            Input::OtherCopies {
+                found: 4,
+                missing: 2,
+            },
+            T0,
+        );
+        let agents = c.view(T0).agents;
+        assert_eq!((agents.other_copies, agents.other_copies_missing), (4, 2));
+        c.apply(
+            Input::OtherCopies {
+                found: 1,
+                missing: 9,
+            },
+            T0,
+        );
+        assert_eq!(
+            c.view(T0).agents.other_copies_missing,
+            1,
+            "never more than were found"
+        );
     }
 
     #[test]
@@ -3687,12 +4024,16 @@ mod tests {
         let json = serde_json::to_value(c.view(T0).settings.appearance).unwrap();
         assert_eq!(
             json,
-            json!({"theme":"light","accent":DEFAULT_ACCENT,"notch_style":"floating","closed_notch":"dark","material":"solid"})
+            json!({"theme":"light","accent":DEFAULT_ACCENT,"notch_style":"floating","closed_notch":"dark","material":"solid","shrink":"off"})
         );
         // Settings saved before the field existed load as the original look.
         let old: Appearance =
             serde_json::from_value(json!({"theme":"dark","accent":"#000000"})).unwrap();
         assert_eq!(old.notch_style, NotchStyle::Attached);
+        assert_eq!(old.shrink, Shrink::Off);
+        let when_empty: Appearance =
+            serde_json::from_value(json!({"shrink":"when_empty"})).unwrap();
+        assert_eq!(when_empty.shrink, Shrink::WhenEmpty);
     }
 
     #[test]

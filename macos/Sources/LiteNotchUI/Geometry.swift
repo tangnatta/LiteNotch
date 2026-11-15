@@ -38,6 +38,12 @@ public enum NotchGeometry {
     public static let toastExtraHeight: CGFloat = 44
     /// Slack around the largest state so spring overshoot is never clipped.
     public static let panelMargin: CGFloat = 24
+    /// The shrunk closed notch on a screen without a notch
+    /// (`appearance.shrink`): a thin strip flush with the top edge, only
+    /// there to show where the notch is.
+    public static let minimizedSize = CGSize(width: 120, height: 8)
+    public static let minimizedEar: CGFloat = 4
+    public static let minimizedBottomRadius: CGFloat = 4
 
     /// The notch rectangle, or a centred pill when the screen has no notch.
     public static func notchRect(screenFrame: CGRect, safeAreaTop: CGFloat,
@@ -61,8 +67,19 @@ public enum NotchGeometry {
     public static func wingWidth(for compact: CompactView) -> CGFloat {
         let icon: CGFloat = 40
         let value: CGFloat
+        switch compact.peek {
+        // Room for the scrolling title.
+        case .trackChanged: return 130
+        // `4:59 left`.
+        case .timeWarning: return 82
+        // A symbol on one side, the scrolling line on the other. The eye
+        // break's short line takes the `.nudge` width below.
+        case .move, .quote: return 130
+        case .eyeBreak, .unknown, nil: break
+        }
         switch compact.kind {
         case .idle, .unknown: return 0
+        case .nudge: value = textWidth(compact.value) + 18
         case .pomodoro: value = 62
         case .caffeine: value = 62
         // `+12:34` over time, or `Paused`.
@@ -83,8 +100,8 @@ public enum NotchGeometry {
         return min(max(icon, value), 130)
     }
 
-    private static func textWidth(_ s: String) -> CGFloat {
-        CGFloat(min(s.count, 18)) * 6.4
+    private static func textWidth(_ s: String, chars: Int = 18) -> CGFloat {
+        CGFloat(min(s.count, chars)) * 6.4
     }
 
     public static func closedSize(notch: CGSize, wing: CGFloat) -> CGSize {
@@ -145,8 +162,16 @@ extension NotchGeometry {
     public static func floatingWingWidth(for compact: CompactView) -> CGFloat {
         let icon: CGFloat = 30
         let value: CGFloat
+        switch compact.peek {
+        case .trackChanged: return 80
+        // `10:00 left` with the capsule's padding.
+        case .timeWarning: return 72
+        case .move, .quote: return 80
+        case .eyeBreak, .unknown, nil: break
+        }
         switch compact.kind {
         case .idle, .unknown: return 0
+        case .nudge: value = textWidth(compact.value) + 12
         // `24:59` in 12 pt semibold digits is about 36 pt.
         case .pomodoro, .caffeine, .timer, .calendar: value = 46
         // `+12:34` over time, or `Paused`.
@@ -189,6 +214,11 @@ extension NotchGeometry {
     /// The waiting dot and the space before it.
     public static let waitingDot: CGFloat = 6
     public static let waitingDotSpace: CGFloat = 11
+    /// Width of each wing when the dot is all there is to show beside a
+    /// notch. The camera housing is a little wider than the notch macOS
+    /// reports and its corners are round, so the dot needs clear space
+    /// between it and the housing as well as its padding at the outer end.
+    public static let loneDotWing: CGFloat = 34
     /// Space between an icon and its value when two activities share the notch.
     public static let pairGap: CGFloat = 5
 
@@ -203,7 +233,8 @@ extension NotchGeometry {
         case .caffeine: return c.endsAtMs != nil ? 38 : 0
         case .media: return 18
         case .agent: return c.count > 1 ? 12 : 0
-        case .idle, .approval, .banner, .unknown: return 0
+        // A peek (a nudge too) always has the notch to itself.
+        case .idle, .approval, .banner, .nudge, .unknown: return 0
         }
     }
 
@@ -211,7 +242,7 @@ extension NotchGeometry {
     /// this is the width it always had; the dot adds a little.
     public static func wingWidth(for content: ClosedContent, floating: Bool) -> CGFloat {
         let dot = content.waiting ? waitingDotSpace : 0
-        guard let first = content.primary else { return content.waiting ? (floating ? 12 : 20) : 0 }
+        guard let first = content.primary else { return content.waiting ? (floating ? 16 : loneDotWing) : 0 }
         guard let second = content.secondary else {
             return (floating ? floatingWingWidth(for: first) : wingWidth(for: first)) + dot
         }
@@ -222,6 +253,61 @@ extension NotchGeometry {
             return pad + icon + (value > 0 ? pairGap + value : 0) + 4
         }
         return min(max(slot(first), slot(second) + dot), floating ? 90 : 104)
+    }
+
+    // MARK: One row, on a screen without a notch
+
+    /// Room for the icon (or artwork) at the start of a row, and the gap after it.
+    public static let rowIcon: CGFloat = 20
+    public static let rowGap: CGFloat = 8
+    /// Space between two activities sharing a row.
+    public static let rowPairSpace: CGFloat = 14
+    public static let maxRowWidth: CGFloat = 340
+
+    /// Width of one activity's value when it has the row to itself; text
+    /// gets the room both wings and the gap had.
+    static func rowValueWidth(_ c: CompactView) -> CGFloat {
+        switch c.peek {
+        case .trackChanged: return 200
+        // `10:00 left`.
+        case .timeWarning: return 66
+        // A line that scrolls, like a song title.
+        case .move, .quote: return 200
+        // The eye break's short line takes the `.nudge` width below.
+        case .eyeBreak, .unknown, nil: break
+        }
+        switch c.kind {
+        case .idle, .unknown: return 0
+        // `1:24:59` in semibold digits.
+        case .pomodoro, .caffeine, .timer, .calendar: return 48
+        case .meeting: return 54
+        case .media: return 24
+        case .approval: return textWidth(c.value, chars: 32) + (c.count > 1 ? 20 : 0)
+        case .banner, .agent: return textWidth(c.title, chars: 32)
+        case .nudge: return textWidth(c.value, chars: 32)
+        }
+    }
+
+    /// Without a notch there is no camera to keep clear: what the closed
+    /// notch shows as one row (padding at both ends included). One activity
+    /// is its icon, then its value through the middle; two sit side by side,
+    /// each as icon and time, as they would around a notch. 0 when empty.
+    public static func rowWidth(for content: ClosedContent, floating: Bool) -> CGFloat {
+        guard let first = content.primary else { return 0 }
+        let edge: CGFloat = floating ? floatingWingPadding : 12
+        let dot = content.waiting ? waitingDotSpace : 0
+        let inner: CGFloat
+        if let second = content.secondary {
+            let icon: CGFloat = floating ? 16 : 18
+            func slot(_ c: CompactView) -> CGFloat {
+                let value = pairValueWidth(c)
+                return icon + (value > 0 ? pairGap + value : 0)
+            }
+            inner = slot(first) + rowPairSpace + slot(second)
+        } else {
+            inner = rowIcon + rowGap + rowValueWidth(first)
+        }
+        return min(2 * edge + inner + dot, maxRowWidth)
     }
 }
 
@@ -234,12 +320,37 @@ public struct NotchLayout: Equatable {
     public var hasNotch: Bool
     /// Height of the menu bar; 0 when it is hidden or unknown.
     public var menuBarHeight: CGFloat
+    /// Closed and shrunk to the thin strip, in either style. Never set with
+    /// a hardware notch, which the shape has to cover.
+    public var minimized: Bool
 
-    public init(style: NotchStyle, notch: CGSize, hasNotch: Bool = true, menuBarHeight: CGFloat = 0) {
+    public init(style: NotchStyle, notch: CGSize, hasNotch: Bool = true, menuBarHeight: CGFloat = 0,
+                minimized: Bool = false) {
         self.style = style
         self.notch = notch
         self.hasNotch = hasNotch
         self.menuBarHeight = menuBarHeight
+        self.minimized = minimized
+    }
+
+    /// No camera housing to keep clear: the closed notch is one row, with no
+    /// gap in the middle.
+    public var oneRow: Bool { !hasNotch }
+
+    /// Whether the closed notch is shrunk for `shrink`. When empty: nothing
+    /// to show and no waiting dot. Always: everything but a peek, which is
+    /// the point of a peek.
+    ///
+    /// Around a hardware notch only Always means anything: with nothing to
+    /// show the shape already is the bare notch, and a strip thinner than
+    /// the camera housing could not be found with the pointer. There, the
+    /// shrunk shape is the bare notch with nothing beside it.
+    public static func shrinks(_ shrink: ShrinkChoice, content: ClosedContent, peek: Bool, hasNotch: Bool) -> Bool {
+        switch shrink {
+        case .whenEmpty: return !hasNotch && content.isEmpty
+        case .always: return !peek
+        case .off, .unknown: return false
+        }
     }
 
     public var floating: Bool { style == .floating }
@@ -271,6 +382,22 @@ public struct NotchLayout: Equatable {
     /// (the other modes do not depend on it).
     public func size(for mode: NotchMode, content: ClosedContent) -> CGSize {
         guard mode == .closed else { return size(for: mode, compact: content.primary) }
+        if minimized {
+            // A strip where there is no notch; the bare notch where there is.
+            guard hasNotch else { return NotchGeometry.minimizedSize }
+            return floating
+                ? CGSize(width: centerWidth, height: top(for: .closed) + capsuleHeight)
+                : NotchGeometry.closedSize(notch: notch, wing: 0)
+        }
+        if oneRow && content.primary != nil {
+            // Never narrower than the idle shape, so something showing never
+            // makes it smaller.
+            let row = NotchGeometry.rowWidth(for: content, floating: floating)
+            if floating {
+                return CGSize(width: max(centerWidth, row), height: top(for: .closed) + capsuleHeight)
+            }
+            return CGSize(width: max(notch.width, row) + 2 * NotchGeometry.closedEar, height: notch.height)
+        }
         let wing = wingWidth(for: content)
         if floating {
             return CGSize(width: centerWidth + 2 * wing, height: top(for: .closed) + capsuleHeight)
@@ -283,7 +410,9 @@ public struct NotchLayout: Equatable {
     public func top(for mode: NotchMode) -> CGFloat {
         guard floating else { return 0 }
         switch mode {
-        case .closed: return NotchGeometry.floatingMargin
+        // The strip is flush with the top edge; beside a camera housing the
+        // shrunk shape is the ordinary capsule with nothing in it.
+        case .closed: return minimized && !hasNotch ? 0 : NotchGeometry.floatingMargin
         case .toast: return max(0, bar - NotchGeometry.floatingToastLift)
         case .expanded: return bar + NotchGeometry.floatingPanelDrop
         }

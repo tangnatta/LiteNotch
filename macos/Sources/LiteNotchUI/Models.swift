@@ -17,8 +17,33 @@ private func decodeLenient<E: LenientEnum>(_ decoder: Decoder) throws -> E {
 }
 
 public enum ActivityKind: String, LenientEnum {
-    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, calendar, unknown
+    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, calendar, nudge, unknown
     static var unknownCase: ActivityKind { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
+/// Why the closed notch is showing something for a moment (`compact.peek`).
+public enum PeekKind: String, LenientEnum {
+    case trackChanged = "track_changed"
+    case timeWarning = "time_warning"
+    /// Blink and look away, briefly; `compact.kind` is `.nudge`.
+    case eyeBreak = "eye_break"
+    /// Stretch, walk or drink water; `compact.title` says which.
+    case move
+    /// A short line after a pomodoro break; `compact.kind` is `.nudge`.
+    case quote
+    case unknown
+    static var unknownCase: PeekKind { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+
+    /// A wellbeing peek: a face or symbol and a short line.
+    public var isNudge: Bool { self == .eyeBreak || self == .move || self == .quote }
+}
+
+/// What the Move reminder counts (`settings.peek.move_counts`).
+public enum CountTime: String, LenientEnum {
+    case focus, screen, unknown
+    static var unknownCase: CountTime { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
@@ -113,6 +138,51 @@ extension GeneralSettings {
     }
 }
 
+/// Which peeks are on (`settings.peek`).
+public struct PeekConfig: Codable, Equatable {
+    public var trackChange: Bool
+    /// 0 is off.
+    public var timeWarningSecs: Int
+
+    /// Minutes of screen time between eye breaks; 0 (the default) is off.
+    public var eyeBreakMins: Int = 0
+    /// Minutes between Move reminders; 0 (the default) is off.
+    public var moveMins: Int = 0
+    public var moveCounts: CountTime = .focus
+    /// A short encouraging line when a pomodoro break completes.
+    public var breakQuote: Bool = true
+
+    public static let `default` = PeekConfig(trackChange: true, timeWarningSecs: 300)
+
+    enum CodingKeys: String, CodingKey {
+        case trackChange, timeWarningSecs, eyeBreakMins, moveMins, moveCounts, breakQuote
+    }
+}
+
+extension PeekConfig {
+    // The reminders and the break line are newer than the rest.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        trackChange = try c.decode(Bool.self, forKey: .trackChange)
+        timeWarningSecs = try c.decode(Int.self, forKey: .timeWarningSecs)
+        eyeBreakMins = (try? c.decodeIfPresent(Int.self, forKey: .eyeBreakMins)) ?? 0
+        moveMins = (try? c.decodeIfPresent(Int.self, forKey: .moveMins)) ?? 0
+        moveCounts = (try? c.decodeIfPresent(CountTime.self, forKey: .moveCounts)) ?? .focus
+        breakQuote = (try? c.decodeIfPresent(Bool.self, forKey: .breakQuote)) ?? true
+    }
+
+    // An unknown `move_counts` is left out so the core keeps its default.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(trackChange, forKey: .trackChange)
+        try c.encode(timeWarningSecs, forKey: .timeWarningSecs)
+        try c.encode(eyeBreakMins, forKey: .eyeBreakMins)
+        try c.encode(moveMins, forKey: .moveMins)
+        if moveCounts != .unknown { try c.encode(moveCounts, forKey: .moveCounts) }
+        try c.encode(breakQuote, forKey: .breakQuote)
+    }
+}
+
 public enum ThemeChoice: String, LenientEnum {
     case system, dark, light, unknown
     static var unknownCase: ThemeChoice { .unknown }
@@ -136,6 +206,16 @@ public enum ClosedNotchChoice: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// On a display without a notch, when the closed notch shrinks to a thin
+/// strip (`appearance.shrink`). Never with a hardware notch.
+public enum ShrinkChoice: String, LenientEnum {
+    case off
+    case whenEmpty = "when_empty"
+    case always, unknown
+    static var unknownCase: ShrinkChoice { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
 /// What the open panel is drawn with (`appearance.material`). Glass is the
 /// macOS 26 Liquid Glass material; see `GlassSupport`.
 public enum MaterialChoice: String, LenientEnum {
@@ -151,21 +231,24 @@ public struct AppearanceConfig: Codable, Equatable {
     public var notchStyle: NotchStyle
     public var closedNotch: ClosedNotchChoice
     public var material: MaterialChoice
+    public var shrink: ShrinkChoice
 
     // Plain names: the view model is decoded with `.convertFromSnakeCase` and
     // settings are encoded with `.convertToSnakeCase`, which map them to snake_case.
-    enum CodingKeys: String, CodingKey { case theme, accent, notchStyle, closedNotch, material }
+    enum CodingKeys: String, CodingKey { case theme, accent, notchStyle, closedNotch, material, shrink }
 
     public static let defaultAccent = "#FF9E0A"
     public static let `default` = AppearanceConfig(theme: .system, accent: defaultAccent)
 
     public init(theme: ThemeChoice, accent: String, notchStyle: NotchStyle = .attached,
-                closedNotch: ClosedNotchChoice = .dark, material: MaterialChoice = .solid) {
+                closedNotch: ClosedNotchChoice = .dark, material: MaterialChoice = .solid,
+                shrink: ShrinkChoice = .off) {
         self.theme = theme
         self.accent = accent
         self.notchStyle = notchStyle
         self.closedNotch = closedNotch
         self.material = material
+        self.shrink = shrink
     }
 
     // `notch_style` is newer than the rest; a missing or unknown one draws
@@ -177,6 +260,7 @@ public struct AppearanceConfig: Codable, Equatable {
         notchStyle = (try? c.decodeIfPresent(NotchStyle.self, forKey: .notchStyle)) ?? .attached
         closedNotch = (try? c.decodeIfPresent(ClosedNotchChoice.self, forKey: .closedNotch)) ?? .dark
         material = (try? c.decodeIfPresent(MaterialChoice.self, forKey: .material)) ?? .solid
+        shrink = (try? c.decodeIfPresent(ShrinkChoice.self, forKey: .shrink)) ?? .off
     }
 
     // An unknown value is left out so the core keeps its own.
@@ -187,6 +271,7 @@ public struct AppearanceConfig: Codable, Equatable {
         if notchStyle != .unknown { try c.encode(notchStyle, forKey: .notchStyle) }
         if closedNotch != .unknown { try c.encode(closedNotch, forKey: .closedNotch) }
         if material != .unknown { try c.encode(material, forKey: .material) }
+        if shrink != .unknown { try c.encode(shrink, forKey: .shrink) }
     }
 
     /// Whether the open panel is drawn with Liquid Glass: chosen, and this
@@ -288,6 +373,22 @@ public struct AnalyticsConfig: Codable, Equatable {
     public var share: Bool
 }
 
+/// Mirrors `state::SoundConfig`: a sound when a timer, a focus session or a
+/// break ends.
+public struct SoundConfig: Codable, Equatable {
+    public var enabled: Bool
+    /// One of `sounds`.
+    public var name: String
+
+    /// The system alert sounds; mirrors `state::SOUNDS`.
+    public static let sounds = ["Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero", "Morse", "Ping", "Pop",
+                                "Purr", "Sosumi", "Submarine", "Tink"]
+    public static let defaultName = "Glass"
+    public static let `default` = SoundConfig(enabled: true, name: defaultName)
+
+    public init(enabled: Bool, name: String) { self.enabled = enabled; self.name = name }
+}
+
 /// Mirrors `state::NotchConfig`: what the closed notch shows when several
 /// things are running.
 public struct NotchConfig: Codable, Equatable {
@@ -331,6 +432,8 @@ public struct Settings: Codable, Equatable {
     public var analytics: AnalyticsConfig
     public var calendar: CalendarConfig
     public var notch: NotchConfig
+    public var peek: PeekConfig = .default
+    public var sound: SoundConfig = .default
 }
 
 extension Settings {
@@ -347,6 +450,8 @@ extension Settings {
         analytics = try c.decode(AnalyticsConfig.self, forKey: .analytics)
         calendar = (try? c.decodeIfPresent(CalendarConfig.self, forKey: .calendar)) ?? .default
         notch = (try? c.decodeIfPresent(NotchConfig.self, forKey: .notch)) ?? .default
+        peek = (try? c.decodeIfPresent(PeekConfig.self, forKey: .peek)) ?? .default
+        sound = (try? c.decodeIfPresent(SoundConfig.self, forKey: .sound)) ?? .default
     }
 }
 
@@ -359,6 +464,19 @@ public struct CompactView: Codable, Equatable {
     public var endsAtMs: Int?
     public var totalSecs: Int?
     public var count: Int
+    /// Set while this is shown for a moment only.
+    public var peek: PeekKind?
+
+    public init(kind: ActivityKind, title: String, value: String, endsAtMs: Int?, totalSecs: Int?,
+                count: Int, peek: PeekKind? = nil) {
+        self.kind = kind
+        self.title = title
+        self.value = value
+        self.endsAtMs = endsAtMs
+        self.totalSecs = totalSecs
+        self.count = count
+        self.peek = peek
+    }
 }
 
 public struct PomodoroView: Codable, Equatable {
@@ -582,6 +700,11 @@ public struct AgentsView: Codable, Equatable {
     /// LiteNotch is Claude Code's status line (the source of usage limits);
     /// nil when not known.
     public var statuslineInstalled: Bool? = nil
+    /// Other copies of LiteNotch still registered with Claude Code (a test
+    /// build, an old location); each runs on every event as well.
+    public var otherCopies: Int? = nil
+    /// How many of those no longer exist on disk.
+    public var otherCopiesMissing: Int? = nil
 }
 
 public struct RateWindow: Codable, Equatable {

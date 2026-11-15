@@ -5,7 +5,8 @@
     "value": "Bash",
     "ends_at_ms": 1794400120010,
     "total_secs": null,
-    "count": 1
+    "count": 1,
+    "peek": null
   },
   "compact_secondary": null,
   "waiting": false,
@@ -171,7 +172,9 @@
       }
     ],
     "hooks_installed": true,
-    "statusline_installed": null
+    "statusline_installed": null,
+    "other_copies": 0,
+    "other_copies_missing": 0
   },
   "usage": {
     "five_hour": {
@@ -386,7 +389,8 @@
       "accent": "#FF9E0A",
       "notch_style": "attached",
       "closed_notch": "dark",
-      "material": "solid"
+      "material": "solid",
+      "shrink": "off"
     },
     "media": {
       "enabled": true
@@ -450,6 +454,18 @@
       "hidden": [],
       "two_places": true,
       "waiting_dot": true
+    },
+    "sound": {
+      "enabled": true,
+      "name": "Glass"
+    },
+    "peek": {
+      "track_change": true,
+      "time_warning_secs": 300,
+      "eye_break_mins": 0,
+      "move_mins": 0,
+      "move_counts": "focus",
+      "break_quote": true
     }
   }
 }

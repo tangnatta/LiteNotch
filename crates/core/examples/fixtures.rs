@@ -5,7 +5,7 @@ use litenotch_core::caffeine::AwakeMode;
 use litenotch_core::clipboard::{ClipCapture, ClipKind};
 use litenotch_core::media::NowPlaying;
 use litenotch_core::notify::{NotificationInput, Priority};
-use litenotch_core::state::{Command, Core, Input};
+use litenotch_core::state::{Command, Core, Input, ViewModel, PEEK_MS};
 use litenotch_core::usage::{local_day_start_ms, UsageRecord};
 use serde_json::json;
 
@@ -149,6 +149,11 @@ fn media(c: &mut Core) {
     );
 }
 
+/// Lets the track-change peek end, so a fixture shows the activity.
+fn after_peek(c: &mut Core) {
+    c.apply(Input::Tick, T0 + PEEK_MS);
+}
+
 fn main() {
     let dir = std::env::args().nth(1).unwrap_or_else(|| ".".into());
     let mut out: Vec<(&str, Core)> = Vec::new();
@@ -161,7 +166,12 @@ fn main() {
 
     let mut c = populated();
     media(&mut c);
+    after_peek(&mut c);
     out.push(("media", c));
+
+    let mut c = populated();
+    media(&mut c);
+    out.push(("peek-track", c));
 
     let mut c = populated();
     media(&mut c);
@@ -269,9 +279,54 @@ fn main() {
     out.push(("calendar", c));
     out.push(("pair", pair));
 
-    for (name, core) in out {
-        let json =
-            serde_json::to_string_pretty(&core.view(T0 + 20)).expect("view model serializes");
+    let mut views: Vec<(&str, ViewModel)> = out
+        .into_iter()
+        .map(|(name, core)| (name, core.view(T0 + 20)))
+        .collect();
+
+    // A focus phase five minutes from its end: the warning peek.
+    let mut c = populated();
+    c.apply(Input::Command(Command::PomodoroToggle), T0);
+    let warn_at = T0 + 20 * 60_000;
+    c.apply(Input::Tick, warn_at);
+    views.push(("peek-warning", c.view(warn_at + 20)));
+
+    // With Move on, the same moment shows the Move reminder first.
+    let mut m = populated();
+    let mut s = m.settings().clone();
+    s.peek.move_mins = 20;
+    m.apply(
+        Input::Command(Command::SetSettings {
+            settings: Box::new(s),
+        }),
+        T0,
+    );
+    m.apply(Input::Command(Command::PomodoroToggle), T0);
+    m.apply(Input::Tick, warn_at);
+    views.push(("peek-move", m.view(warn_at + 20)));
+
+    // The eye break, five minutes of screen time in.
+    let mut e = populated();
+    let mut s = e.settings().clone();
+    s.peek.eye_break_mins = 5;
+    e.apply(
+        Input::Command(Command::SetSettings {
+            settings: Box::new(s),
+        }),
+        T0,
+    );
+    e.apply(Input::Tick, T0 + 5 * 60_000);
+    views.push(("peek-eye-break", e.view(T0 + 5 * 60_000 + 20)));
+
+    // The short break has ended and its banner gone: the line after it.
+    let end = T0 + 30 * 60_000 + 5_000;
+    while let Some(t) = c.next_deadline().filter(|&t| t <= end) {
+        c.apply(Input::Tick, t);
+    }
+    views.push(("peek-quote", c.view(end + 20)));
+
+    for (name, view) in views {
+        let json = serde_json::to_string_pretty(&view).expect("view model serializes");
         let path = format!("{dir}/{name}.json");
         std::fs::write(&path, json).expect("fixture written");
         println!("{path}");

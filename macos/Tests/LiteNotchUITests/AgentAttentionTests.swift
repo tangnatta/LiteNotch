@@ -160,6 +160,36 @@ final class AgentAttentionTests: XCTestCase {
         XCTAssertEqual(seen(bridge), ["a"])
     }
 
+    // MARK: Extra hooks
+
+    /// Reported: Claude Code's settings held the hooks of five copies of
+    /// LiteNotch. Settings says so and offers to remove them.
+    func testOtherCopiesOfLiteNotchAreReportedInSettings() throws {
+        XCTAssertNil(AgentsText.otherCopies(found: 0, missing: 0))
+        XCTAssertEqual(AgentsText.otherCopies(found: 1, missing: 0),
+                       "1 other copy of LiteNotch also runs on every Claude Code event.")
+        XCTAssertEqual(AgentsText.otherCopies(found: 1, missing: 1),
+                       "1 other copy of LiteNotch also runs on every Claude Code event. It no longer exists.")
+        XCTAssertEqual(AgentsText.otherCopies(found: 4, missing: 2),
+                       "4 other copies of LiteNotch also run on every Claude Code event. 2 of them no longer exist.")
+        XCTAssertEqual(AgentsText.otherCopies(found: 3, missing: 3),
+                       "3 other copies of LiteNotch also run on every Claude Code event. None of them exist any more.")
+        XCTAssertEqual(AgentsText.otherCopies(found: 2, missing: 9), AgentsText.otherCopies(found: 2, missing: 2))
+
+        XCTAssertEqual(ShellCommand.hooksClean.encode(), #"{"cmd":"hooks_clean"}"#)
+        let agents = try fixture("idle").agents
+        XCTAssertEqual(agents.otherCopies, 0, "what the core sends when there are none")
+        XCTAssertEqual(agents.otherCopiesMissing, 0)
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        let older = try d.decode(AgentsView.self, from: Data(#"{"sessions":[],"pending":[],"hooks_installed":true}"#.utf8))
+        XCTAssertNil(older.otherCopies, "a core from before the check")
+        let found = try d.decode(AgentsView.self, from: Data(
+            #"{"sessions":[],"pending":[],"hooks_installed":true,"other_copies":4,"other_copies_missing":2}"#.utf8))
+        XCTAssertEqual(found.otherCopies, 4)
+        XCTAssertEqual(found.otherCopiesMissing, 2)
+    }
+
     // MARK: The scripts
 
     func testTheFrontTabScriptsOnlyReadAndTheirAnswerIsChecked() throws {

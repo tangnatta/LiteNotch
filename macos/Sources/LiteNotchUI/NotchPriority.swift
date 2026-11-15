@@ -121,13 +121,16 @@ public enum NotchPriority {
 struct NotchPriorityPane: View {
     @Binding var config: NotchConfig
     let floating: Bool
+    /// Whether this display has a camera housing.
+    var hasNotch = true
     @State private var situation = NotchPriority.situations[0]
 
     private var order: [ActivityKind] { NotchPriority.normalizedOrder(config.order) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            NotchPreview(content: NotchPriority.content(for: situation, config: config), floating: floating)
+            NotchPreview(content: NotchPriority.content(for: situation, config: config), floating: floating,
+                         hasNotch: hasNotch)
             SegmentedPill(options: NotchPriority.situations.map { (value: $0.id, title: $0.title) },
                           selection: Binding(get: { situation.id },
                                              set: { id in situation = NotchPriority.situations.first { $0.id == id } ?? situation }),
@@ -220,36 +223,51 @@ struct NotchPriorityPane: View {
 }
 
 /// A strip of menu bar with the closed notch in it, drawn by the same view
-/// the real notch uses.
+/// and sized by the same layout the real notch uses, for this kind of
+/// display (with or without a camera housing) and the chosen style.
 struct NotchPreview: View {
     let content: ClosedContent
     let floating: Bool
+    var hasNotch = true
 
-    /// The stand-in screen: a 32 pt menu bar and a notch as wide as a
-    /// MacBook's, scaled down a little to leave room for the wings.
-    private static let bar: CGFloat = 32
-    private static let notchWidth: CGFloat = 150
+    /// The stand-in screen: a 32 pt menu bar; a notch a little narrower
+    /// than a MacBook's so two activities fit in the pane.
+    static let bar: CGFloat = 32
+    static let notchWidth: CGFloat = 150
+
+    /// The layout the preview is drawn with.
+    static func layout(floating: Bool, hasNotch: Bool) -> NotchLayout {
+        NotchLayout(style: floating ? .floating : .attached,
+                    notch: CGSize(width: hasNotch ? notchWidth : NotchGeometry.fallbackSize.width, height: bar),
+                    hasNotch: hasNotch, menuBarHeight: bar)
+    }
+
+    /// Width of the black shape: exactly what the layout gives the content.
+    static func shapeWidth(_ layout: NotchLayout, content: ClosedContent) -> CGFloat {
+        let width = layout.size(for: .closed, content: content).width
+        return layout.floating ? width : width - 2 * NotchGeometry.closedEar
+    }
 
     var body: some View {
-        let layout = NotchLayout(style: floating ? .floating : .attached,
-                                 notch: CGSize(width: Self.notchWidth, height: Self.bar),
-                                 hasNotch: !floating, menuBarHeight: Self.bar)
-        let wing = layout.wingWidth(for: content)
-        let size = layout.size(for: .closed, content: content)
+        let layout = Self.layout(floating: floating, hasNotch: hasNotch)
+        let width = Self.shapeWidth(layout, content: content)
         ZStack(alignment: .top) {
             RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous).fill(NT.fillHi)
             Group {
                 if floating {
-                    ClosedActivityView(content: content, notchWidth: layout.centerWidth, ear: 0, wing: wing,
+                    ClosedActivityView(content: content, notchWidth: layout.centerWidth, ear: 0,
+                                       wing: layout.wingWidth(for: content),
                                        edgePadding: NotchGeometry.floatingWingPadding,
                                        artworkSize: min(20, layout.capsuleHeight - 4),
-                                       artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2)
-                        .frame(width: size.width, height: layout.capsuleHeight)
+                                       artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
+                                       oneRow: layout.oneRow)
+                        .frame(width: width, height: layout.capsuleHeight)
                         .background(Color.black, in: Capsule())
                         .padding(.top, NotchGeometry.floatingMargin)
                 } else {
-                    ClosedActivityView(content: content, notchWidth: Self.notchWidth, ear: 0, wing: wing)
-                        .frame(width: Self.notchWidth + 2 * wing, height: Self.bar)
+                    ClosedActivityView(content: content, notchWidth: layout.notch.width, ear: 0,
+                                       wing: layout.wingWidth(for: content), oneRow: layout.oneRow)
+                        .frame(width: width, height: Self.bar)
                         .background(Color.black, in: UnevenRoundedRectangle(
                             bottomLeadingRadius: NotchGeometry.closedBottomRadius,
                             bottomTrailingRadius: NotchGeometry.closedBottomRadius, style: .continuous))

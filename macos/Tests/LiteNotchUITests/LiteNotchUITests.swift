@@ -243,11 +243,14 @@ final class CommandTests: XCTestCase {
         let inner = try XCTUnwrap(s["settings"] as? NSDictionary)
         XCTAssertEqual(Set(inner.allKeys as! [String]),
                        ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics",
-                        "calendar", "notch"])
+                        "calendar", "notch", "peek", "sound"])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
+        XCTAssertEqual(inner["peek"] as? NSDictionary,
+                       ["track_change": true, "time_warning_secs": 300,
+                        "eye_break_mins": 0, "move_mins": 0, "move_counts": "focus", "break_quote": true])
         XCTAssertEqual(inner["appearance"] as? NSDictionary,
                        ["theme": "system", "accent": "#FF9E0A", "notch_style": "attached", "closed_notch": "dark",
-                        "material": "solid"])
+                        "material": "solid", "shrink": "off"])
         XCTAssertEqual((inner["media"] as! NSDictionary)["enabled"] as? Bool, true)
         XCTAssertEqual((inner["notify"] as! NSDictionary)["system"] as? Bool, false)
         XCTAssertEqual(Tab.allCases.map(\.rawValue), ["home", "music", "timer", "clipboard", "agents", "inbox", "settings"])
@@ -324,6 +327,136 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(NotchGeometry.wingWidth(for: CompactView(kind: .idle, title: "", value: "", endsAtMs: nil, totalSecs: nil, count: 0)), 0)
     }
 
+    func testPeeksWidenTheWings() throws {
+        let track = try loadFixture("peek-track").compact
+        XCTAssertEqual(track.kind, .media)
+        XCTAssertEqual(track.peek, .trackChanged)
+        XCTAssertEqual(NotchGeometry.wingWidth(for: track), 130, "room for the scrolling title")
+        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: track), 80)
+
+        let warning = try loadFixture("peek-warning").compact
+        XCTAssertEqual(warning.kind, .pomodoro)
+        XCTAssertEqual(warning.peek, .timeWarning)
+        XCTAssertNotNil(warning.endsAtMs)
+        XCTAssertGreaterThan(NotchGeometry.wingWidth(for: warning),
+                             NotchGeometry.wingWidth(for: try loadFixture("pomodoro").compact))
+
+        // Without a peek the media view is unchanged.
+        XCTAssertNil(try loadFixture("media").compact.peek)
+        XCTAssertEqual(NotchGeometry.wingWidth(for: try loadFixture("media").compact), 40)
+    }
+
+    func testNudgesShowAFaceOrSymbolAndALine() throws {
+        // The eye break is a glance: the face and a short line, no scrolling,
+        // so its wings are only as wide as "Look away".
+        let eye = try loadFixture("peek-eye-break").compact
+        XCTAssertEqual(eye.kind, .nudge)
+        XCTAssertEqual(eye.peek, .eyeBreak)
+        XCTAssertEqual(eye.value, "Look away")
+        XCTAssertTrue(eye.peek?.isNudge ?? false)
+        XCTAssertLessThan(NotchGeometry.wingWidth(for: eye), 100)
+        XCTAssertGreaterThan(NotchGeometry.wingWidth(for: eye), 40)
+        XCTAssertLessThanOrEqual(NotchGeometry.floatingWingWidth(for: eye), 80)
+
+        let move = try loadFixture("peek-move").compact
+        XCTAssertEqual(move.kind, .nudge)
+        XCTAssertEqual(move.peek, .move)
+        XCTAssertTrue(["Stretch", "Walk", "Water"].contains(move.title))
+        XCTAssertEqual(NotchGeometry.wingWidth(for: move), 130)
+        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: move), 80)
+        var m = move
+        for (title, symbol) in [("Stretch", "figure.flexibility"), ("Walk", "figure.walk"), ("Water", "drop.fill"),
+                                ("Dance", "figure.walk")] {
+            m.title = title
+            XCTAssertEqual(ClosedActivityView.nudgeSymbol(m), symbol, title)
+            XCTAssertNotNil(NSImage(systemSymbolName: symbol, accessibilityDescription: nil), symbol)
+        }
+
+        let quote = try loadFixture("peek-quote").compact
+        XCTAssertEqual(quote.kind, .nudge)
+        XCTAssertEqual(quote.peek, .quote)
+        XCTAssertFalse(quote.value.isEmpty)
+        XCTAssertEqual(NotchGeometry.wingWidth(for: quote), 130)
+        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: quote), 80)
+        XCTAssertEqual(ClosedActivityView.nudgeSymbol(quote), "sparkles")
+        XCTAssertFalse(PeekKind.timeWarning.isNudge)
+
+        // A nudge from a newer core with a peek this shell does not know
+        // still fits its line, within the usual cap.
+        var future = quote
+        future.peek = .unknown
+        XCTAssertLessThanOrEqual(NotchGeometry.wingWidth(for: future), 130)
+        XCTAssertGreaterThan(NotchGeometry.wingWidth(for: future), 40)
+        XCTAssertLessThanOrEqual(NotchGeometry.floatingWingWidth(for: future), 80)
+    }
+
+    func testTheFaceBlinksWithACoreAnimationKeyframe() {
+        let open = BlinkingFaceNSView.blink(open: true)
+        let shut = BlinkingFaceNSView.blink(open: false)
+        for a in [open, shut] {
+            XCTAssertEqual(a.keyPath, "opacity")
+            XCTAssertEqual(a.calculationMode, .discrete)
+            XCTAssertEqual(a.repeatCount, .infinity)
+            XCTAssertEqual(a.keyTimes?.count, (a.values?.count ?? 0) + 1, "discrete: one more key time")
+        }
+        XCTAssertEqual(open.values as? [Double], [1, 0, 1], "the open face shows most of the time")
+        XCTAssertEqual(shut.values as? [Double], [0, 1, 0])
+        let view = BlinkingFaceNSView(frame: NSRect(origin: .zero, size: BlinkingFaceNSView.size))
+        view.configure(color: CGColor.white)
+        view.layout()
+        let faces = view.layer?.sublayers ?? []
+        XCTAssertEqual(faces.count, 2)
+        XCTAssertEqual(faces.compactMap { ($0 as? CATextLayer)?.string as? NSAttributedString }.map(\.string),
+                       [">_<", "-_-"])
+        XCTAssertTrue(faces.allSatisfy { $0.animation(forKey: "blink") != nil })
+        view.layout()
+        XCTAssertEqual(view.layer?.sublayers?.count, 2, "laying out again adds nothing")
+        XCTAssertNil(view.hitTest(NSPoint(x: 5, y: 5)), "clicks go through to the notch")
+    }
+
+    func testScreenPresenceIsAwayWhileAnyReasonHolds() {
+        var p = ScreenPresence()
+        XCTAssertFalse(p.away)
+        XCTAssertEqual(p.set(.locked, true), true)
+        XCTAssertNil(p.set(.displaysAsleep, true), "already away")
+        XCTAssertNil(p.set(.locked, false), "the displays still sleep")
+        XCTAssertEqual(p.set(.displaysAsleep, false), false)
+        XCTAssertNil(p.set(.systemAsleep, false), "nothing changed")
+        XCTAssertEqual(ShellCommand.screenAway(true).encode(), #"{"away":true,"cmd":"screen_away"}"#)
+    }
+
+    func testPeekSettingsDecodeLeniently() throws {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        let e = JSONEncoder()
+        e.keyEncodingStrategy = .convertToSnakeCase
+        var settings = try loadFixture("idle").settings
+        XCTAssertEqual(settings.peek, .default)
+        settings.peek.timeWarningSecs = 60
+        let json = String(decoding: try e.encode(settings), as: UTF8.self)
+        XCTAssertTrue(json.contains(#""time_warning_secs":60"#))
+        XCTAssertEqual(try d.decode(CompactView.self, from: Data(#"{"kind":"media","title":"T","value":"A","count":0,"peek":"aurora"}"#.utf8)).peek, .unknown)
+
+        // Peek settings from before the reminders and the break line.
+        let oldPeek = try d.decode(PeekConfig.self, from: Data(#"{"track_change":false,"time_warning_secs":0}"#.utf8))
+        XCTAssertEqual(oldPeek.eyeBreakMins, 0)
+        XCTAssertEqual(oldPeek.moveMins, 0)
+        XCTAssertEqual(oldPeek.moveCounts, .focus)
+        XCTAssertTrue(oldPeek.breakQuote)
+        let futurePeek = try d.decode(PeekConfig.self, from: Data(#"{"track_change":true,"time_warning_secs":0,"move_counts":"steps"}"#.utf8))
+        XCTAssertEqual(futurePeek.moveCounts, .unknown)
+        XCTAssertFalse(String(decoding: try e.encode(futurePeek), as: UTF8.self).contains("move_counts"))
+        settings.peek.eyeBreakMins = 5
+        settings.peek.moveMins = 30
+        settings.peek.moveCounts = .screen
+        settings.peek.breakQuote = false
+        let edited = String(decoding: try e.encode(settings), as: UTF8.self)
+        XCTAssertTrue(edited.contains(#""eye_break_mins":5"#))
+        XCTAssertTrue(edited.contains(#""move_mins":30"#))
+        XCTAssertTrue(edited.contains(#""move_counts":"screen""#))
+        XCTAssertTrue(edited.contains(#""break_quote":false"#))
+    }
+
     func testAttachedLayoutIsTheOriginalGeometry() {
         let notch = CGSize(width: 183, height: 32)
         let layout = NotchLayout(style: .attached, notch: notch)
@@ -334,6 +467,70 @@ final class GeometryTests: XCTestCase {
             XCTAssertTrue(layout.contains(CGPoint(x: 1, y: 0), mode: mode, in: layout.size(for: mode, compact: pomo)))
         }
         XCTAssertEqual(layout.wingWidth(for: pomo), NotchGeometry.wingWidth(for: pomo))
+    }
+
+    func testWithoutANotchTheClosedNotchIsOneRow() {
+        let notch = NotchGeometry.fallbackSize
+        let pomo = CompactView(kind: .pomodoro, title: "Focus", value: "", endsAtMs: 1, totalSecs: 1500, count: 0)
+        let event = CompactView(kind: .calendar, title: "Stand-up", value: "", endsAtMs: 1, totalSecs: nil, count: 0)
+        var song = CompactView(kind: .media, title: "A long song title", value: "Artist", endsAtMs: nil, totalSecs: nil, count: 0)
+        song.peek = .trackChanged
+        let bare = NotchLayout(style: .attached, notch: notch, hasNotch: false)
+        let notched = NotchLayout(style: .attached, notch: notch, hasNotch: true)
+        XCTAssertTrue(bare.oneRow)
+        XCTAssertFalse(notched.oneRow)
+        let idle = bare.size(for: .closed, content: ClosedContent(primary: nil))
+        XCTAssertEqual(idle, notched.size(for: .closed, content: ClosedContent(primary: nil)), "idle keeps its pill")
+        // Short things fit inside the idle pill; something showing never shrinks it.
+        XCTAssertEqual(bare.size(for: .closed, content: ClosedContent(primary: pomo)), idle)
+        let pair = ClosedContent(primary: event, secondary: pomo, waiting: true)
+        XCTAssertEqual(bare.size(for: .closed, content: pair), idle, "two countdowns and the dot fit in the pill")
+        XCTAssertGreaterThan(notched.size(for: .closed, content: pair).width, idle.width, "around a notch they need wings")
+        // A new song gets the middle instead of a wing on each side of the gap.
+        let wide = bare.size(for: .closed, content: ClosedContent(primary: song)).width
+        XCTAssertGreaterThan(wide, idle.width)
+        XCTAssertLessThan(wide, notched.size(for: .closed, content: ClosedContent(primary: song)).width)
+        XCTAssertLessThanOrEqual(wide, NotchGeometry.maxRowWidth + 2 * NotchGeometry.closedEar)
+        // Floating: the same, never narrower than its idle capsule.
+        let floating = NotchLayout(style: .floating, notch: notch, hasNotch: false, menuBarHeight: 24)
+        XCTAssertEqual(floating.size(for: .closed, content: pair).width, NotchGeometry.rowWidth(for: pair, floating: true))
+        XCTAssertLessThan(floating.size(for: .closed, content: pair).width,
+                          floating.centerWidth + 2 * floating.wingWidth(for: pair))
+        // Just the dot keeps the original layout.
+        XCTAssertEqual(bare.size(for: .closed, content: ClosedContent(primary: nil, waiting: true)),
+                       NotchGeometry.closedSize(notch: notch, wing: bare.wingWidth(for: ClosedContent(primary: nil, waiting: true))))
+    }
+
+    func testShrinkIsAThinStripAtTheTopWithoutANotch() {
+        for style in [NotchStyle.attached, .floating] {
+            let bare = NotchLayout(style: style, notch: NotchGeometry.fallbackSize, hasNotch: false,
+                                   menuBarHeight: 24, minimized: true)
+            XCTAssertEqual(bare.size(for: .closed, content: ClosedContent(primary: nil)), CGSize(width: 120, height: 8))
+            XCTAssertEqual(bare.top(for: .closed), 0, "flush with the top edge")
+            XCTAssertEqual(bare.size(for: .expanded, compact: nil).width, NotchGeometry.expandedSize.width, "opening is full size")
+        }
+        // A hardware notch has to stay covered: shrunk there, the shape is
+        // the bare notch, never the strip (see ClosedSpaceTests).
+        let housed = NotchLayout(style: .attached, notch: CGSize(width: 185, height: 38), hasNotch: true, minimized: true)
+        XCTAssertEqual(housed.size(for: .closed, content: ClosedContent(primary: nil)).height, 38)
+    }
+
+    func testWhenTheNotchShrinks() {
+        let empty = ClosedContent(primary: nil)
+        let timer = ClosedContent(primary: CompactView(kind: .timer, title: "Timer", value: "", endsAtMs: 1, totalSecs: 60, count: 0))
+        let dot = ClosedContent(primary: nil, waiting: true)
+        func shrinks(_ s: ShrinkChoice, _ c: ClosedContent, peek: Bool = false, notch: Bool = false) -> Bool {
+            NotchLayout.shrinks(s, content: c, peek: peek, hasNotch: notch)
+        }
+        XCTAssertFalse(shrinks(.off, empty), "Default: never")
+        XCTAssertTrue(shrinks(.whenEmpty, empty))
+        XCTAssertFalse(shrinks(.whenEmpty, timer))
+        XCTAssertFalse(shrinks(.whenEmpty, dot), "the waiting dot is something to show")
+        XCTAssertTrue(shrinks(.always, timer))
+        XCTAssertFalse(shrinks(.always, timer, peek: true), "a peek still shows")
+        XCTAssertTrue(shrinks(.always, timer, notch: true), "beside a notch: nothing at its sides")
+        XCTAssertFalse(shrinks(.whenEmpty, empty, notch: true), "an empty notch already is just the notch")
+        XCTAssertFalse(shrinks(.unknown, empty))
     }
 
     func testFloatingLayoutSitsInsideTheMenuBar() {
@@ -1007,7 +1204,7 @@ final class NewCommandTests: XCTestCase {
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, true)
         XCTAssertEqual(inner["appearance"] as? NSDictionary,
                        ["theme": "light", "accent": "#30D158", "notch_style": "floating", "closed_notch": "dark",
-                        "material": "solid"])
+                        "material": "solid", "shrink": "off"])
     }
 
     func testClosedNotchFollowsTheThemeOnlyWhenAsked() throws {
@@ -1692,6 +1889,18 @@ final class ReportedIssueTests: XCTestCase {
         // Reported: the number looked grey while editing. The field starts
         // with the value as real text, not empty over a placeholder.
         XCTAssertEqual(MiniStepper.startingText(12), "12")
+    }
+
+    /// Reported: after typing a number and pressing Return (or clicking
+    /// away) the value was kept but the control showed nothing.
+    func testAStepperFieldCannotRestartTypingAfterItEnded() {
+        XCTAssertNil(MiniStepper.edited("", typing: nil), "the field's last report as it goes away")
+        XCTAssertNil(MiniStepper.edited("45", typing: nil))
+        // While typing: digits only, at most four.
+        XCTAssertEqual(MiniStepper.edited("4", typing: "12"), "4")
+        XCTAssertEqual(MiniStepper.edited("", typing: "4"), "", "emptied to retype")
+        XCTAssertEqual(MiniStepper.edited("1a2-3", typing: ""), "123")
+        XCTAssertEqual(MiniStepper.edited("123456", typing: ""), "1234")
     }
 
     func testAClickOutsideTheStepperFieldEndsTheTyping() {

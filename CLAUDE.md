@@ -35,7 +35,7 @@ Drive the real runtime without the UI (end-to-end checks of hooks/CLI):
 
 ```
 crates/core      litenotch-core      all logic; no I/O, no clock, no threads, forbid(unsafe)
-crates/platform  litenotch-platform  macOS calls: pasteboard, IOKit power assertion, pmset, osascript, closed-lid helper, now-playing helper process
+crates/platform  litenotch-platform  macOS calls: pasteboard, IOKit power assertion, pmset, osascript, closed-lid helper, now-playing helper process, afplay
 crates/files     litenotch-files     saved state + editing ~/.claude/settings.json (shared by app and CLI)
 crates/app       litenotch-app       runtime thread, socket server, transcript scanner, C FFI (staticlib)
 crates/cli       litenotch (bin)     hook | statusline | notify | status | hooks install/uninstall/status
@@ -49,8 +49,8 @@ scripts/         build-app.sh, bench.sh, coverage.sh
 ## How it works
 
 - **Rust owns everything except pixels.** `core::state::Core` holds the
-  feature modules (pomodoro, clipboard, notify, caffeine, media, agent, usage,
-  calendar, analytics). Inputs go in with a timestamp (`apply(Input, now_ms)`,
+  feature modules (pomodoro, timer, meeting, clipboard, colours, notify,
+  caffeine, media, agent, usage, calendar, analytics). Inputs go in with a timestamp (`apply(Input, now_ms)`,
   `hook(json, now_ms)`); `Effect`s come out for the platform layer; `view(now)`
   builds the `ViewModel` the shell renders.
 - **Shell ⇄ core** is JSON over three C functions (`crates/app/src/ffi.rs`,
@@ -65,7 +65,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   counter (500 ms, off when clipboard history is disabled). Keep it that way:
   anything that changes every second must not go into the view model.
 - **What the closed notch shows** (`Core::compact`, `settings.notch`). A
-  pending approval, then a banner, take it alone. Otherwise the running
+  pending approval, then a banner, then a peek, take it alone. Otherwise the running
   activities are ranked by `notch.order` (default `LIVE_ORDER`: meeting
   agenda, event about to start, countdown, pomodoro, media, keep awake,
   working agent; deadlines other people wait on, then ones the user set,
@@ -86,6 +86,11 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   The shell draws one activity exactly as before (icon left, value right);
   two as icon + time on each side, the second dimmed
   (`ClosedActivityView`, widths in `NotchGeometry.wingWidth(for:floating:)`).
+  On a display without a notch there is no camera to keep clear, so in
+  both styles the same content is one row with no gap in the middle
+  (`NotchLayout.oneRow`, `NotchGeometry.rowWidth`): one activity is its
+  icon then its value through the middle, two sit side by side; never
+  narrower than the idle shape.
   Nothing rotates. Settings › Notch (`NotchPriority.swift`) edits the
   order with a preview drawn by the real closed-notch view; its
   `NotchPriority.resolve` repeats the core's rule and both are tested
@@ -96,6 +101,43 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   own path, calendar notices, finished timers and pomodoro phases, and the
   95 % usage warning; agent "needs input"/"finished" and the 80 % warning
   are Normal and arrive in the "While you were focusing" summary.
+  Peeks (`state/presentation.rs`): about 4 s on one of the user's own
+  activities, then gone: the track changed (`peek.track_change`) or a
+  running countdown has `peek.time_warning_secs` left. Never in the inbox,
+  not held by focus. A countdown peek fires when time left crosses the
+  mark while running; pausing keeps time left still, so it never repeats.
+  Warning times join `next_deadline`, so peeks add no polling.
+  Three wellbeing peeks (`ActivityKind::Nudge`), each with an Off choice
+  in Settings › Timer:
+  the eye break (`peek.eye_break_mins`, 0 = off, the default; every few
+  minutes of screen time), a quick blinking `>_<` with "Look away" for 3 s
+  (`EYE_MS`) so the user blinks; the Move reminder (`peek.move_mins`, 0 =
+  off, the default; `move_counts`: Focus = time into a running focus
+  phase, tied to focus rather than the wall clock so it is not ignored as
+  background noise, or Screen = time the screen is on), one of
+  `MOVE_LINES` (stretch, walk, water) picked from `now_ms` and never the
+  same kind twice in a row, 8 s (`NUDGE_MS`) so its line can scroll; and a
+  line after a completed (not skipped) break (`peek.break_quote`, on by
+  default), one of `BREAK_LINES` picked from `now_ms`, which waits until
+  the "Break over" banner (or an approval) is gone and is dropped after
+  60 s. A nudge is not cut short: a countdown or track peek arriving
+  meanwhile waits and follows it (with a 25-minute focus and Move every
+  20, the Move and the 5-minute warning both fall at 20 minutes); when
+  the eye break and Move fall together, Move shows. The shell reports the
+  screen locked, the displays or the Mac asleep, or another user's
+  session in front (`ScreenPresenceObserver`, system notifications, no
+  polling) as `screen_away`; reminders are skipped then and screen-time
+  counts start over. A mark seen over 60 s late was slept through and is
+  skipped too, so it needs no word from the shell.
+- **Sound** (`settings.sound`, on by default, "Glass"): one of the 14
+  system alert sounds when the countdown timer, a focus session or a break
+  ends (not on skip, reset or pause). The core emits `Effect::PlaySound`
+  with a name from `SOUNDS`; the platform layer starts `afplay` on that
+  file in `/System/Library/Sounds` and lets it finish. `sound_preview`
+  plays one while the user chooses. Names are letters only, checked in
+  the core and again when the path is built.
+  The pomodoro's icon is a timer while focusing and a leaf during a break
+  (`ClosedActivityView.pomodoroSymbol`, from the core's phase label).
 - **Shell layout.** Tabs: Home (dashboard: now playing, timer, agents,
   inbox), Music, Timer, Clipboard, Agents (Sessions | Usage) on the left of
   the notch; keep-awake toggle (cup icon), Inbox, Settings on the right.
@@ -104,7 +146,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   once, a click on the tab-bar background closes.
   Two notch styles (`appearance.notch_style`, Settings → General): Attached
   (default, the original geometry; keep it pixel-identical for existing
-  users) and Floating, a capsule inset 3 pt inside the menu bar or notch
+  users on a display with a notch; without one it uses the one row above) and Floating, a capsule inset 3 pt inside the menu bar or notch
   band, with the toast overlapping it by 8 pt and the panel 6 pt below
   (`floatingPanelDrop`; at 0 it looked hung from the bar).
   Floating sizes derive from the measured menu bar height; all geometry
@@ -122,6 +164,23 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   hardware notch (`safeAreaInsets.top > 0`, `PanelState.hasNotch`)
   they are always black and that row is hidden, since the camera housing
   cannot turn white.
+  `appearance.shrink` (Settings › General › Shrink, also only without a notch):
+  Off (default), WhenEmpty (nothing to show and no waiting dot) or Always
+  (except during a peek) turns the closed shape into a 120 x 8 pt strip
+  flush with the top edge, in either style (`NotchLayout.minimized`,
+  decided by `NotchLayout.shrinks`). With a hardware notch only Always
+  is offered and it means "nothing beside the notch while closed": the
+  shrunk shape there is the bare notch, full height, because an empty
+  notch already is just the notch and a strip thinner than the camera
+  housing could not be found with the pointer. Peeks, banners and
+  approvals still show.
+  Four layouts exist (camera housing or not, Attached or Floating) and
+  the user can choose either style on either machine. In each, what the
+  closed notch draws must fit the shape `NotchLayout.size(for:content:)`
+  gives it; `ClosedSpaceTests` measures the drawn content for every
+  activity, pair and the dot in all four, and for the Settings preview.
+  The preview once sized the shape by one rule and laid the content out
+  by another, which put the icons outside the capsule.
   `appearance.material` (Settings → General → Panel): Solid (default) or
   Glass, macOS 26 Liquid Glass for the open panel only; the closed notch
   and toast stay black to blend with the hardware notch. Glass needs a
@@ -142,6 +201,20 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   status line JSON (`litenotch statusline`, the only documented source of
   `rate_limits`); today's token totals are read from the session transcripts,
   whose format is internal to Claude Code and may change.
+- **One copy's hooks only.** Each copy of the app registers its own CLI
+  path, so test builds and moved installs used to pile up in
+  `~/.claude/settings.json`: five hook processes per Claude Code event,
+  all reporting to whichever LiteNotch was running, and the status line
+  wrapped once per copy. Now `install` removes every other LiteNotch hook
+  first (`'<any path>/litenotch' hook`), `install_statusline` wraps the
+  user's own command after peeling off every LiteNotch layer, and
+  uninstalling restores that command. `hooks_file::other_copies` lists the
+  other copies found in hooks or status line and which no longer exist on
+  disk; the runtime reports the count in `agents.other_copies` (and
+  `_missing`), posts one notice at start, and `hooks_clean` (Settings ›
+  Agents › Remove them) takes them out while leaving this copy and
+  everything that is not LiteNotch's alone. A command counts as
+  LiteNotch's only in exactly the form LiteNotch writes it.
 - **Now playing** is system-wide (any app, including browser tabs). macOS
   answers MediaRemote queries only for Apple-entitled processes since 15.4,
   so the runtime starts `/usr/bin/perl` (which is entitled) with a small
@@ -323,7 +396,9 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   beside it then cannot reach its last rows: the Settings section list
   did this once it had ten entries. `OverflowTests` checks every tab,
   pane and Settings section; add new ones there.
-- Anything that moves continuously in the shell (the equaliser bars) must be
+- Anything that moves continuously in the shell (the equaliser bars, the
+  scrolling title of a track-change peek, `MarqueeText`, the eye-break
+  face's blink, `BlinkingFaceNSView`) must be
   a Core Animation layer animation, not a SwiftUI animation: the SwiftUI
   version re-rendered the notch every frame and cost 9 % CPU while music
   played. `scripts/bench.sh` only measures idle, so check by hand with

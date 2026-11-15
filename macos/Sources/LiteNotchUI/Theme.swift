@@ -475,6 +475,8 @@ struct MiniStepper: View {
     /// Watches for a click elsewhere while typing.
     @State private var clickMonitor: Any?
     @FocusState private var focused: Bool
+    /// The field has had the keyboard since typing began.
+    @State private var hadFocus = false
 
     /// What typed text sets the value to: a whole number, clamped to the
     /// range. Nil when it is not a number, so the old value stays.
@@ -508,7 +510,7 @@ struct MiniStepper: View {
     @ViewBuilder private var number: some View {
         if typed != nil {
             TextField("", text: Binding(get: { typed ?? "" },
-                                        set: { typed = String($0.filter { $0.isASCII && $0.isNumber }.prefix(4)) }))
+                                        set: { typed = Self.edited($0, typing: typed) }))
                 .textFieldStyle(.plain)
                 .multilineTextAlignment(.center)
                 .font(NType.bodyMedium.font)
@@ -524,7 +526,10 @@ struct MiniStepper: View {
                 .onSubmit(finish)
                 .onExitCommand(perform: revert)
                 .onChange(of: typed) { _, text in apply(text) }
-                .onChange(of: focused) { _, f in if !f { finish() } }
+                .onChange(of: focused) { _, f in
+                    if f { hadFocus = true }
+                    if Self.endsTyping(focused: f, hadFocus: hadFocus) { finish() }
+                }
                 .accessibilityLabel(Text(verbatim: label))
         } else {
             Button(action: begin) {
@@ -554,13 +559,32 @@ struct MiniStepper: View {
             }
             return event
         }
-        DispatchQueue.main.async {
+        hadFocus = false
+        focus(tries: 5)
+    }
+
+    /// Gives the field the keyboard. The panel only becomes able to take
+    /// keys a moment after `requestKeyboard`, and a focus asked for before
+    /// that is dropped, so this asks again until it holds.
+    private func focus(tries: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + (tries == 5 ? 0 : 0.06)) {
+            guard typed != nil, !hadFocus else { return }
             focused = true
             DispatchQueue.main.async {
-                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                if focused {
+                    NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                } else if tries > 1 {
+                    focus(tries: tries - 1)
+                }
             }
         }
     }
+
+    /// Whether a change of focus ends the typing: only losing a focus the
+    /// field really had. Before it ever had the keyboard, "not focused" is
+    /// just the starting state, and ending there made the number impossible
+    /// to edit.
+    static func endsTyping(focused: Bool, hadFocus: Bool) -> Bool { !focused && hadFocus }
 
     /// The value follows the text as it is typed, so nothing is lost when
     /// the typing ends without Return (a click elsewhere, the panel closing).
@@ -573,6 +597,15 @@ struct MiniStepper: View {
     static func liveValue(_ text: String?, current: Int, range: ClosedRange<Int>) -> Int? {
         guard let text, let v = typedValue(text, range: range), v != current else { return nil }
         return v
+    }
+
+    /// The typing state after the field reports `text`. Once typing has
+    /// ended (nil) it stays ended: as the field is torn down it reports an
+    /// empty string, and taking that as new typing left an empty field
+    /// where the number should be.
+    static func edited(_ text: String, typing: String?) -> String? {
+        guard typing != nil else { return nil }
+        return String(text.filter { $0.isASCII && $0.isNumber }.prefix(4))
     }
 
     /// What the field holds when typing starts: the current value, so it is

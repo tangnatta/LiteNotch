@@ -30,12 +30,30 @@ public enum SnapshotRenderer {
             let name = f.deletingPathExtension().lastPathComponent
             let vm = try ViewModel.decode(Data(contentsOf: f))
             try add("\(name)-closed", vm, expanded: false)
-            if ["idle", "pomodoro", "media", "banner"].contains(name) {
+            if ["idle", "pomodoro", "media", "banner", "pair", "peek-track", "peek-warning", "calendar"].contains(name) {
+                // Without a notch: one row, no gap in the middle.
+                try add("notchless-\(name)-closed", vm, expanded: false, notchless: true)
+            }
+            if ["idle", "pomodoro", "media", "banner", "pair"].contains(name) {
                 // The floating style, with a notch and on a 24 pt menu bar without one.
                 var floating = vm
                 floating.settings.appearance.notchStyle = .floating
                 try add("floating-\(name)-closed", floating, expanded: false)
                 try add("floating-notchless-\(name)-closed", floating, expanded: false, notchless: true)
+                if name == "idle" {
+                    // Shrink when empty, without a notch: the strip, in both styles.
+                    var shrunk = vm
+                    shrunk.settings.appearance.shrink = .whenEmpty
+                    try add("notchless-idle-shrunk-closed", shrunk, expanded: false, notchless: true)
+                    shrunk.settings.appearance.notchStyle = .floating
+                    try add("floating-notchless-idle-shrunk-closed", shrunk, expanded: false, notchless: true)
+                }
+                if name == "pomodoro" {
+                    // Shrink always: the strip even with a timer running.
+                    var shrunk = vm
+                    shrunk.settings.appearance.shrink = .always
+                    try add("notchless-pomodoro-shrunk-closed", shrunk, expanded: false, notchless: true)
+                }
                 if name == "pomodoro" {
                     try add("floating-pomodoro-expanded-home", floating)
                     try add("floating-notchless-pomodoro-expanded-home", floating, notchless: true)
@@ -60,6 +78,9 @@ public enum SnapshotRenderer {
                 try add("floating-pair-closed", floating, expanded: false)
                 try add("floating-notchless-pair-closed", floating, expanded: false, notchless: true)
                 try add("floating-pair-expanded-settings-notch", floating, tab: .settings, section: .notch)
+                // The same pane on a display without a camera housing: one row.
+                try add("floating-notchless-pair-expanded-settings-notch", floating, tab: .settings, section: .notch, notchless: true)
+                try add("notchless-pair-expanded-settings-notch", vm, tab: .settings, section: .notch, notchless: true)
             }
             if name == "calendar" {
                 try add("calendar-expanded-settings-calendar", vm, tab: .settings, section: .calendar)

@@ -67,6 +67,9 @@ impl Config {
 enum ShellCommand {
     HooksInstall,
     HooksUninstall,
+    /// Remove the hooks of other copies of LiteNotch from Claude Code's
+    /// settings.
+    HooksClean,
     /// Route Claude Code's status line through LiteNotch (usage limits).
     StatuslineInstall,
     StatuslineUninstall,
@@ -216,6 +219,7 @@ impl Loop {
     fn run(&mut self, rx: Receiver<Msg>) {
         let now = self.clock.now_ms();
         self.refresh_hooks_installed(now);
+        self.warn_about_other_copies(now);
         self.after_event(now);
         loop {
             let now = self.clock.now_ms();
@@ -338,6 +342,11 @@ impl Loop {
                 let result =
                     hooks_file::uninstall_hooks(&self.config.claude_dir, &self.config.cli_path);
                 self.report_hooks(result, "Disconnected from Claude Code", now);
+            }
+            Msg::Shell(ShellCommand::HooksClean) => {
+                let result =
+                    hooks_file::remove_other_copies(&self.config.claude_dir, &self.config.cli_path);
+                self.report_hooks(result, "Extra LiteNotch hooks removed", now);
             }
             Msg::Shell(ShellCommand::StatuslineInstall) => {
                 let result = hooks_file::install_statusline_file(
@@ -574,12 +583,44 @@ impl Loop {
         );
     }
 
+    /// Says once, at start, that other copies of LiteNotch are registered
+    /// with Claude Code; Settings › Agents removes them.
+    fn warn_about_other_copies(&mut self, now: u64) {
+        let (found, missing) =
+            hooks_file::other_copies_count(&self.config.claude_dir, &self.config.cli_path);
+        if found == 0 {
+            return;
+        }
+        let copies = if found == 1 { "copy" } else { "copies" };
+        let gone = match missing {
+            0 => String::new(),
+            1 if found == 1 => " It no longer exists.".to_string(),
+            n => format!(" {n} of them no longer exist."),
+        };
+        self.apply(
+            Input::OwnNotify(NotificationInput {
+                source: "litenotch".into(),
+                title: "Extra LiteNotch hooks in Claude Code".into(),
+                body: format!(
+                    "{found} other {copies} of LiteNotch also run on every Claude Code event.{gone} Remove them in Settings \u{203a} Agents."
+                ),
+                priority: Priority::Normal,
+                group: Some("hooks-extra".into()),
+                ttl_secs: None,
+            }),
+            now,
+        );
+    }
+
     fn refresh_hooks_installed(&mut self, now: u64) {
         let state = hooks_file::installed(&self.config.claude_dir, &self.config.cli_path);
         self.apply(Input::HooksInstalled(state), now);
         let state =
             hooks_file::statusline_installed(&self.config.claude_dir, &self.config.cli_path);
         self.apply(Input::StatuslineInstalled(state), now);
+        let (found, missing) =
+            hooks_file::other_copies_count(&self.config.claude_dir, &self.config.cli_path);
+        self.apply(Input::OtherCopies { found, missing }, now);
     }
 
     fn apply(&mut self, input: Input, now: u64) {
@@ -604,6 +645,7 @@ impl Loop {
                     self.ports.write_clipboard_rich(&text, &path)
                 }
                 Effect::SleepDisplay => self.ports.sleep_display(),
+                Effect::PlaySound(name) => self.ports.play_sound(name),
                 Effect::MediaCommand(command) => self.ports.media_command(command.code()),
                 Effect::Resolve(resolved) => {
                     if let Some((_, reply)) = self.waiters.remove(&resolved.request_id) {
@@ -738,6 +780,9 @@ pub(crate) mod testing {
         }
         fn sleep_display(&mut self) {
             self.0.lock().unwrap().calls.push("display:sleep".into());
+        }
+        fn play_sound(&mut self, name: &str) {
+            self.0.lock().unwrap().calls.push(format!("sound:{name}"));
         }
         fn power(&mut self) -> Option<PowerStatus> {
             let mut os = self.0.lock().unwrap();
@@ -1438,6 +1483,42 @@ mod tests {
         h.send(r#"{"cmd":"hooks_uninstall"}"#);
         h.views
             .wait("removed", |v| v["agents"]["hooks_installed"] == false);
+    }
+
+    /// Reported: Claude Code's settings held the hooks of several copies of
+    /// LiteNotch. The app says so at start, and removes them when asked.
+    #[test]
+    fn other_copies_hooks_are_reported_at_start_and_removed_on_request() {
+        let dir = crate::store::temp_dir("rt-copies");
+        std::fs::create_dir_all(dir.join("claude")).unwrap();
+        let hook = |cli: &str| serde_json::json!({"matcher":"*","hooks":[{"type":"command","command":format!("'{cli}' hook"),"timeout":5}]});
+        let settings = serde_json::json!({"hooks": {"Stop": [
+            hook("/gone/Old.app/Contents/Helpers/litenotch"),
+            hook("/gone/Test.app/Contents/Helpers/litenotch"),
+        ]}});
+        std::fs::write(dir.join("claude/settings.json"), settings.to_string()).unwrap();
+        let h = Harness::start_in(dir, FakeOs::default());
+        let view = h
+            .views
+            .wait("counted", |v| v["agents"]["other_copies"] == 2);
+        assert_eq!(view["agents"]["other_copies_missing"], 2);
+        assert_eq!(
+            view["inbox"]["banner"]["title"],
+            "Extra LiteNotch hooks in Claude Code"
+        );
+
+        h.send(r#"{"cmd":"hooks_clean"}"#);
+        h.views
+            .wait("cleaned", |v| v["agents"]["other_copies"] == 0);
+        let text = std::fs::read_to_string(h.dir.join("claude/settings.json")).unwrap();
+        assert!(!text.contains("litenotch"), "{text}");
+
+        // Connecting afterwards leaves exactly one hook per event.
+        h.send(r#"{"cmd":"hooks_install"}"#);
+        h.views
+            .wait("installed", |v| v["agents"]["hooks_installed"] == true);
+        let text = std::fs::read_to_string(h.dir.join("claude/settings.json")).unwrap();
+        assert_eq!(text.matches("litenotch' hook").count(), 6, "{text}");
     }
 
     #[test]

@@ -5,7 +5,8 @@
     "value": "",
     "ends_at_ms": 1794400240000,
     "total_secs": null,
-    "count": 0
+    "count": 0,
+    "peek": null
   },
   "compact_secondary": {
     "kind": "pomodoro",
@@ -13,7 +14,8 @@
     "value": "",
     "ends_at_ms": 1794401500000,
     "total_secs": 1500,
-    "count": 0
+    "count": 0,
+    "peek": null
   },
   "waiting": true,
   "attention": false,
@@ -90,7 +92,9 @@
     ],
     "pending": [],
     "hooks_installed": null,
-    "statusline_installed": null
+    "statusline_installed": null,
+    "other_copies": 0,
+    "other_copies_missing": 0
   },
   "usage": {
     "five_hour": null,
@@ -283,7 +287,8 @@
       "accent": "#FF9E0A",
       "notch_style": "attached",
       "closed_notch": "dark",
-      "material": "solid"
+      "material": "solid",
+      "shrink": "off"
     },
     "media": {
       "enabled": true
@@ -347,6 +352,18 @@
       "hidden": [],
       "two_places": true,
       "waiting_dot": true
+    },
+    "sound": {
+      "enabled": true,
+      "name": "Glass"
+    },
+    "peek": {
+      "track_change": true,
+      "time_warning_secs": 300,
+      "eye_break_mins": 0,
+      "move_mins": 0,
+      "move_counts": "focus",
+      "break_quote": true
     }
   }
 }

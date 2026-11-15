@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var systemNotifications = SystemNotificationObserver(model: model)
     private lazy var calendar = CalendarObserver(model: model)
     private lazy var attention = AgentAttentionObserver(model: model)
+    private lazy var screenPresence = ScreenPresenceObserver(model: model)
     private var started = false
     private var dstWork: DispatchWorkItem?
     private var signalSources: [DispatchSourceSignal] = []
@@ -45,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A benchmark run supplies its own events and must not put up the
         // calendar permission question.
         if !Bench.scripted { calendar.start() }
+        screenPresence.start()
         Bench.run(model: model)
         quitCleanlyOnSignals()
     }
@@ -66,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         systemNotifications.stop()
         attention.stop()
         calendar.stop()
+        screenPresence.stop()
         ln_stop()
     }
 

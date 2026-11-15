@@ -126,7 +126,8 @@ struct SettingsTab: View {
     @ViewBuilder private var pane: some View {
         switch model.settingsSection {
         case .general: general
-        case .notch: NotchPriorityPane(config: $draft.notch, floating: draft.appearance.notchStyle == .floating)
+        case .notch: NotchPriorityPane(config: $draft.notch, floating: draft.appearance.notchStyle == .floating,
+                                         hasNotch: model.hasNotch)
         case .timer: timer
         case .music: music
         case .notifications: notifications
@@ -164,6 +165,22 @@ struct SettingsTab: View {
                               selection: Binding(get: { draft.appearance.closedNotch == .unknown ? .dark : draft.appearance.closedNotch },
                                                  set: { draft.appearance.closedNotch = $0 }),
                               label: "Closed notch", height: 22)
+            }
+            wideRow("Shrink", caption: "A thin strip at the top edge instead of the closed notch.") {
+                SegmentedPill(options: [(ShrinkChoice.off, "Default"), (ShrinkChoice.whenEmpty, "When empty"),
+                                        (ShrinkChoice.always, "Always")],
+                              selection: Binding(get: { draft.appearance.shrink == .unknown ? .off : draft.appearance.shrink },
+                                                 set: { draft.appearance.shrink = $0 }),
+                              label: "Shrink", height: 22)
+            }
+        } else {
+            // Beside a camera housing the only useful choice is to keep
+            // the sides clear: an empty notch already is just the notch.
+            row("Shrink", caption: "Nothing beside the notch while closed. Peeks and notifications still show.") {
+                SegmentedPill(options: [(ShrinkChoice.off, "Default"), (ShrinkChoice.always, "Always")],
+                              selection: Binding(get: { draft.appearance.shrink == .always ? .always : .off },
+                                                 set: { draft.appearance.shrink = $0 }),
+                              label: "Shrink", height: 22)
             }
         }
         materialRow
@@ -277,11 +294,45 @@ struct SettingsTab: View {
         stepper("Rounds before a long break", $draft.pomodoro.roundsBeforeLong, 1...12)
         toggle("Auto-start breaks", $draft.pomodoro.autoStartBreaks)
         toggle("Auto-start focus", $draft.pomodoro.autoStartFocus)
+        Hairline().padding(.vertical, 2)
+        wideRow("Heads-up before it ends", caption: "Pomodoro and timer show the time left for a moment.") {
+            SegmentedPill(options: [(0, "Off"), (60, "1"), (180, "3"), (300, "5"), (600, "10 min")],
+                          selection: $draft.peek.timeWarningSecs, label: "Heads-up before it ends", height: 22)
+        }
+        toggle("Sound when time is up", $draft.sound.enabled,
+               caption: "When a timer, a focus session or a break ends.")
+        if draft.sound.enabled {
+            row("Sound") {
+                SoundPicker(name: $draft.sound.name) { send(.soundPreview(name: $0)) }
+            }
+        }
+        Hairline().padding(.vertical, 2)
+        wideRow("Eye break", caption: "A quick blink and look away.") {
+            SegmentedPill(options: [(0, "Off"), (5, "5"), (10, "10"), (15, "15"), (20, "20 min")],
+                          selection: $draft.peek.eyeBreakMins, label: "Eye break", height: 22)
+        }
+        wideRow("Move", caption: "Stretch, walk or drink water.") {
+            SegmentedPill(options: [(0, "Off"), (20, "20"), (30, "30"), (45, "45"), (60, "60 min")],
+                          selection: $draft.peek.moveMins, label: "Move", height: 22)
+        }
+        if draft.peek.moveMins > 0 {
+            // Which minutes add up to the next Move reminder.
+            row("Move counts time", caption: draft.peek.moveCounts == .screen
+                ? "Every minute at the Mac adds up to the next reminder."
+                : "Only minutes inside a focus session add up.") {
+                SegmentedPill(options: [(CountTime.focus, "In focus"), (.screen, "At the Mac")],
+                              selection: $draft.peek.moveCounts, label: "Move counts", height: 22)
+            }
+        }
+        toggle("A few words after a break", $draft.peek.breakQuote,
+               caption: "The closed notch shows a short line of encouragement when a break ends.")
     }
 
     @ViewBuilder private var music: some View {
         toggle("Show now playing", $draft.media.enabled,
                caption: "Shows and controls what\u{2019}s playing in any app.")
+        toggle("Show a new song for a moment", $draft.peek.trackChange,
+               caption: "The closed notch shows the title when the song changes.")
     }
 
     @ViewBuilder private var notifications: some View {
@@ -368,6 +419,15 @@ struct SettingsTab: View {
                     send(.hooksInstall)
                 }
                 .help("Adds LiteNotch to Claude Code\u{2019}s settings. New sessions show up here.")
+            }
+        }
+        if let warning = AgentsText.otherCopies(found: vm.agents.otherCopies ?? 0,
+                                               missing: vm.agents.otherCopiesMissing ?? 0) {
+            warningRow(warning) {
+                TextPill(title: "Remove them", tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold) {
+                    send(.hooksClean)
+                }
+                .help("Removes the other copies\u{2019} hooks from Claude Code\u{2019}s settings. This copy stays connected.")
             }
         }
         let limits = vm.agents.statuslineInstalled ?? false
@@ -498,6 +558,23 @@ struct SettingsTab: View {
         .frame(minHeight: 22)
     }
 
+    /// A row whose control is too wide to share a line with its caption:
+    /// title and caption on top, the control below, so neither is cut off.
+    private func wideRow<C: View>(_ title: String, caption: String = "",
+                                  @ViewBuilder _ control: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: title).nfont(.body).foregroundStyle(NT.text1)
+                if !caption.isEmpty {
+                    Text(verbatim: caption).nfont(.caption).foregroundStyle(NT.text3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            control()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     /// A row whose text is a warning (amber, with an icon).
     private func warningRow<C: View>(_ text: String, @ViewBuilder _ control: () -> C) -> some View {
         HStack(alignment: .center, spacing: 8) {
@@ -570,5 +647,75 @@ struct HueStrip: View {
                 let next = (hue ?? 0) + step
                 pick(next - floor(next))
             }
+    }
+}
+
+/// Steps through the system alert sounds, playing each as it is chosen.
+struct SoundPicker: View {
+    @Binding var name: String
+    let preview: (String) -> Void
+
+    /// The name `step` places from `name` in the list, wrapping round; the
+    /// default when `name` is not a known sound.
+    static func next(after name: String, step: Int) -> String {
+        let all = SoundConfig.sounds
+        guard let i = all.firstIndex(of: name) else { return SoundConfig.defaultName }
+        return all[((i + step) % all.count + all.count) % all.count]
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            arrow("chevron.left", "Previous sound", step: -1)
+            Button { preview(name) } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "speaker.wave.2.fill").glyph(9)
+                    Text(verbatim: name).nfont(.bodyMedium).lineLimit(1)
+                }
+                .foregroundStyle(NT.text1)
+                .frame(minWidth: 92, minHeight: 22)
+                .contentShape(Rectangle())
+                .controlHover(RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .help("Play \(name)")
+            .accessibilityLabel(Text(verbatim: "Sound: \(name). Click to play."))
+            arrow("chevron.right", "Next sound", step: 1)
+        }
+        .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
+    }
+
+    private func arrow(_ symbol: String, _ label: String, step: Int) -> some View {
+        Button {
+            name = Self.next(after: name, step: step)
+            preview(name)
+        } label: {
+            Image(systemName: symbol).glyph(9, .bold)
+                .foregroundStyle(NT.text2)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+                .controlHover(RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(Text(verbatim: label))
+    }
+}
+
+/// Text for the Agents settings; pure so it can be unit tested.
+public enum AgentsText {
+    /// The warning when other copies of LiteNotch are registered with Claude
+    /// Code; nil when there are none.
+    public static func otherCopies(found: Int, missing: Int) -> String? {
+        guard found > 0 else { return nil }
+        let missing = min(max(missing, 0), found)
+        let what = found == 1 ? "1 other copy of LiteNotch also runs" : "\(found) other copies of LiteNotch also run"
+        let gone: String
+        switch (missing, found) {
+        case (0, _): gone = ""
+        case (1, 1): gone = " It no longer exists."
+        case (let m, let f) where m == f: gone = " None of them exist any more."
+        case (let m, _): gone = " \(m) of them no longer exist."
+        }
+        return "\(what) on every Claude Code event.\(gone)"
     }
 }

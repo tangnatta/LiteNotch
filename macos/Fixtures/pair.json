@@ -5,7 +5,8 @@
     "value": "",
     "ends_at_ms": 1794400240000,
     "total_secs": null,
-    "count": 0
+    "count": 0,
+    "peek": null
   },
   "compact_secondary": {
     "kind": "pomodoro",
@@ -13,7 +14,8 @@
     "value": "",
     "ends_at_ms": 1794401500000,
     "total_secs": 1500,
-    "count": 0
+    "count": 0,
+    "peek": null
   },
   "waiting": true,
   "attention": false,
@@ -347,6 +349,10 @@
       "hidden": [],
       "two_places": true,
       "waiting_dot": true
+    },
+    "peek": {
+      "track_change": true,
+      "time_warning_secs": 300
     }
   }
 }

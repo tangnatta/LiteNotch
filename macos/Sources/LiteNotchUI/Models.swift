@@ -22,6 +22,15 @@ public enum ActivityKind: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// Why the closed notch is showing something for a moment (`compact.peek`).
+public enum PeekKind: String, LenientEnum {
+    case trackChanged = "track_changed"
+    case timeWarning = "time_warning"
+    case unknown
+    static var unknownCase: PeekKind { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
 /// Something a banner offers to do in one click.
 public enum BannerAction: String, LenientEnum {
     /// Pause the running focus session (a meeting is starting).
@@ -111,6 +120,15 @@ extension GeneralSettings {
         usageAlerts = try c.decode(Bool.self, forKey: .usageAlerts)
         allScreens = (try? c.decodeIfPresent(Bool.self, forKey: .allScreens)) ?? false
     }
+}
+
+/// Which peeks are on (`settings.peek`).
+public struct PeekConfig: Codable, Equatable {
+    public var trackChange: Bool
+    /// 0 is off.
+    public var timeWarningSecs: Int
+
+    public static let `default` = PeekConfig(trackChange: true, timeWarningSecs: 300)
 }
 
 public enum ThemeChoice: String, LenientEnum {
@@ -331,6 +349,7 @@ public struct Settings: Codable, Equatable {
     public var analytics: AnalyticsConfig
     public var calendar: CalendarConfig
     public var notch: NotchConfig
+    public var peek: PeekConfig = .default
 }
 
 extension Settings {
@@ -347,6 +366,7 @@ extension Settings {
         analytics = try c.decode(AnalyticsConfig.self, forKey: .analytics)
         calendar = (try? c.decodeIfPresent(CalendarConfig.self, forKey: .calendar)) ?? .default
         notch = (try? c.decodeIfPresent(NotchConfig.self, forKey: .notch)) ?? .default
+        peek = (try? c.decodeIfPresent(PeekConfig.self, forKey: .peek)) ?? .default
     }
 }
 
@@ -359,6 +379,19 @@ public struct CompactView: Codable, Equatable {
     public var endsAtMs: Int?
     public var totalSecs: Int?
     public var count: Int
+    /// Set while this is shown for a moment only.
+    public var peek: PeekKind?
+
+    public init(kind: ActivityKind, title: String, value: String, endsAtMs: Int?, totalSecs: Int?,
+                count: Int, peek: PeekKind? = nil) {
+        self.kind = kind
+        self.title = title
+        self.value = value
+        self.endsAtMs = endsAtMs
+        self.totalSecs = totalSecs
+        self.count = count
+        self.peek = peek
+    }
 }
 
 public struct PomodoroView: Codable, Equatable {

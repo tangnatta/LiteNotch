@@ -77,9 +77,15 @@ impl Media {
         Self::default()
     }
 
-    /// Replaces the state; `None` means nothing is playing.
-    pub fn set(&mut self, np: Option<NowPlaying>) {
+    /// Replaces the state; `None` means nothing is playing. Returns whether
+    /// a different track (title or artist) is now playing.
+    pub fn set(&mut self, np: Option<NowPlaying>) -> bool {
+        let before = self.current.as_ref().map(|n| (&n.title, &n.artist));
+        let changed = np
+            .as_ref()
+            .is_some_and(|n| n.playing && before != Some((&n.title, &n.artist)));
         self.current = np;
+        changed
     }
 
     pub fn active(&self) -> Option<&NowPlaying> {
@@ -187,6 +193,23 @@ mod tests {
 
     fn parse(json: &str) -> Option<Option<NowPlaying>> {
         parse_helper_line(json, NOW)
+    }
+
+    #[test]
+    fn set_reports_a_new_track_only_while_playing() {
+        let song = |title: &str, artist: &str, playing| NowPlaying {
+            title: title.into(),
+            artist: artist.into(),
+            playing,
+            ..NowPlaying::default()
+        };
+        let mut m = Media::new();
+        assert!(m.set(Some(song("A", "X", true))), "first track");
+        assert!(!m.set(Some(song("A", "X", true))), "same track");
+        assert!(!m.set(Some(song("A", "X", false))), "paused");
+        assert!(m.set(Some(song("A", "Y", true))), "other artist");
+        assert!(!m.set(Some(song("B", "Y", false))), "new but paused");
+        assert!(!m.set(None), "stopped");
     }
 
     #[test]

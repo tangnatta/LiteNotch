@@ -61,6 +61,13 @@ public enum NotchGeometry {
     public static func wingWidth(for compact: CompactView) -> CGFloat {
         let icon: CGFloat = 40
         let value: CGFloat
+        switch compact.peek {
+        // Room for the scrolling title.
+        case .trackChanged: return 130
+        // `4:59 left`.
+        case .timeWarning: return 82
+        case .unknown, nil: break
+        }
         switch compact.kind {
         case .idle, .unknown: return 0
         case .pomodoro: value = 62
@@ -145,6 +152,12 @@ extension NotchGeometry {
     public static func floatingWingWidth(for compact: CompactView) -> CGFloat {
         let icon: CGFloat = 30
         let value: CGFloat
+        switch compact.peek {
+        case .trackChanged: return 80
+        // `10:00 left` with the capsule's padding.
+        case .timeWarning: return 72
+        case .unknown, nil: break
+        }
         switch compact.kind {
         case .idle, .unknown: return 0
         // `24:59` in 12 pt semibold digits is about 36 pt.

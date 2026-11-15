@@ -243,8 +243,9 @@ final class CommandTests: XCTestCase {
         let inner = try XCTUnwrap(s["settings"] as? NSDictionary)
         XCTAssertEqual(Set(inner.allKeys as! [String]),
                        ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics",
-                        "calendar", "notch"])
+                        "calendar", "notch", "peek"])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
+        XCTAssertEqual(inner["peek"] as? NSDictionary, ["track_change": true, "time_warning_secs": 300])
         XCTAssertEqual(inner["appearance"] as? NSDictionary,
                        ["theme": "system", "accent": "#FF9E0A", "notch_style": "attached", "closed_notch": "dark",
                         "material": "solid"])
@@ -322,6 +323,38 @@ final class GeometryTests: XCTestCase {
         let longName = CompactView(kind: .agent, title: String(repeating: "x", count: 80), value: "", endsAtMs: nil, totalSecs: nil, count: 1)
         XCTAssertLessThanOrEqual(NotchGeometry.wingWidth(for: longName), 130)
         XCTAssertEqual(NotchGeometry.wingWidth(for: CompactView(kind: .idle, title: "", value: "", endsAtMs: nil, totalSecs: nil, count: 0)), 0)
+    }
+
+    func testPeeksWidenTheWings() throws {
+        let track = try loadFixture("peek-track").compact
+        XCTAssertEqual(track.kind, .media)
+        XCTAssertEqual(track.peek, .trackChanged)
+        XCTAssertEqual(NotchGeometry.wingWidth(for: track), 130, "room for the scrolling title")
+        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: track), 80)
+
+        let warning = try loadFixture("peek-warning").compact
+        XCTAssertEqual(warning.kind, .pomodoro)
+        XCTAssertEqual(warning.peek, .timeWarning)
+        XCTAssertNotNil(warning.endsAtMs)
+        XCTAssertGreaterThan(NotchGeometry.wingWidth(for: warning),
+                             NotchGeometry.wingWidth(for: try loadFixture("pomodoro").compact))
+
+        // Without a peek the media view is unchanged.
+        XCTAssertNil(try loadFixture("media").compact.peek)
+        XCTAssertEqual(NotchGeometry.wingWidth(for: try loadFixture("media").compact), 40)
+    }
+
+    func testPeekSettingsDecodeLeniently() throws {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        let e = JSONEncoder()
+        e.keyEncodingStrategy = .convertToSnakeCase
+        var settings = try loadFixture("idle").settings
+        XCTAssertEqual(settings.peek, .default)
+        settings.peek.timeWarningSecs = 60
+        let json = String(decoding: try e.encode(settings), as: UTF8.self)
+        XCTAssertTrue(json.contains(#""time_warning_secs":60"#))
+        XCTAssertEqual(try d.decode(CompactView.self, from: Data(#"{"kind":"media","title":"T","value":"A","count":0,"peek":"aurora"}"#.utf8)).peek, .unknown)
     }
 
     func testAttachedLayoutIsTheOriginalGeometry() {

@@ -38,6 +38,8 @@ struct SettingsTab: View {
     @Environment(\.clockOffsetMs) private var offset
     @State private var draft: Settings
     @State private var pending: DispatchWorkItem?
+    /// The hue strip was asked for (it also shows for a custom accent).
+    @State private var customAccent = false
 
     init(vm: ViewModel, model: PanelState) {
         self.vm = vm
@@ -153,9 +155,27 @@ struct SettingsTab: View {
         materialRow
         row("Accent") {
             HStack(spacing: 5) {
+                namedSwatch(.system, help: "Use the accent colour chosen in macOS", label: "System accent") {
+                    Circle().fill(NT.color(NT.systemAccent() ?? AppearanceConfig.defaultAccent))
+                        .overlay(Image(systemName: "apple.logo").font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.white).offset(y: -0.5))
+                }
+                namedSwatch(.mono, help: "Black or white, whichever the theme calls for", label: "Black and white") {
+                    Circle().fill(LinearGradient(stops: [.init(color: .black, location: 0.5), .init(color: .white, location: 0.5)],
+                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .overlay(Circle().strokeBorder(NT.hairline, lineWidth: 1))
+                }
                 ForEach(AccentPresets.all, id: \.self) { hex in swatch(hex) }
-                TextPill(title: "Pick\u{2026}", height: 22) { model.app?.pickAccent() }
-                    .help("Pick the accent from anywhere on the screen")
+                customSwatch
+            }
+        }
+        if customAccent || accentChoice.isCustom {
+            row("Custom", caption: "Drag, or pick from the screen.") {
+                HStack(spacing: 6) {
+                    HueStrip(hue: accentHue) { draft.appearance.accent = ColorMath.hex(ColorMath.fromHue($0)) }
+                    IconButton(symbol: "eyedropper", label: "Pick from the screen", size: 11, frame: 22,
+                               help: "Pick the accent from anywhere on the screen") { model.app?.pickAccent() }
+                }
             }
         }
         Hairline().padding(.vertical, 2)
@@ -181,8 +201,48 @@ struct SettingsTab: View {
         }
     }
 
+    private var accentChoice: AccentChoice { AccentChoice(draft.appearance.accent) }
+
+    /// Where the knob sits: only a custom colour has a place on the strip.
+    private var accentHue: Double? {
+        guard accentChoice.isCustom, case .color(let hex) = accentChoice, let c = ColorMath.parse(hex) else { return nil }
+        return ColorMath.hue(of: c)
+    }
+
+    private func namedSwatch<Fill: View>(_ choice: AccentChoice, help: String, label: String,
+                                         @ViewBuilder fill: () -> Fill) -> some View {
+        let on = accentChoice == choice
+        return Button { draft.appearance.accent = choice.raw } label: {
+            fill()
+                .frame(width: 15, height: 15)
+                .padding(2.5)
+                .overlay(Circle().strokeBorder(on ? NT.text1 : Color.clear, lineWidth: 1.5))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(Text(verbatim: label))
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    /// Opens the hue strip; selected while the accent is a custom colour.
+    private var customSwatch: some View {
+        let on = accentChoice.isCustom
+        return Button { customAccent.toggle() } label: {
+            Circle().fill(AngularGradient(colors: HueStrip.colors, center: .center))
+                .frame(width: 15, height: 15)
+                .padding(2.5)
+                .overlay(Circle().strokeBorder(on ? NT.text1 : Color.clear, lineWidth: 1.5))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("Choose any colour")
+        .accessibilityLabel(Text(verbatim: "Custom accent"))
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
     private func swatch(_ hex: String) -> some View {
-        let on = ColorMath.normalize(draft.appearance.accent) == hex
+        let on = accentChoice == .color(hex)
         return Button { draft.appearance.accent = hex } label: {
             Circle().fill(NT.color(hex))
                 .frame(width: 15, height: 15)
@@ -449,5 +509,52 @@ struct SettingsTab: View {
                 }
             }
         }
+    }
+}
+
+/// A strip of every hue: click or drag along it to choose one. The knob
+/// shows the current colour's place, when it has one.
+struct HueStrip: View {
+    var hue: Double?
+    var width: CGFloat = 150
+    let pick: (Double) -> Void
+
+    /// The strip's colours, left to right (and around the custom swatch).
+    static let colors: [Color] = stride(from: 0.0, through: 1.0, by: 1.0 / 12).map {
+        let c = ColorMath.fromHue($0)
+        return Color(.sRGB, red: c.r, green: c.g, blue: c.b, opacity: 1)
+    }
+
+    /// The hue under a point `x` along a strip `width` wide.
+    static func hue(at x: CGFloat, width: CGFloat) -> Double {
+        guard width > 0 else { return 0 }
+        // Just short of 1, which is the same red as 0.
+        return min(max(Double(x / width), 0), 0.999)
+    }
+
+    var body: some View {
+        Capsule()
+            .fill(LinearGradient(colors: Self.colors, startPoint: .leading, endPoint: .trailing))
+            .frame(width: width, height: 14)
+            .overlay(alignment: .leading) {
+                if let hue {
+                    Circle().fill(Color.white)
+                        .overlay(Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 1))
+                        .frame(width: 12, height: 12)
+                        .offset(x: 1 + CGFloat(hue) * (width - 14))
+                        .allowsHitTesting(false)
+                }
+            }
+            .contentShape(Capsule())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { pick(Self.hue(at: $0.location.x, width: width)) })
+            .help("Click or drag to choose a colour")
+            .accessibilityElement()
+            .accessibilityLabel(Text(verbatim: "Accent hue"))
+            .accessibilityValue(Text(verbatim: hue.map { "\(Int(($0 * 360).rounded())) degrees" } ?? "not set"))
+            .accessibilityAdjustableAction { direction in
+                let step = direction == .increment ? 1.0 / 24 : -1.0 / 24
+                let next = (hue ?? 0) + step
+                pick(next - floor(next))
+            }
     }
 }

@@ -73,9 +73,16 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   Two notch styles (`appearance.notch_style`, Settings → General): Attached
   (default, the original geometry; keep it pixel-identical for existing
   users) and Floating, a capsule inset 3 pt inside the menu bar or notch
-  band, with the toast overlapping it by 8 pt and the panel just below.
+  band, with the toast overlapping it by 8 pt and the panel 6 pt below
+  (`floatingPanelDrop`; at 0 it looked hung from the bar).
   Floating sizes derive from the measured menu bar height; all geometry
   lives in `NotchLayout` (`Geometry.swift`).
+  The accent (`appearance.accent`) is `#RRGGBB`, `system` (macOS's accent,
+  re-read on `NSColor.systemColorsDidChangeNotification`) or `mono` (the
+  primary text colour of each scheme: white on dark, black on light).
+  `NT.accent` is one global, so tests that change it must put it back.
+  Settings offers system, mono, four presets and a hue strip (fixed
+  saturation, `ColorMath.fromHue`) with the screen eyedropper beside it.
   The theme (`appearance.theme`) styles the open panel. The closed notch
   and the toast stay black unless `appearance.closed_notch` is `theme`
   (Settings → General → Closed notch: Always dark | Match theme); the

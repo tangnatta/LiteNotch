@@ -348,15 +348,17 @@ final class GeometryTests: XCTestCase {
                        NotchGeometry.floatingCenterWidth + 2 * NotchGeometry.floatingWingWidth(for: pomo))
         // The toast overlaps the menu bar; the panel starts below it.
         XCTAssertEqual(bare.top(for: .toast), 24 - NotchGeometry.floatingToastLift)
-        XCTAssertEqual(bare.top(for: .expanded), 24)
-        XCTAssertEqual(bare.size(for: .expanded, compact: pomo).height, 24 + NotchGeometry.expandedSize.height)
+        XCTAssertEqual(bare.top(for: .expanded), 24 + NotchGeometry.floatingPanelDrop)
+        XCTAssertGreaterThanOrEqual(NotchGeometry.floatingPanelDrop, 4, "a visible gap under the menu bar")
+        XCTAssertEqual(bare.size(for: .expanded, compact: pomo).height,
+                       24 + NotchGeometry.floatingPanelDrop + NotchGeometry.expandedSize.height)
         // A hidden menu bar falls back to the stand-in's height.
         XCTAssertEqual(NotchLayout(style: .floating, notch: NotchGeometry.fallbackSize, hasNotch: false).bar, 32)
         // With a notch the capsule keeps the notch's width and height band.
         let notched = NotchLayout(style: .floating, notch: CGSize(width: 185, height: 38), hasNotch: true, menuBarHeight: 38)
         XCTAssertEqual(notched.centerWidth, 185)
         XCTAssertEqual(notched.capsuleHeight, 32)
-        XCTAssertEqual(notched.top(for: .expanded), 38)
+        XCTAssertEqual(notched.top(for: .expanded), 38 + NotchGeometry.floatingPanelDrop)
         // Above the open panel only the column under the notch takes the pointer.
         let open = bare.size(for: .expanded, compact: nil)
         XCTAssertFalse(bare.contains(CGPoint(x: 10, y: 5), mode: .expanded, in: open))
@@ -1085,6 +1087,106 @@ final class ColorTests: XCTestCase {
         NT.setAccent("nonsense")
         XCTAssertEqual(NT.accentHex, AppearanceConfig.defaultAccent)
         XCTAssertEqual(NT.onAccent, .black)
+    }
+
+    /// Requested: an accent that follows macOS, a plain black/white one,
+    /// fewer presets, and a way to choose a colour without the screen loupe.
+    func testNamedAccentsFollowTheSystemOrTheTheme() {
+        let system = NT.systemAccent
+        defer { NT.systemAccent = system; NT.setAccent(AppearanceConfig.defaultAccent) }
+
+        XCTAssertEqual(AccentChoice("system"), .system)
+        XCTAssertEqual(AccentChoice(" Mono "), .mono)
+        XCTAssertEqual(AccentChoice("0a84ff"), .color("#0A84FF"))
+        XCTAssertEqual(AccentChoice("monochrome"), .color(AppearanceConfig.defaultAccent))
+        XCTAssertEqual([AccentChoice.system, .mono, .color("#0A84FF")].map(\.raw), ["system", "mono", "#0A84FF"])
+        XCTAssertFalse(AccentChoice.system.isCustom || AccentChoice.mono.isCustom)
+        XCTAssertFalse(AccentChoice(AccentPresets.all[1]).isCustom)
+        XCTAssertTrue(AccentChoice("#123456").isCustom)
+        XCTAssertLessThanOrEqual(AccentPresets.all.count, 4)
+
+        NT.systemAccent = { "#8E44AD" }
+        NT.setAccent("system")
+        XCTAssertEqual(NT.accentHex, "#8E44AD")
+        XCTAssertEqual(NT.onAccent, .white)
+        XCTAssertFalse(NT.setAccent("system"), "unchanged while the system's accent is")
+        NT.systemAccent = { "#FFD60A" }
+        XCTAssertTrue(NT.setAccent("system"), "the system's accent changed")
+        XCTAssertEqual(NT.accentHex, "#FFD60A")
+        XCTAssertEqual(NT.onAccent, .black)
+        NT.systemAccent = { nil }
+        NT.setAccent("system")
+        XCTAssertEqual(NT.accentHex, AppearanceConfig.defaultAccent)
+
+        XCTAssertTrue(NT.setAccent("mono"))
+        XCTAssertEqual(NT.accentHex, "mono")
+        XCTAssertFalse(NT.setAccent("mono"))
+        // White on the dark panel, near-black on the light one, and the
+        // reverse for what is drawn on it.
+        let accent = NSColor(NT.accent), on = NSColor(NT.onAccent)
+        func white(_ c: NSColor, dark: Bool) -> CGFloat {
+            var w: CGFloat = -1
+            NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
+                w = c.usingColorSpace(.sRGB)?.redComponent ?? -1
+            }
+            return w
+        }
+        XCTAssertEqual(white(accent, dark: true), 1, accuracy: 0.01)
+        XCTAssertLessThan(white(accent, dark: false), 0.1)
+        XCTAssertEqual(white(on, dark: true), 0, accuracy: 0.01)
+        XCTAssertEqual(white(on, dark: false), 1, accuracy: 0.01)
+    }
+
+    @MainActor
+    func testAChangeOfTheSystemAccentRedrawsOnlyWhenItIsInUse() throws {
+        let system = NT.systemAccent
+        defer { NT.systemAccent = system; NT.setAccent(AppearanceConfig.defaultAccent) }
+        NT.systemAccent = { "#0A84FF" }
+        let model = AppModel(bridge: MockBridge())
+        var vm = try loadFixture("idle")
+        vm.settings.appearance.accent = "system"
+        model.apply(vm)
+        XCTAssertEqual(NT.accentHex, "#0A84FF")
+        var redraws = 0
+        let watch = model.$view.dropFirst().sink { _ in redraws += 1 }
+        defer { watch.cancel() }
+
+        // What `NSColor.systemColorsDidChangeNotification` calls. (Posting it
+        // here would also reach models other tests left alive, and they share
+        // the one accent.)
+        NT.systemAccent = { "#FF375F" }
+        model.systemAccentChanged()
+        XCTAssertEqual(NT.accentHex, "#FF375F")
+        XCTAssertEqual(redraws, 1)
+        model.systemAccentChanged()
+        XCTAssertEqual(redraws, 1, "same colour: nothing to redraw")
+
+        vm.settings.appearance.accent = "#30D158"
+        model.apply(vm)
+        redraws = 0
+        NT.systemAccent = { "#FFD60A" }
+        model.systemAccentChanged()
+        XCTAssertEqual(NT.accentHex, "#30D158", "a chosen colour ignores the system's")
+        XCTAssertEqual(redraws, 0)
+    }
+
+    func testTheHueStripCoversTheWheelAndFindsAColoursPlace() {
+        XCTAssertEqual(ColorMath.hex(ColorMath.fromHue(0)), "#FF2626")
+        XCTAssertEqual(ColorMath.hex(ColorMath.fromHue(1.0 / 3)), "#26FF26")
+        XCTAssertEqual(ColorMath.hex(ColorMath.fromHue(2.0 / 3)), "#2626FF")
+        XCTAssertEqual(ColorMath.fromHue(1.25), ColorMath.fromHue(0.25), "wraps around")
+        for h in stride(from: 0.0, to: 1.0, by: 0.037) {
+            XCTAssertEqual(ColorMath.hue(of: ColorMath.fromHue(h)), h, accuracy: 1e-6)
+            // Through the settings string and back, the knob stays put.
+            let hex = ColorMath.hex(ColorMath.fromHue(h))
+            XCTAssertEqual(ColorMath.hue(of: try XCTUnwrap(ColorMath.parse(hex))), h, accuracy: 0.004)
+        }
+        XCTAssertEqual(ColorMath.hue(of: ColorMath.RGB(r: 0.5, g: 0.5, b: 0.5)), 0, "a grey has no hue")
+        XCTAssertEqual(HueStrip.hue(at: 75, width: 150), 0.5)
+        XCTAssertEqual(HueStrip.hue(at: -20, width: 150), 0)
+        XCTAssertEqual(HueStrip.hue(at: 400, width: 150), 0.999)
+        XCTAssertEqual(HueStrip.hue(at: 10, width: 0), 0)
+        XCTAssertEqual(HueStrip.colors.count, 13)
     }
 
     func testThemeToScheme() {
@@ -1948,7 +2050,8 @@ final class AppearanceOptionsTests: XCTestCase {
         XCTAssertEqual(floating.targetSize.height, 3 + 18, "a capsule inside a 24 pt menu bar")
         XCTAssertLessThan(floating.targetSize.width, attached.targetSize.width)
         floating.open()
-        XCTAssertEqual(floating.targetSize.height, 24 + NotchGeometry.expandedSize.height)
+        XCTAssertEqual(floating.targetSize.height,
+                       24 + NotchGeometry.floatingPanelDrop + NotchGeometry.expandedSize.height)
         // Above the open panel the menu bar stays usable except under the notch.
         XCTAssertFalse(floating.shapeContains(CGPoint(x: 5, y: 5)))
         XCTAssertTrue(floating.shapeContains(CGPoint(x: floating.targetSize.width / 2, y: 5)))

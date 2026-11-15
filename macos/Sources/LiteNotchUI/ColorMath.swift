@@ -60,6 +60,80 @@ public enum ColorMath {
 }
 
 /// Accent swatches offered in Settings › General; the first is the default.
+/// Few on purpose: the system accent, black/white and the hue strip cover
+/// the rest.
 public enum AccentPresets {
-    public static let all = ["#FF9E0A", "#0A84FF", "#30D158", "#FF375F", "#BF5AF2", "#64D2FF", "#FFD60A"]
+    public static let all = ["#FF9E0A", "#0A84FF", "#30D158", "#FF375F"]
+}
+
+/// What `appearance.accent` asks for; mirrors `normalize_accent` in the core.
+public enum AccentChoice: Equatable {
+    /// The accent chosen in System Settings › Appearance.
+    case system
+    /// White on a dark panel, black on a light one.
+    case mono
+    /// `#RRGGBB`.
+    case color(String)
+
+    public init(_ raw: String) {
+        switch raw.trimmingCharacters(in: .whitespaces).lowercased() {
+        case "system": self = .system
+        case "mono": self = .mono
+        default: self = .color(ColorMath.normalize(raw) ?? AppearanceConfig.defaultAccent)
+        }
+    }
+
+    /// The settings string.
+    public var raw: String {
+        switch self {
+        case .system: return "system"
+        case .mono: return "mono"
+        case .color(let hex): return hex
+        }
+    }
+
+    /// A colour that is none of the preset swatches.
+    public var isCustom: Bool {
+        if case .color(let hex) = self { return !AccentPresets.all.contains(hex) }
+        return false
+    }
+}
+
+extension ColorMath {
+    /// Saturation of colours picked on the hue strip: vivid, but not so
+    /// pure that text on them is hard to read.
+    public static let stripSaturation = 0.85
+
+    /// The colour at `hue` (0...1 around the wheel) on the hue strip.
+    public static func fromHue(_ hue: Double) -> RGB {
+        let h = (hue - floor(hue)) * 6
+        let x = 1 - abs(h.truncatingRemainder(dividingBy: 2) - 1)
+        let (r, g, b): (Double, Double, Double)
+        switch Int(h) {
+        case 0: (r, g, b) = (1, x, 0)
+        case 1: (r, g, b) = (x, 1, 0)
+        case 2: (r, g, b) = (0, 1, x)
+        case 3: (r, g, b) = (0, x, 1)
+        case 4: (r, g, b) = (x, 0, 1)
+        default: (r, g, b) = (1, 0, x)
+        }
+        let m = 1 - stripSaturation
+        return RGB(r: r * stripSaturation + m, g: g * stripSaturation + m, b: b * stripSaturation + m)
+    }
+
+    /// Where on the hue strip a colour sits, 0..<1; 0 for a grey.
+    public static func hue(of c: RGB) -> Double {
+        let hi = max(c.r, c.g, c.b), lo = min(c.r, c.g, c.b), d = hi - lo
+        guard d > 1e-9 else { return 0 }
+        var h: Double
+        if hi == c.r {
+            h = ((c.g - c.b) / d).truncatingRemainder(dividingBy: 6)
+        } else if hi == c.g {
+            h = (c.b - c.r) / d + 2
+        } else {
+            h = (c.r - c.g) / d + 4
+        }
+        h /= 6
+        return h < 0 ? h + 1 : h
+    }
 }

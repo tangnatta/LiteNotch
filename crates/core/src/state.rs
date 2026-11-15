@@ -13,6 +13,7 @@ use crate::analytics::{
     day_index, Analytics, AnalyticsConfig, Feature, FeatureCount, PersistedAnalytics,
 };
 use crate::caffeine::{AwakeMode, Caffeine, CaffeineConfig, CaffeineEffect, LidState, PowerStatus};
+use crate::calendar::{Calendar, CalendarAlert, CalendarConfig, CalendarView, EventInput};
 use crate::clipboard::{
     ClipCapture, ClipKind, ClipboardConfig, ClipboardHistory, PersistedClipboard,
 };
@@ -54,6 +55,7 @@ const RESERVED_SOURCES: &[&str] = &[
     "usage",
     "caffeine",
     "color",
+    "calendar",
 ];
 /// Usage percentages that raise an alert, lowest first.
 const USAGE_ALERT_LEVELS: [u8; 2] = [80, 95];
@@ -187,6 +189,7 @@ pub struct Settings {
     pub caffeine: CaffeineConfig,
     pub agent: AgentConfig,
     pub analytics: AnalyticsConfig,
+    pub calendar: CalendarConfig,
 }
 
 /// What is written to disk.
@@ -289,6 +292,11 @@ pub enum Command {
         title: String,
         body: String,
     },
+    /// The next events in the system's calendars, read by the shell. The
+    /// whole list each time: it replaces what was known.
+    CalendarEvents {
+        events: Vec<EventInput>,
+    },
     AgentDecide {
         request_id: String,
         decision: Decision,
@@ -386,6 +394,8 @@ pub enum ActivityKind {
     Agent,
     Meeting,
     Timer,
+    /// An event is about to start; counts down to it.
+    Calendar,
 }
 
 /// What the closed notch shows.
@@ -494,6 +504,7 @@ pub struct ViewModel {
     pub caffeine: CaffeineView,
     pub meeting: MeetingView,
     pub timer: TimerView,
+    pub calendar: CalendarView,
     /// Colours picked from the screen, newest first.
     pub colors: Vec<String>,
     pub analytics: Vec<FeatureCount>,
@@ -510,6 +521,7 @@ pub struct Core {
     agents: Agents,
     usage: Usage,
     meeting: Meeting,
+    calendar: Calendar,
     /// Makes each captured banner's group unique.
     system_seq: u64,
     timer: Countdown,
@@ -590,6 +602,7 @@ impl Core {
             agents: Agents::new(settings.agent.clone()),
             usage: Usage::new(),
             meeting: Meeting::from_saved(meeting),
+            calendar: Calendar::new(settings.calendar.clone()),
             timer: Countdown::new(timer_secs.unwrap_or(300)),
             system_seq: 0,
             lid_shut: false,
@@ -662,6 +675,7 @@ impl Core {
             self.agents.next_deadline(),
             self.meeting.next_deadline(),
             self.timer.next_deadline(),
+            self.calendar.next_deadline(),
         ]
         .into_iter()
         .flatten()
@@ -874,6 +888,7 @@ impl Core {
                 }
             }
             Command::NotifySystem { app, title, body } => self.system_notify(app, title, body, now),
+            Command::CalendarEvents { events } => self.calendar.set_events(events, now),
             Command::ClipCopyPlain { id } => {
                 if let Some(item) = self.clipboard.get(id).filter(|i| i.kind != ClipKind::Image) {
                     fx.push(Effect::WriteClipboard(item.text.clone()));
@@ -1022,6 +1037,7 @@ impl Core {
         self.notify.set_config(settings.notify.clone());
         self.caffeine.set_config(settings.caffeine.clone());
         self.agents.set_config(settings.agent.clone());
+        self.calendar.set_config(settings.calendar.clone());
         if !settings.media.enabled {
             self.media.set(None);
         }
@@ -1031,6 +1047,7 @@ impl Core {
         settings.clipboard = self.clipboard.config().clone();
         settings.caffeine = self.caffeine.config().clone();
         settings.agent = self.agents.config().clone();
+        settings.calendar = self.calendar.config().clone();
         self.settings = settings;
         self.dirty = true;
         self.count(Feature::SettingsChange, now);
@@ -1061,11 +1078,40 @@ impl Core {
                 now,
             );
         }
+        for alert in self.calendar.tick(now) {
+            self.calendar_alert(alert, now);
+        }
         let offset = self.settings.pomodoro.utc_offset_secs;
         self.usage.set_day(local_day_start_ms(now, offset));
         self.sync_dnd(now);
         let events = self.notify.tick(now);
         self.notify_events(events, now);
+    }
+
+    /// A reminder or a start. High priority: a meeting is worth breaking
+    /// into a focus session for. The start replaces the reminder.
+    fn calendar_alert(&mut self, alert: CalendarAlert, now: u64) {
+        let (event, when) = match alert {
+            CalendarAlert::Soon { event, minutes } => (event, format!("Starts in {minutes} min")),
+            CalendarAlert::Started { event } => (event, "Starting now".to_string()),
+        };
+        let body = if event.location.is_empty() {
+            when
+        } else {
+            format!("{when} \u{b7} {}", event.location)
+        };
+        self.count(Feature::CalendarAlert, now);
+        self.post(
+            NotificationInput {
+                source: "calendar".into(),
+                title: event.title,
+                body,
+                priority: Priority::High,
+                group: Some(format!("calendar-{}-{}", event.start_ms, event.id)),
+                ttl_secs: None,
+            },
+            now,
+        );
     }
 
     fn sync_dnd(&mut self, now: u64) {
@@ -1319,6 +1365,7 @@ impl Core {
             "litenotch" => tab("agents", Some("sessions")),
             "caffeine" => tab("settings", Some("keep_awake")),
             "color" => tab("clipboard", None),
+            "calendar" => tab("home", None),
             _ => None,
         }
     }
@@ -1464,7 +1511,7 @@ impl Core {
             guard: caf.guard,
         };
         let today = day_index(now, self.utc_offset_secs);
-        let compact = self.compact(&pomodoro, &media, &inbox, &agents, &caffeine);
+        let compact = self.compact(&pomodoro, &media, &inbox, &agents, &caffeine, now);
         ViewModel {
             attention: matches!(compact.kind, ActivityKind::Approval | ActivityKind::Banner),
             compact,
@@ -1485,6 +1532,7 @@ impl Core {
             caffeine,
             meeting: self.meeting.view(),
             timer: self.timer.view(),
+            calendar: self.calendar.view(now),
             colors: self.colors.clone(),
             analytics: self
                 .analytics
@@ -1494,7 +1542,8 @@ impl Core {
     }
 
     /// Picks the one activity the closed notch shows:
-    /// approval > banner > pomodoro > media > caffeine > working agent.
+    /// approval > banner > meeting > timer > pomodoro > imminent event >
+    /// media > caffeine > working agent.
     fn compact(
         &self,
         pomodoro: &PomodoroView,
@@ -1502,6 +1551,7 @@ impl Core {
         inbox: &InboxView,
         agents: &AgentsView,
         caffeine: &CaffeineView,
+        now: u64,
     ) -> CompactView {
         let view = |kind, title: &str, value: &str| CompactView {
             kind,
@@ -1556,6 +1606,12 @@ impl Core {
                 ends_at_ms: pomodoro.ends_at_ms,
                 total_secs: Some(pomodoro.total_secs),
                 ..view(ActivityKind::Pomodoro, phase_label(pomodoro.phase), &value)
+            };
+        }
+        if let Some(event) = self.calendar.imminent(now) {
+            return CompactView {
+                ends_at_ms: Some(event.start_ms),
+                ..view(ActivityKind::Calendar, &event.title, "")
             };
         }
         if let Some(m) = media.as_ref().filter(|m| m.playing) {
@@ -1647,6 +1703,166 @@ mod tests {
             .iter()
             .find(|f| f.feature == feature.name())
             .map_or(0, |f| f.count)
+    }
+
+    fn event(id: &str, title: &str, start: u64, mins: u64) -> crate::calendar::EventInput {
+        crate::calendar::EventInput {
+            id: id.into(),
+            title: title.into(),
+            start_ms: start,
+            end_ms: start + mins * 60_000,
+            ..Default::default()
+        }
+    }
+
+    fn with_calendar() -> Core {
+        let mut c = core();
+        let mut settings = c.settings().clone();
+        settings.calendar.enabled = true;
+        cmd(
+            &mut c,
+            Command::SetSettings {
+                settings: Box::new(settings),
+            },
+            T0,
+        );
+        c
+    }
+
+    #[test]
+    fn a_calendar_event_is_announced_before_and_at_its_start() {
+        let mut c = with_calendar();
+        let start = T0 + 30 * 60_000;
+        let mut standup = event("e1", "Stand-up", start, 15);
+        standup.location = "Room 3".into();
+        cmd(
+            &mut c,
+            Command::CalendarEvents {
+                events: vec![standup, event("e2", "Review", start + 3_600_000, 30)],
+            },
+            T0,
+        );
+        let v = c.view(T0);
+        assert_eq!(v.calendar.events.len(), 2);
+        assert_eq!(v.compact.kind, ActivityKind::Idle);
+        assert_eq!(c.next_deadline(), Some(start - 5 * 60_000));
+
+        let at = start - 5 * 60_000;
+        c.apply(Input::Tick, at);
+        let v = c.view(at);
+        let banner = v.inbox.banner.expect("a reminder is showing");
+        assert_eq!(
+            (
+                banner.source.as_str(),
+                banner.title.as_str(),
+                banner.body.as_str()
+            ),
+            ("calendar", "Stand-up", "Starts in 5 min \u{b7} Room 3")
+        );
+        assert_eq!(banner.priority, Priority::High);
+        assert_eq!(
+            banner.open,
+            Some(OpenTarget::Tab {
+                tab: "home".into(),
+                pane: None
+            })
+        );
+        assert_eq!(uses(&c, Feature::CalendarAlert), 1);
+
+        // With the banner answered, the closed notch counts down to the start.
+        cmd(&mut c, Command::NotifyDismissBanner, at + 1000);
+        let v = c.view(at + 1000);
+        assert_eq!(v.compact.kind, ActivityKind::Calendar);
+        assert_eq!(v.compact.title, "Stand-up");
+        assert_eq!(v.compact.ends_at_ms, Some(start));
+
+        c.apply(Input::Tick, start);
+        let v = c.view(start);
+        let banner = v.inbox.banner.expect("the start is announced");
+        assert_eq!(banner.body, "Starting now \u{b7} Room 3");
+        let about_standup = v.inbox.history.iter().filter(|n| n.title == "Stand-up");
+        assert_eq!(about_standup.count(), 1, "the start replaces the reminder");
+        cmd(&mut c, Command::NotifyDismissBanner, start + 1000);
+        assert_ne!(c.view(start + 1000).compact.kind, ActivityKind::Calendar);
+    }
+
+    #[test]
+    fn a_calendar_reminder_is_shown_during_a_focus_session() {
+        let mut c = with_calendar();
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        cmd(
+            &mut c,
+            Command::CalendarEvents {
+                events: vec![event("e1", "Stand-up", T0 + 10 * 60_000, 15)],
+            },
+            T0,
+        );
+        c.apply(Input::Tick, T0 + 5 * 60_000);
+        let v = c.view(T0 + 5 * 60_000);
+        assert!(v.inbox.dnd, "focus is holding lesser notifications");
+        assert_eq!(v.inbox.banner.map(|b| b.title), Some("Stand-up".into()));
+    }
+
+    #[test]
+    fn calendar_events_are_ignored_while_off_and_forgotten_when_turned_off() {
+        let mut c = core();
+        let events = vec![event("e1", "Stand-up", T0 + 10 * 60_000, 15)];
+        cmd(
+            &mut c,
+            Command::CalendarEvents {
+                events: events.clone(),
+            },
+            T0,
+        );
+        assert!(c.view(T0).calendar.events.is_empty());
+        assert_eq!(c.next_deadline(), None);
+
+        let mut c = with_calendar();
+        cmd(&mut c, Command::CalendarEvents { events }, T0);
+        assert_eq!(c.view(T0).calendar.events.len(), 1);
+        let mut settings = c.settings().clone();
+        settings.calendar.enabled = false;
+        cmd(
+            &mut c,
+            Command::SetSettings {
+                settings: Box::new(settings),
+            },
+            T0,
+        );
+        assert!(c.view(T0).calendar.events.is_empty());
+        assert_eq!(c.next_deadline(), None);
+    }
+
+    #[test]
+    fn a_script_cannot_post_as_the_calendar() {
+        let mut c = core();
+        let mut fake = note("Board meeting", Priority::High);
+        fake.source = "calendar".into();
+        c.apply(Input::ExternalNotify(fake), T0);
+        let banner = c.view(T0).inbox.banner.expect("shown");
+        assert_eq!(banner.source, "calendar (script)");
+        assert_eq!(banner.open, None);
+    }
+
+    #[test]
+    fn the_calendar_command_and_settings_have_the_wire_format_the_shell_sends() {
+        let command: Command = serde_json::from_value(json!({
+            "cmd": "calendar_events",
+            "events": [{"id": "e1", "title": "Stand-up", "start_ms": 10, "end_ms": 20,
+                        "all_day": false, "calendar": "Work", "color": "#FF3B30", "location": ""}]
+        }))
+        .expect("parses");
+        let Command::CalendarEvents { events } = command else {
+            panic!("wrong command");
+        };
+        assert_eq!(
+            (events[0].id.as_str(), events[0].calendar.as_str()),
+            ("e1", "Work")
+        );
+        // Settings saved before the calendar existed still load, with it off.
+        let old: Settings = serde_json::from_value(json!({"general": {}})).expect("loads");
+        assert!(!old.calendar.enabled);
+        assert_eq!(old.calendar.alert_minutes, 5);
     }
 
     #[test]

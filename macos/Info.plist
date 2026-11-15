@@ -24,6 +24,8 @@
     <true/>
     <key>NSAppleEventsUsageDescription</key>
     <string>LiteNotch asks your terminal to bring the window of the Claude Code session you clicked to the front.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>LiteNotch shows your next event in the notch and reminds you before it starts. It only reads your calendars; nothing leaves this Mac.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

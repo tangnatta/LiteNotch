@@ -196,6 +196,54 @@ fn main() {
     c.apply(Input::LidResult { ok: true }, T0 + 1);
     out.push(("caffeine", c));
 
+    let mut c = populated();
+    let mut settings = c.settings().clone();
+    settings.calendar.enabled = true;
+    c.apply(
+        Input::Command(Command::SetSettings {
+            settings: Box::new(settings),
+        }),
+        T0,
+    );
+    let event = |id: &str,
+                 title: &str,
+                 calendar: &str,
+                 color: &str,
+                 location: &str,
+                 mins: u64,
+                 len: u64| {
+        litenotch_core::calendar::EventInput {
+            id: id.into(),
+            title: title.into(),
+            start_ms: T0 + mins * 60_000,
+            end_ms: T0 + (mins + len) * 60_000,
+            all_day: false,
+            calendar: calendar.into(),
+            color: Some(color.into()),
+            location: location.into(),
+        }
+    };
+    c.apply(
+        Input::Command(Command::CalendarEvents {
+            events: vec![
+                event("e1", "Design review", "Work", "#1BADF8", "Room 3", 4, 30),
+                event("e2", "1:1 with Sam", "Work", "#1BADF8", "", 90, 25),
+                event(
+                    "e3",
+                    "Dentist",
+                    "Home",
+                    "#FF2968",
+                    "12 High Street",
+                    300,
+                    45,
+                ),
+            ],
+        }),
+        T0,
+    );
+    c.apply(Input::Command(Command::NotifyDismissBanner), T0 + 10);
+    out.push(("calendar", c));
+
     for (name, core) in out {
         let json =
             serde_json::to_string_pretty(&core.view(T0 + 20)).expect("view model serializes");

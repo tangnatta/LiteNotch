@@ -7,6 +7,7 @@ extension SettingsSection {
         case .timer: return "Timer"
         case .music: return "Music"
         case .notifications: return "Notifications"
+        case .calendar: return "Calendar"
         case .clipboard: return "Clipboard"
         case .agents: return "Agents"
         case .keepAwake: return "Keep awake"
@@ -20,6 +21,7 @@ extension SettingsSection {
         case .timer: return "timer"
         case .music: return "music.note"
         case .notifications: return "bell"
+        case .calendar: return "calendar"
         case .clipboard: return "doc.on.clipboard"
         case .agents: return "terminal"
         case .keepAwake: return "cup.and.heat.waves"
@@ -112,6 +114,7 @@ struct SettingsTab: View {
         case .timer: timer
         case .music: music
         case .notifications: notifications
+        case .calendar: calendar
         case .clipboard: clipboard
         case .agents: agents
         case .keepAwake: keepAwake
@@ -233,6 +236,37 @@ struct SettingsTab: View {
         return model.accessibilityNeeded
             ? "Waiting for permission."
             : "Other apps\u{2019} banners land in the inbox."
+    }
+
+    @ViewBuilder private var calendar: some View {
+        toggle("Show calendar events", $draft.calendar.enabled, caption: calendarCaption)
+        if draft.calendar.enabled && model.calendarAccess == .denied {
+            warningRow("Allow LiteNotch to see your calendars in System Settings") {
+                TextPill(title: "Open Settings", tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold) {
+                    model.app?.onOpenCalendarSettings()
+                }
+                .help("Opens Privacy & Security \u{203A} Calendars. Choose Full Access.")
+            }
+        }
+        row("Remind before it starts", caption: draft.calendar.alertMinutes == 0 ? "No reminder." : "0 turns the reminder off.") {
+            HStack(spacing: 6) {
+                MiniStepper(value: $draft.calendar.alertMinutes, range: 0...60, label: "Remind before it starts")
+                Text(verbatim: "min").nfont(.caption).foregroundStyle(NT.text3)
+                    .frame(minWidth: 24, alignment: .leading)
+            }
+        }
+        toggle("Tell me when it starts", $draft.calendar.alertAtStart)
+    }
+
+    private var calendarCaption: String {
+        if !draft.calendar.enabled {
+            return "Your next event on Home and a reminder before it starts. Asks to see your calendars."
+        }
+        switch model.calendarAccess {
+        case .granted: return "Events from the calendars in the Calendar app. All-day events are left out."
+        case .denied: return "Waiting for permission."
+        case .unknown: return "Asking for permission\u{2026}"
+        }
     }
 
     @ViewBuilder private var clipboard: some View {

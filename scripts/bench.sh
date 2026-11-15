@@ -8,6 +8,7 @@
 #   panel       the panel open on Home
 #   floating    the Floating notch style with a countdown running
 #   glass       the panel open on Home, drawn with Liquid Glass (macOS 26)
+#   calendar    an event about to start: the closed notch counts down to it
 #
 # Memory is the physical footprint, the figure Activity Monitor shows as
 # "Memory"; RSS is printed for reference only (it counts shared framework
@@ -28,7 +29,7 @@ CHECK=0
 if [ "${1:-}" = "--check" ]; then CHECK=1; shift; fi
 WINDOW=20
 case "${1:-}" in ''|*[!0-9]*) ;; *) WINDOW=$1; shift ;; esac
-SCENARIOS=${*:-"idle timer music panel floating glass"}
+SCENARIOS=${*:-"idle timer music panel floating glass calendar"}
 
 APP=dist/LiteNotch.app
 [ -x "$APP/Contents/MacOS/LiteNotch" ] || { echo "build first: scripts/build-app.sh" >&2; exit 2; }
@@ -109,6 +110,13 @@ for s in $SCENARIOS; do
         floating) run floating 1.0 30 '{"appearance":{"notch_style":"floating"}}' \
             LITENOTCH_BENCH_COMMANDS='[{"cmd":"timer_set","secs":3600},{"cmd":"timer_toggle"}]' ;;
         glass) run glass 1.5 40 '{"appearance":{"material":"glass"}}' LITENOTCH_BENCH_OPEN=1 ;;
+        calendar)
+            # An event 50 minutes away with a 60-minute reminder, so the
+            # countdown shows for the whole window. The real calendar is not
+            # read in a benchmark run (see `Bench` in main.swift).
+            start=$(( ($(date +%s) + 3000) * 1000 ))
+            run calendar 1.0 30 '{"calendar":{"enabled":true,"alert_minutes":60}}' \
+                LITENOTCH_BENCH_COMMANDS="[{\"cmd\":\"calendar_events\",\"events\":[{\"id\":\"bench\",\"title\":\"Review\",\"start_ms\":$start,\"end_ms\":$((start + 1800000))}]},{\"cmd\":\"notify_dismiss_banner\"}]" ;;
         *) echo "unknown scenario: $s" >&2; exit 2 ;;
     esac
 done

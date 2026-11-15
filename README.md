@@ -3,8 +3,8 @@
 # LiteNotch
 
 LiteNotch turns the notch on your MacBook into a small control centre: what's
-playing, a focus timer, your clipboard history, notifications, and, if you
-code with Claude Code, your AI agent's questions and usage, all one hover
+playing, a focus timer, your next meeting, your clipboard history,
+notifications, and, if you code with Claude Code, your AI agent's questions and usage, all one hover
 away. It stays out of the way the rest of the time and uses almost no
 battery.
 
@@ -13,7 +13,7 @@ battery.
 
 | | LiteNotch |
 |---|---|
-| App size | 6 MB |
+| App size | 6.5 MB |
 | Memory while idle | 15 MB |
 | CPU while idle | under 0.5 % |
 
@@ -69,13 +69,13 @@ switch views; the icons on the right are quick controls.
 
 | Where | What it does |
 |---|---|
-| **Home** | Everything at a glance: what's playing, your timer, your AI sessions and the latest notification. Click any of them to go there. |
+| **Home** | Everything at a glance: what's playing, your timer, your next calendar event (if you turn the calendar on), your AI sessions and the latest notification. Click any of them to go there. |
 | **Music** | Artwork, progress and play / pause / skip for whatever is playing, in any app: Music, Spotify, or a browser tab. While something plays, the closed notch shows its artwork. |
 | **Timer** | Three timers. **Focus** is a pomodoro: work, short break, repeat. **Meeting** runs an agenda item by item (stand-up, sprint review, planning, retro, or your own) and shows when an item runs over. **Timer** is a plain countdown: click the time in the circle and type `25`, `1:30` or `1h 30m`. Any `− 12 +` number (an agenda item's minutes, a timer length) can be clicked and typed too. |
 | **Clipboard** | Everything you copy, searchable. Click an item to copy it again. Text copied with formatting keeps it; the **Aa** button copies it as plain text. Images and files show a preview. Pin what you want to keep. Password-manager copies are skipped. |
 | **Agents** | For Claude Code users: see each session's status, approve or deny its requests without switching windows, and see your usage limits and a 7-day summary. See [Claude Code](#claude-code). |
 | **Inbox** | Notifications from LiteNotch, Claude Code, and, if you allow it, other apps. Click one to open where it came from. |
-| **Settings** | Everything adjustable, by feature: how the notch looks (see [Appearance](#appearance)), timer lengths, clipboard size, keep-awake options, and more. |
+| **Settings** | Everything adjustable, by feature: how the notch looks (see [Appearance](#appearance)), the [calendar](#calendar), timer lengths, clipboard size, keep-awake options, and more. |
 
 Quick controls on the right of the bar:
 
@@ -85,6 +85,23 @@ Quick controls on the right of the bar:
   timer, a battery limit, and staying awake with the lid closed (asks for your
   password once; turns itself off when LiteNotch quits).
 - **Bell:** the inbox. **Gear:** settings.
+
+### Calendar
+
+Turn on **Settings › Calendar › Show calendar events** and LiteNotch follows
+the calendars you have in the Calendar app (iCloud, Google, Exchange, and so
+on):
+
+- **Home** shows your next event, when it starts and where. Click it to open
+  Calendar.
+- A notification appears a few minutes before an event (5 by default; set
+  it from 0 to 60) and again when it starts. These come through even during
+  a focus session.
+- From the reminder until the start, the closed notch counts down to the
+  event.
+
+All-day events, cancelled events and invitations you declined are left out.
+LiteNotch only reads your calendars; it never changes them.
 
 ### Appearance
 
@@ -100,7 +117,7 @@ All under **Settings › General**. The defaults are the original look.
 
 ### What macOS may ask for
 
-LiteNotch works without any permission. Three optional features need one:
+LiteNotch works without any permission. Four optional features need one:
 
 - **Other apps' notifications:** turn on in **Inbox**, then allow LiteNotch
   in **System Settings › Privacy & Security › Accessibility**. macOS forgets
@@ -110,6 +127,10 @@ LiteNotch works without any permission. Three optional features need one:
   Claude Code session, macOS asks whether LiteNotch may control Terminal (or
   iTerm2). Allow it and the click raises that session's window and tab. If
   you don't, the click still brings the terminal app forward.
+- **Calendar:** the first time you turn it on, macOS asks whether LiteNotch
+  may see your calendars. If you said no, allow it under **System Settings ›
+  Privacy & Security › Calendars** (choose **Full Access**; LiteNotch only
+  reads). Like Accessibility, macOS may ask again after an update.
 - **Keep awake with the lid closed:** asks for your administrator password
   the first time you turn it on. After that you can normally switch it off
   and on without typing it again until you quit LiteNotch. The mode turns

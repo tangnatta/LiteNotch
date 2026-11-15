@@ -77,6 +77,44 @@ public enum Format {
         }
     }
 
+    /// When an event is, relative to now: `now` while it runs, else
+    /// `in 5m`, `in 2h 14m`, `in 1d 3h` (minutes rounded up).
+    public static func startsIn(startMs: Int, nowMs: Int) -> String {
+        let s = (startMs - nowMs) / 1000
+        if s <= 0 { return "now" }
+        let minutes = (s + 59) / 60
+        if minutes < 60 { return "in \(minutes)m" }
+        let hours = minutes / 60
+        if hours < 24 {
+            let m = minutes % 60
+            return m == 0 ? "in \(hours)h" : "in \(hours)h \(m)m"
+        }
+        let d = hours / 24, h = hours % 24
+        return h == 0 ? "in \(d)d" : "in \(d)d \(h)h"
+    }
+
+    /// An event's clock times in the user's format, `14:00 - 14:30` with an
+    /// en dash, with `Tomorrow` or the weekday in front when it is not today.
+    public static func eventTime(startMs: Int, endMs: Int, nowMs: Int,
+                                 calendar: Calendar = .current, locale: Locale = .current) -> String {
+        let start = Date(timeIntervalSince1970: Double(startMs) / 1000)
+        let end = Date(timeIntervalSince1970: Double(endMs) / 1000)
+        let now = Date(timeIntervalSince1970: Double(nowMs) / 1000)
+        let time = Date.FormatStyle(date: .omitted, time: .shortened, locale: locale,
+                                    calendar: calendar, timeZone: calendar.timeZone)
+        let range = "\(start.formatted(time)) \u{2013} \(end.formatted(time))"
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
+                                           to: calendar.startOfDay(for: start)).day ?? 0
+        switch days {
+        case ...0: return range
+        case 1: return "Tomorrow \(range)"
+        default:
+            let weekday = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
+                .weekday(.abbreviated)
+            return "\(start.formatted(weekday)) \(range)"
+        }
+    }
+
     /// `resets in 2h 14m`, `resets in 5m`, `resets in 3d 4h`.
     public static func resetsIn(resetsAtMs: Int, nowMs: Int) -> String {
         let s = (resetsAtMs - nowMs) / 1000
@@ -131,6 +169,7 @@ public enum Format {
             "external_notify": "Notifications from scripts", "settings_change": "Settings changed",
             "meeting_start": "Meetings started", "meeting_finish": "Meetings finished",
             "color_pick": "Colours picked", "timer_start": "Timers started",
+            "calendar_alert": "Calendar reminders",
         ]
         if let p = plain[raw] { return p }
         let spaced = raw.replacingOccurrences(of: "_", with: " ")

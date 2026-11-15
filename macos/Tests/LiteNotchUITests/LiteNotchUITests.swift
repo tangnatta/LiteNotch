@@ -242,7 +242,8 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual(s["cmd"] as? String, "set_settings")
         let inner = try XCTUnwrap(s["settings"] as? NSDictionary)
         XCTAssertEqual(Set(inner.allKeys as! [String]),
-                       ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics"])
+                       ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics",
+                        "calendar"])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
         XCTAssertEqual(inner["appearance"] as? NSDictionary,
                        ["theme": "system", "accent": "#FF9E0A", "notch_style": "attached", "closed_notch": "dark",
@@ -677,7 +678,7 @@ final class HoverAndClickTests: XCTestCase {
         XCTAssertEqual(model.tab, .settings)
         XCTAssertEqual(model.settingsSection, .timer)
         XCTAssertEqual(bridge.sent.last, #"{"cmd":"tab_opened","tab":"settings"}"#)
-        XCTAssertEqual(SettingsSection.allCases.count, 8)
+        XCTAssertEqual(SettingsSection.allCases.count, 9)
     }
 }
 

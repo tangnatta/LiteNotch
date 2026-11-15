@@ -50,7 +50,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
 
 - **Rust owns everything except pixels.** `core::state::Core` holds the
   feature modules (pomodoro, clipboard, notify, caffeine, media, agent, usage,
-  analytics). Inputs go in with a timestamp (`apply(Input, now_ms)`,
+  calendar, analytics). Inputs go in with a timestamp (`apply(Input, now_ms)`,
   `hook(json, now_ms)`); `Effect`s come out for the platform layer; `view(now)`
   builds the `ViewModel` the shell renders.
 - **Shell ⇄ core** is JSON over three C functions (`crates/app/src/ffi.rs`,
@@ -121,6 +121,26 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   Off by default (`settings.notify.system`); needs the Accessibility
   permission, which for an ad-hoc signed build must be granted again after
   every rebuild.
+- **Calendar** (off by default, `settings.calendar`): the shell reads the
+  system's calendars with EventKit (`CalendarObserver.swift`) and sends the
+  timed events of the next 48 hours as one `calendar_events` command, which
+  replaces the core's list. It reads again only when EventKit says the
+  database changed, at midnight, after waking and when the setting turns
+  on; there is no poll, and an unchanged list is not sent. The core
+  (`core::calendar`) owns the alerts: a reminder `alert_minutes` before
+  (0 to 60, 0 = none) and a notice at the start (not later than 2 minutes
+  after it, so nothing stale follows a long sleep), both High priority so
+  they pass a focus session, the second replacing the first. Which notices
+  were given is kept per event id and start time, so a re-read repeats
+  nothing and a moved event is announced again. From the reminder to the
+  start the closed notch shows `ActivityKind::Calendar` with the start as
+  `ends_at_ms`. The view model lists up to 12 events with absolute times;
+  the shell works out "in 5m" and skips ended ones itself. All-day,
+  cancelled and declined events are left out (the last two in the shell).
+  Needs the calendar permission (`NSCalendarsFullAccessUsageDescription`,
+  entitlement `com.apple.security.personal-information.calendars`); full
+  access is the only level that allows reading. Nothing is written to the
+  calendar and no event text is stored on disk.
 - **Clipboard files**: copied images (`img-*`) and the formatting of rich
   text (`rich-*`, RTF or HTML) are saved in `<data dir>/clips`, named by a
   hash of their content. The runtime deletes any such file the history no
@@ -223,7 +243,9 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   - Notifications arriving over the socket are capped in length, limited to
     High priority and a 60 s ttl. Text captured from other apps' banners and
     now-playing titles (a web page chooses its own) is sanitized and capped
-    the same way.
+    the same way. So is calendar event text: anyone can send an invitation.
+    A calendar notification only opens Home; no link from an event is
+    followed.
   - An artwork path is passed to the shell only if it is an `art-*` file
     directly inside the data directory's `artwork` folder.
   - Only validated integers and a `[A-Za-z0-9/._-]` path are interpolated into
@@ -242,8 +264,10 @@ scripts/         build-app.sh, bench.sh, coverage.sh
     `litenotch`, …) or the captured-banner group; they get "(script)".
   - The app and CLI are signed with the hardened runtime (no `DYLD_*`
     injection to borrow the Accessibility permission). Keep it on. The app
-    has one entitlement, `com.apple.security.automation.apple-events`, so
-    macOS can ask whether it may control the terminal.
+    has two entitlements: `com.apple.security.automation.apple-events`, so
+    macOS can ask whether it may control the terminal, and
+    `com.apple.security.personal-information.calendars`, so it can ask
+    whether LiteNotch may read the calendars.
   - With that permission LiteNotch could tell the terminal to do anything,
     so the scripts it sends are fixed text that only select a tab and raise
     a window (no `do script`, no `write text`; tested). The terminal device
@@ -287,6 +311,7 @@ the physical memory footprint:
 | panel | the panel open on Home | ≤ 1.5 % | ≤ 40 MB |
 | floating | the Floating style with a countdown running | ≤ 1.0 % | ≤ 30 MB |
 | glass | the panel open on Home, drawn with Liquid Glass | ≤ 1.5 % | ≤ 40 MB |
+| calendar | an event about to start (the closed notch counts down to it) | ≤ 1.0 % | ≤ 30 MB |
 
 Bundle ≤ 15 MB; Rust line coverage ≥ 90 %. The app reads a few
 `LITENOTCH_BENCH_*` variables (start-up commands, open the panel, a stand-in
@@ -298,7 +323,7 @@ Single runs occasionally show a short burst (an outside event such as a
 copy landing in the window); a real regression repeats. Measured Nov 2026
 on an M-series MacBook: idle 0.05–0.30 % and 15–16 MB, timer 0.15–0.35 %,
 music 0.45 %, panel 0.70 % and 22 MB, floating 0.35 %, glass 0.25 % and
-28 MB, bundle 6.3 MB. (One run right after a build showed idle at 2.9 % and
+28 MB, calendar 0.20–0.25 % and 16 MB, bundle 6.5 MB (EventKit added 0.2). (One run right after a build showed idle at 2.9 % and
 timer at 5.5 %; two repeats of each did not.) Glass is measured over a
 still desktop only, not over moving content.
 
@@ -335,6 +360,12 @@ the plain animation.
   only once ever needs a launchd daemon via SMAppService, which needs a
   Developer ID; it would replace the prompt and the helper.
 
+- The calendar: the core's alerts and the observer's logic are unit-tested
+  (the observer against a fake store). Not exercised: the real EventKit
+  store, macOS's permission question, and a real event coming due in the
+  running app. A benchmark run with start-up commands does not start the
+  observer, so it never raises that question. Not built: a "Join" button for
+  the meeting link, choosing which calendars count, and all-day events.
 - Reading other apps' notifications (`SystemNotificationObserver`) is
   unit-tested against a fake accessibility tree only. It has never run
   against the real Notification Center, because that needs the user to grant
@@ -372,4 +403,4 @@ the plain animation.
   with a fake lid in tests and the watcher's start/stop on this Mac, not yet
   with a real lid closing.
 - Shortlist from the Notchy comparison, deliberately not built to keep the
-  app small: file shelf, next calendar event, Codex usage, listening ports.
+  app small: file shelf, Codex usage, listening ports.

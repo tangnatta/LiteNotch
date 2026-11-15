@@ -29,7 +29,9 @@ use crate::usage::{local_day_start_ms, Usage, UsageRecord, UsageSnapshot};
 
 mod presentation;
 use presentation::Peek;
-pub use presentation::{PeekConfig, PeekKind, PEEK_MS};
+pub use presentation::{
+    CountTime, PeekConfig, PeekKind, BREAK_LINES, EYE_MS, MOVE_LINES, NUDGE_MS, PEEK_MS,
+};
 
 /// Version of the persisted file layout.
 pub const PERSIST_VERSION: u32 = 1;
@@ -408,6 +410,11 @@ pub enum Command {
     },
     /// Re-send the view model.
     Refresh,
+    /// The screen locked or slept (`true`), or the user is back. Eye
+    /// breaks and Move reminders are skipped while away.
+    ScreenAway {
+        away: bool,
+    },
 }
 
 /// Everything that can happen to the core.
@@ -481,6 +488,10 @@ pub enum ActivityKind {
     Timer,
     /// An event is about to start; counts down to it.
     Calendar,
+    /// A wellbeing peek about no activity in particular (an eye break, a
+    /// Move reminder, a line after a break); `value` is the line. Never
+    /// ranked: it shows only as a peek.
+    Nudge,
     /// Not one this version knows (settings written by a newer one).
     #[serde(other)]
     Unknown,
@@ -639,6 +650,18 @@ pub struct Core {
     /// Time left on each countdown (`Clock`) at the last settle, so a peek
     /// fires once when a mark is crossed.
     clock_seen: [Option<u64>; 2],
+    /// A peek waiting for a wellbeing peek to finish.
+    peek_next: Option<Peek>,
+    /// The screen is locked or asleep (from the shell).
+    away: bool,
+    /// Start of the current eye-break interval (screen time).
+    eye_since: Option<u64>,
+    /// Start of the current Move interval when it counts screen time.
+    move_since: Option<u64>,
+    /// The last Move line shown (`MOVE_LINES`), so the next is another kind.
+    move_last: Option<usize>,
+    /// When a break completed, while its line waits for the banner to go.
+    quote_due: Option<u64>,
 }
 
 impl Default for Core {
@@ -725,6 +748,12 @@ impl Core {
             dirty: false,
             peek: None,
             clock_seen: [None; 2],
+            peek_next: None,
+            away: false,
+            eye_since: None,
+            move_since: None,
+            move_last: None,
+            quote_due: None,
         }
     }
 
@@ -1113,6 +1142,7 @@ impl Core {
                 self.caffeine_effects(effects, now, fx);
             }
             Command::SetSettings { settings } => self.set_settings(*settings, now),
+            Command::ScreenAway { away } => self.away = away,
             Command::PanelOpened => self.count(Feature::PanelOpen, now),
             Command::TabOpened { tab } => self.count(
                 match tab {
@@ -1261,7 +1291,10 @@ impl Core {
                     self.dirty = true;
                     ("Focus complete", "Time for a break.")
                 }
-                Phase::ShortBreak | Phase::LongBreak => ("Break over", "Ready for the next focus?"),
+                Phase::ShortBreak | Phase::LongBreak => {
+                    self.break_done(now);
+                    ("Break over", "Ready for the next focus?")
+                }
                 Phase::Idle => continue,
             };
             self.post(
@@ -1730,8 +1763,8 @@ impl Core {
                 None,
             );
         }
-        // A peek (a new song, a countdown about to end) has the notch to
-        // itself for its few seconds.
+        // A peek (a new song, a countdown about to end, a wellbeing nudge)
+        // has the notch to itself for its few seconds.
         if let Some(peek) = self.peek_view(pomodoro, media) {
             return (peek, None);
         }

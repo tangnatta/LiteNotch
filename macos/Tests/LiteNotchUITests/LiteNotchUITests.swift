@@ -245,7 +245,9 @@ final class CommandTests: XCTestCase {
                        ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics",
                         "calendar", "notch", "peek"])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
-        XCTAssertEqual(inner["peek"] as? NSDictionary, ["track_change": true, "time_warning_secs": 300])
+        XCTAssertEqual(inner["peek"] as? NSDictionary,
+                       ["track_change": true, "time_warning_secs": 300,
+                        "eye_break_mins": 0, "move_mins": 0, "move_counts": "focus", "break_quote": true])
         XCTAssertEqual(inner["appearance"] as? NSDictionary,
                        ["theme": "system", "accent": "#FF9E0A", "notch_style": "attached", "closed_notch": "dark",
                         "material": "solid"])
@@ -344,6 +346,85 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(NotchGeometry.wingWidth(for: try loadFixture("media").compact), 40)
     }
 
+    func testNudgesShowAFaceOrSymbolAndALine() throws {
+        // The eye break is a glance: the face and a short line, no scrolling,
+        // so its wings are only as wide as "Look away".
+        let eye = try loadFixture("peek-eye-break").compact
+        XCTAssertEqual(eye.kind, .nudge)
+        XCTAssertEqual(eye.peek, .eyeBreak)
+        XCTAssertEqual(eye.value, "Look away")
+        XCTAssertTrue(eye.peek?.isNudge ?? false)
+        XCTAssertLessThan(NotchGeometry.wingWidth(for: eye), 100)
+        XCTAssertGreaterThan(NotchGeometry.wingWidth(for: eye), 40)
+        XCTAssertLessThanOrEqual(NotchGeometry.floatingWingWidth(for: eye), 80)
+
+        let move = try loadFixture("peek-move").compact
+        XCTAssertEqual(move.kind, .nudge)
+        XCTAssertEqual(move.peek, .move)
+        XCTAssertTrue(["Stretch", "Walk", "Water"].contains(move.title))
+        XCTAssertEqual(NotchGeometry.wingWidth(for: move), 130)
+        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: move), 80)
+        var m = move
+        for (title, symbol) in [("Stretch", "figure.flexibility"), ("Walk", "figure.walk"), ("Water", "drop.fill"),
+                                ("Dance", "figure.walk")] {
+            m.title = title
+            XCTAssertEqual(ClosedActivityView.nudgeSymbol(m), symbol, title)
+            XCTAssertNotNil(NSImage(systemSymbolName: symbol, accessibilityDescription: nil), symbol)
+        }
+
+        let quote = try loadFixture("peek-quote").compact
+        XCTAssertEqual(quote.kind, .nudge)
+        XCTAssertEqual(quote.peek, .quote)
+        XCTAssertFalse(quote.value.isEmpty)
+        XCTAssertEqual(NotchGeometry.wingWidth(for: quote), 130)
+        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: quote), 80)
+        XCTAssertEqual(ClosedActivityView.nudgeSymbol(quote), "sparkles")
+        XCTAssertFalse(PeekKind.timeWarning.isNudge)
+
+        // A nudge from a newer core with a peek this shell does not know
+        // still fits its line, within the usual cap.
+        var future = quote
+        future.peek = .unknown
+        XCTAssertLessThanOrEqual(NotchGeometry.wingWidth(for: future), 130)
+        XCTAssertGreaterThan(NotchGeometry.wingWidth(for: future), 40)
+        XCTAssertLessThanOrEqual(NotchGeometry.floatingWingWidth(for: future), 80)
+    }
+
+    func testTheFaceBlinksWithACoreAnimationKeyframe() {
+        let open = BlinkingFaceNSView.blink(open: true)
+        let shut = BlinkingFaceNSView.blink(open: false)
+        for a in [open, shut] {
+            XCTAssertEqual(a.keyPath, "opacity")
+            XCTAssertEqual(a.calculationMode, .discrete)
+            XCTAssertEqual(a.repeatCount, .infinity)
+            XCTAssertEqual(a.keyTimes?.count, (a.values?.count ?? 0) + 1, "discrete: one more key time")
+        }
+        XCTAssertEqual(open.values as? [Double], [1, 0, 1], "the open face shows most of the time")
+        XCTAssertEqual(shut.values as? [Double], [0, 1, 0])
+        let view = BlinkingFaceNSView(frame: NSRect(origin: .zero, size: BlinkingFaceNSView.size))
+        view.configure(color: CGColor.white)
+        view.layout()
+        let faces = view.layer?.sublayers ?? []
+        XCTAssertEqual(faces.count, 2)
+        XCTAssertEqual(faces.compactMap { ($0 as? CATextLayer)?.string as? NSAttributedString }.map(\.string),
+                       [">_<", "-_-"])
+        XCTAssertTrue(faces.allSatisfy { $0.animation(forKey: "blink") != nil })
+        view.layout()
+        XCTAssertEqual(view.layer?.sublayers?.count, 2, "laying out again adds nothing")
+        XCTAssertNil(view.hitTest(NSPoint(x: 5, y: 5)), "clicks go through to the notch")
+    }
+
+    func testScreenPresenceIsAwayWhileAnyReasonHolds() {
+        var p = ScreenPresence()
+        XCTAssertFalse(p.away)
+        XCTAssertEqual(p.set(.locked, true), true)
+        XCTAssertNil(p.set(.displaysAsleep, true), "already away")
+        XCTAssertNil(p.set(.locked, false), "the displays still sleep")
+        XCTAssertEqual(p.set(.displaysAsleep, false), false)
+        XCTAssertNil(p.set(.systemAsleep, false), "nothing changed")
+        XCTAssertEqual(ShellCommand.screenAway(true).encode(), #"{"away":true,"cmd":"screen_away"}"#)
+    }
+
     func testPeekSettingsDecodeLeniently() throws {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
@@ -355,6 +436,25 @@ final class GeometryTests: XCTestCase {
         let json = String(decoding: try e.encode(settings), as: UTF8.self)
         XCTAssertTrue(json.contains(#""time_warning_secs":60"#))
         XCTAssertEqual(try d.decode(CompactView.self, from: Data(#"{"kind":"media","title":"T","value":"A","count":0,"peek":"aurora"}"#.utf8)).peek, .unknown)
+
+        // Peek settings from before the reminders and the break line.
+        let oldPeek = try d.decode(PeekConfig.self, from: Data(#"{"track_change":false,"time_warning_secs":0}"#.utf8))
+        XCTAssertEqual(oldPeek.eyeBreakMins, 0)
+        XCTAssertEqual(oldPeek.moveMins, 0)
+        XCTAssertEqual(oldPeek.moveCounts, .focus)
+        XCTAssertTrue(oldPeek.breakQuote)
+        let futurePeek = try d.decode(PeekConfig.self, from: Data(#"{"track_change":true,"time_warning_secs":0,"move_counts":"steps"}"#.utf8))
+        XCTAssertEqual(futurePeek.moveCounts, .unknown)
+        XCTAssertFalse(String(decoding: try e.encode(futurePeek), as: UTF8.self).contains("move_counts"))
+        settings.peek.eyeBreakMins = 5
+        settings.peek.moveMins = 30
+        settings.peek.moveCounts = .screen
+        settings.peek.breakQuote = false
+        let edited = String(decoding: try e.encode(settings), as: UTF8.self)
+        XCTAssertTrue(edited.contains(#""eye_break_mins":5"#))
+        XCTAssertTrue(edited.contains(#""move_mins":30"#))
+        XCTAssertTrue(edited.contains(#""move_counts":"screen""#))
+        XCTAssertTrue(edited.contains(#""break_quote":false"#))
     }
 
     func testAttachedLayoutIsTheOriginalGeometry() {

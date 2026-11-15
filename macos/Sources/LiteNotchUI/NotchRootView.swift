@@ -213,6 +213,13 @@ struct ClosedActivityView: View {
             Circle().fill(NT.accentText).frame(width: 9, height: 9)
         case .banner:
             Image(systemName: "bell.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
+        case .nudge:
+            if compact.peek == .eyeBreak {
+                BlinkingFace()
+            } else {
+                Image(systemName: Self.nudgeSymbol(compact))
+                    .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
+            }
         case .idle, .unknown:
             EmptyView()
         }
@@ -223,6 +230,8 @@ struct ClosedActivityView: View {
         switch compact.peek {
         case .trackChanged where compact.kind == .media:
             MarqueeText(text: compact.value.isEmpty ? compact.title : "\(compact.title) — \(compact.value)")
+        case .move, .quote:
+            MarqueeText(text: compact.value)
         case .timeWarning where compact.endsAtMs != nil:
             EverySecond { now in
                 let left = Format.countdown(seconds: Format.secondsLeft(until: compact.endsAtMs ?? 0, nowMs: now))
@@ -230,6 +239,16 @@ struct ClosedActivityView: View {
             }
         default:
             activityValue(compact)
+        }
+    }
+
+    /// The Move reminder's kind is its title; a quote gets sparkles.
+    static func nudgeSymbol(_ compact: CompactView) -> String {
+        guard compact.peek == .move else { return "sparkles" }
+        switch compact.title {
+        case "Stretch": return "figure.flexibility"
+        case "Water": return "drop.fill"
+        default: return "figure.walk"
         }
     }
 
@@ -277,6 +296,8 @@ struct ClosedActivityView: View {
             }
         case .banner:
             VText(compact.title).wingText(mono: false)
+        case .nudge:
+            VText(compact.value).wingText(mono: false)
         case .idle, .unknown:
             EmptyView()
         }
@@ -507,6 +528,110 @@ private struct AnimatedBars: NSViewRepresentable {
         for bar in nsView.layer?.sublayers ?? [] where bar.backgroundColor != color {
             bar.backgroundColor = color
         }
+    }
+}
+
+/// `>_<` for an eye break, blinking now and then: the glyph swaps to
+/// `-_-` for a moment. Like the equaliser bars the swap is a Core
+/// Animation keyframe animation the window server runs, never a SwiftUI
+/// animation, and it is on screen only for the seconds of the peek.
+struct BlinkingFace: View {
+    static let face = ">_<"
+    static let shut = "-_-"
+    @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        if snapshot || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            VText(Self.face).wingText(mono: false, tint: NT.accentText)
+        } else {
+            BlinkingFaceLayer(color: NSColor(NT.accentText).resolved(dark: scheme == .dark))
+                .frame(width: BlinkingFaceNSView.size.width, height: BlinkingFaceNSView.size.height)
+        }
+    }
+}
+
+private struct BlinkingFaceLayer: NSViewRepresentable {
+    let color: CGColor
+
+    func makeNSView(context: Context) -> BlinkingFaceNSView {
+        let view = BlinkingFaceNSView(frame: NSRect(origin: .zero, size: BlinkingFaceNSView.size))
+        view.configure(color: color)
+        return view
+    }
+
+    func updateNSView(_ nsView: BlinkingFaceNSView, context: Context) {
+        nsView.configure(color: color)
+    }
+}
+
+final class BlinkingFaceNSView: NSView {
+    static let size = CGSize(width: 26, height: 16)
+    static let font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .bold)
+    /// One blink every `period` seconds.
+    static let period: CFTimeInterval = 1.6
+    /// The open face, then the shut one on top of it.
+    private let faces = [CATextLayer(), CATextLayer()]
+    private var color: CGColor?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        for f in faces { layer?.addSublayer(f) }
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    /// Clicks go through to the notch, which opens on a click.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// A discrete keyframe animation of one face's opacity: `open` is the
+    /// open face (shown most of the period), otherwise the shut face (shown
+    /// only during the blink). Discrete keyframes take one more key time
+    /// than values.
+    static func blink(open: Bool) -> CAKeyframeAnimation {
+        let a = CAKeyframeAnimation(keyPath: "opacity")
+        a.values = (open ? [1.0, 0.0, 1.0] : [0.0, 1.0, 0.0]) as [Double]
+        a.keyTimes = [0, 0.82, 0.92, 1]
+        a.calculationMode = .discrete
+        a.duration = period
+        a.repeatCount = .infinity
+        a.isRemovedOnCompletion = false
+        return a
+    }
+
+    func configure(color: CGColor) {
+        guard color != self.color else { return }
+        self.color = color
+        needsLayout = true
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (i, layer) in faces.enumerated() {
+            let str = NSAttributedString(string: i == 0 ? BlinkingFace.face : BlinkingFace.shut, attributes: [
+                .font: Self.font,
+                .foregroundColor: NSColor(cgColor: color ?? .white) ?? .white,
+            ])
+            let size = str.size()
+            layer.string = str
+            layer.alignmentMode = .center
+            layer.contentsScale = window?.backingScaleFactor ?? 2
+            layer.bounds = CGRect(x: 0, y: 0, width: ceil(size.width), height: ceil(size.height))
+            layer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+            layer.opacity = i == 0 ? 1 : 0
+            if layer.animation(forKey: "blink") == nil {
+                layer.add(Self.blink(open: i == 0), forKey: "blink")
+            }
+        }
+        CATransaction.commit()
     }
 }
 

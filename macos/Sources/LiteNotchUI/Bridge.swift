@@ -76,6 +76,8 @@ public enum ShellCommand: Equatable {
     case analyticsClear
     case setUtcOffset(secs: Int)
     case refresh
+    /// The screen locked or slept, or the user is back (`ScreenPresence`).
+    case screenAway(Bool)
     case meetingLoad(preset: String)
     /// The whole agenda; the core honours it only while no meeting runs.
     case meetingSet(title: String, items: [AgendaLine])
@@ -139,6 +141,7 @@ public enum ShellCommand: Equatable {
         case .analyticsClear: return c("analytics_clear")
         case .setUtcOffset(let s): return c("set_utc_offset", ["secs": s])
         case .refresh: return c("refresh")
+        case .screenAway(let away): return c("screen_away", ["away": away])
         case .meetingLoad(let id): return c("meeting_load", ["preset": id])
         case .meetingSet(let title, let items):
             return c("meeting_set", ["title": title,

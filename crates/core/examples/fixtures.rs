@@ -291,6 +291,40 @@ fn main() {
     c.apply(Input::Tick, warn_at);
     views.push(("peek-warning", c.view(warn_at + 20)));
 
+    // With Move on, the same moment shows the Move reminder first.
+    let mut m = populated();
+    let mut s = m.settings().clone();
+    s.peek.move_mins = 20;
+    m.apply(
+        Input::Command(Command::SetSettings {
+            settings: Box::new(s),
+        }),
+        T0,
+    );
+    m.apply(Input::Command(Command::PomodoroToggle), T0);
+    m.apply(Input::Tick, warn_at);
+    views.push(("peek-move", m.view(warn_at + 20)));
+
+    // The eye break, five minutes of screen time in.
+    let mut e = populated();
+    let mut s = e.settings().clone();
+    s.peek.eye_break_mins = 5;
+    e.apply(
+        Input::Command(Command::SetSettings {
+            settings: Box::new(s),
+        }),
+        T0,
+    );
+    e.apply(Input::Tick, T0 + 5 * 60_000);
+    views.push(("peek-eye-break", e.view(T0 + 5 * 60_000 + 20)));
+
+    // The short break has ended and its banner gone: the line after it.
+    let end = T0 + 30 * 60_000 + 5_000;
+    while let Some(t) = c.next_deadline().filter(|&t| t <= end) {
+        c.apply(Input::Tick, t);
+    }
+    views.push(("peek-quote", c.view(end + 20)));
+
     for (name, view) in views {
         let json = serde_json::to_string_pretty(&view).expect("view model serializes");
         let path = format!("{dir}/{name}.json");

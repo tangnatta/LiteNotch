@@ -72,10 +72,14 @@ public enum NotchGeometry {
         case .trackChanged: return 130
         // `4:59 left`.
         case .timeWarning: return 82
-        case .unknown, nil: break
+        // A symbol on one side, the scrolling line on the other. The eye
+        // break's short line takes the `.nudge` width below.
+        case .move, .quote: return 130
+        case .eyeBreak, .unknown, nil: break
         }
         switch compact.kind {
         case .idle, .unknown: return 0
+        case .nudge: value = textWidth(compact.value) + 18
         case .pomodoro: value = 62
         case .caffeine: value = 62
         // `+12:34` over time, or `Paused`.
@@ -162,10 +166,12 @@ extension NotchGeometry {
         case .trackChanged: return 80
         // `10:00 left` with the capsule's padding.
         case .timeWarning: return 72
-        case .unknown, nil: break
+        case .move, .quote: return 80
+        case .eyeBreak, .unknown, nil: break
         }
         switch compact.kind {
         case .idle, .unknown: return 0
+        case .nudge: value = textWidth(compact.value) + 12
         // `24:59` in 12 pt semibold digits is about 36 pt.
         case .pomodoro, .caffeine, .timer, .calendar: value = 46
         // `+12:34` over time, or `Paused`.
@@ -222,7 +228,8 @@ extension NotchGeometry {
         case .caffeine: return c.endsAtMs != nil ? 38 : 0
         case .media: return 18
         case .agent: return c.count > 1 ? 12 : 0
-        case .idle, .approval, .banner, .unknown: return 0
+        // A peek (a nudge too) always has the notch to itself.
+        case .idle, .approval, .banner, .nudge, .unknown: return 0
         }
     }
 
@@ -259,7 +266,10 @@ extension NotchGeometry {
         case .trackChanged: return 200
         // `10:00 left`.
         case .timeWarning: return 66
-        case .unknown, nil: break
+        // A line that scrolls, like a song title.
+        case .move, .quote: return 200
+        // The eye break's short line takes the `.nudge` width below.
+        case .eyeBreak, .unknown, nil: break
         }
         switch c.kind {
         case .idle, .unknown: return 0
@@ -269,6 +279,7 @@ extension NotchGeometry {
         case .media: return 24
         case .approval: return textWidth(c.value, chars: 32) + (c.count > 1 ? 20 : 0)
         case .banner, .agent: return textWidth(c.title, chars: 32)
+        case .nudge: return textWidth(c.value, chars: 32)
         }
     }
 

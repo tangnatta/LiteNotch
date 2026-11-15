@@ -17,7 +17,7 @@ private func decodeLenient<E: LenientEnum>(_ decoder: Decoder) throws -> E {
 }
 
 public enum ActivityKind: String, LenientEnum {
-    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, calendar, unknown
+    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, calendar, nudge, unknown
     static var unknownCase: ActivityKind { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
@@ -26,8 +26,24 @@ public enum ActivityKind: String, LenientEnum {
 public enum PeekKind: String, LenientEnum {
     case trackChanged = "track_changed"
     case timeWarning = "time_warning"
+    /// Blink and look away, briefly; `compact.kind` is `.nudge`.
+    case eyeBreak = "eye_break"
+    /// Stretch, walk or drink water; `compact.title` says which.
+    case move
+    /// A short line after a pomodoro break; `compact.kind` is `.nudge`.
+    case quote
     case unknown
     static var unknownCase: PeekKind { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+
+    /// A wellbeing peek: a face or symbol and a short line.
+    public var isNudge: Bool { self == .eyeBreak || self == .move || self == .quote }
+}
+
+/// What the Move reminder counts (`settings.peek.move_counts`).
+public enum CountTime: String, LenientEnum {
+    case focus, screen, unknown
+    static var unknownCase: CountTime { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
@@ -128,7 +144,43 @@ public struct PeekConfig: Codable, Equatable {
     /// 0 is off.
     public var timeWarningSecs: Int
 
+    /// Minutes of screen time between eye breaks; 0 (the default) is off.
+    public var eyeBreakMins: Int = 0
+    /// Minutes between Move reminders; 0 (the default) is off.
+    public var moveMins: Int = 0
+    public var moveCounts: CountTime = .focus
+    /// A short encouraging line when a pomodoro break completes.
+    public var breakQuote: Bool = true
+
     public static let `default` = PeekConfig(trackChange: true, timeWarningSecs: 300)
+
+    enum CodingKeys: String, CodingKey {
+        case trackChange, timeWarningSecs, eyeBreakMins, moveMins, moveCounts, breakQuote
+    }
+}
+
+extension PeekConfig {
+    // The reminders and the break line are newer than the rest.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        trackChange = try c.decode(Bool.self, forKey: .trackChange)
+        timeWarningSecs = try c.decode(Int.self, forKey: .timeWarningSecs)
+        eyeBreakMins = (try? c.decodeIfPresent(Int.self, forKey: .eyeBreakMins)) ?? 0
+        moveMins = (try? c.decodeIfPresent(Int.self, forKey: .moveMins)) ?? 0
+        moveCounts = (try? c.decodeIfPresent(CountTime.self, forKey: .moveCounts)) ?? .focus
+        breakQuote = (try? c.decodeIfPresent(Bool.self, forKey: .breakQuote)) ?? true
+    }
+
+    // An unknown `move_counts` is left out so the core keeps its default.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(trackChange, forKey: .trackChange)
+        try c.encode(timeWarningSecs, forKey: .timeWarningSecs)
+        try c.encode(eyeBreakMins, forKey: .eyeBreakMins)
+        try c.encode(moveMins, forKey: .moveMins)
+        if moveCounts != .unknown { try c.encode(moveCounts, forKey: .moveCounts) }
+        try c.encode(breakQuote, forKey: .breakQuote)
+    }
 }
 
 public enum ThemeChoice: String, LenientEnum {

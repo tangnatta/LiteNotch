@@ -2,8 +2,11 @@
 //!
 //! 1. **Interrupt**: a pending approval, then a banner.
 //! 2. **Peek**: a few seconds about one of the user's own activities (the
-//!    track changed, a countdown is about to end), then it goes away by
-//!    itself. Peeks never enter the inbox and focus time does not hold them.
+//!    track changed, a countdown is about to end) or a wellbeing nudge (an
+//!    eye break, a Move reminder, a line after a break), then it goes away
+//!    by itself. Peeks never enter the inbox and focus time does not hold
+//!    them. A new peek replaces the one showing, except that a nudge is not
+//!    cut short: a countdown or track peek waits until it ends.
 //! 3. **Activity**: the running activities ranked by `settings.notch`
 //!    (`Core::compact`).
 
@@ -14,6 +17,19 @@ use super::{
     TimerRun,
 };
 
+/// What the Move reminder counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CountTime {
+    /// Time in a running focus phase: tied to continuous focus, not the
+    /// wall clock, so it comes when the user has been sitting still.
+    #[default]
+    Focus,
+    /// Time the screen is on and unlocked. Without word from the shell that
+    /// counts from when LiteNotch started.
+    Screen,
+}
+
 /// Which peeks are on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -23,6 +39,15 @@ pub struct PeekConfig {
     /// Peek when a running countdown has this long left; 0 is off. Only for
     /// countdowns longer than twice this.
     pub time_warning_secs: u32,
+    /// A quick blinking `>_<` every this many minutes at the screen, so the
+    /// user blinks and looks away; 0 is off (the default), else 1..=60.
+    pub eye_break_mins: u32,
+    /// Stretch, walk or drink water every this many minutes (`move_counts`);
+    /// 0 is off (the default), else 5..=180.
+    pub move_mins: u32,
+    pub move_counts: CountTime,
+    /// Show a short encouraging line when a pomodoro break completes.
+    pub break_quote: bool,
 }
 
 impl Default for PeekConfig {
@@ -30,14 +55,21 @@ impl Default for PeekConfig {
         Self {
             track_change: true,
             time_warning_secs: 300,
+            eye_break_mins: 0,
+            move_mins: 0,
+            move_counts: CountTime::Focus,
+            break_quote: true,
         }
     }
 }
 
 impl PeekConfig {
     pub(super) fn sanitized(self) -> Self {
+        let on = |mins: u32, lo: u32, hi: u32| if mins == 0 { 0 } else { mins.clamp(lo, hi) };
         Self {
             time_warning_secs: self.time_warning_secs.min(3600),
+            eye_break_mins: on(self.eye_break_mins, 1, 60),
+            move_mins: on(self.move_mins, 5, 180),
             ..self
         }
     }
@@ -48,10 +80,98 @@ impl PeekConfig {
 pub enum PeekKind {
     TrackChanged,
     TimeWarning,
+    /// Blink and look away (`ActivityKind::Nudge`); short, it comes often.
+    EyeBreak,
+    /// Stretch, walk or drink water (`ActivityKind::Nudge`, `title` names
+    /// which).
+    Move,
+    /// A short line after a break (`ActivityKind::Nudge`).
+    Quote,
+}
+
+impl PeekKind {
+    /// A wellbeing nudge rather than news about an activity.
+    fn is_nudge(self) -> bool {
+        matches!(self, PeekKind::EyeBreak | PeekKind::Move | PeekKind::Quote)
+    }
+
+    fn duration_ms(self) -> u64 {
+        match self {
+            PeekKind::EyeBreak => EYE_MS,
+            PeekKind::Move | PeekKind::Quote => NUDGE_MS,
+            _ => PEEK_MS,
+        }
+    }
 }
 
 /// How long a peek stays.
 pub const PEEK_MS: u64 = 4_000;
+/// How long a nudge with a line stays: it scrolls through a narrow wing.
+pub const NUDGE_MS: u64 = 8_000;
+/// How long the eye break stays: a glance, since it comes every few minutes.
+pub const EYE_MS: u64 = 3_000;
+/// A mark seen this much later than it fell was slept through (the runtime
+/// wakes at each deadline): the user was away, so no reminder.
+const LATE_MS: u64 = 60_000;
+/// How long a break's line waits for the "Break over" banner (or an
+/// approval) to go before it is dropped.
+const QUOTE_WAIT_MS: u64 = 60_000;
+
+const EYE_BREAK_TITLE: &str = "Eye break";
+const EYE_BREAK_LINE: &str = "Look away";
+const QUOTE_TITLE: &str = "Break over";
+
+/// What the Move reminder asks for: `(kind, line)`. The kinds take turns
+/// in the list (stretch, walk, water), so `index % 3` is the kind.
+pub const MOVE_LINES: [(&str, &str); 6] = [
+    ("Stretch", "Stand up and stretch"),
+    ("Walk", "Take a short walk"),
+    ("Water", "Drink some water"),
+    ("Stretch", "Roll your shoulders, stretch"),
+    ("Walk", "Walk around for a minute"),
+    ("Water", "Refill your water"),
+];
+
+/// A Move line picked from the moment, never the same kind as `last`.
+fn move_line(at_ms: u64, last: Option<usize>) -> usize {
+    let n = MOVE_LINES.len();
+    let i = (at_ms / 1000 % n as u64) as usize;
+    match last {
+        Some(l) if l % 3 == i % 3 => (i + 1) % n,
+        _ => i,
+    }
+}
+
+/// Lines shown after a break. Written for LiteNotch; short enough to read
+/// in the few seconds a peek stays.
+pub const BREAK_LINES: [&str; 20] = [
+    "Fresh start. You've got this.",
+    "Rested and ready. Go.",
+    "One step at a time.",
+    "Small steps add up.",
+    "Back at it, nice and easy.",
+    "Steady wins the day.",
+    "Pick one thing. Begin.",
+    "Good work so far. Keep going.",
+    "Clear head, clear code.",
+    "Breathe in. Dive in.",
+    "Let's make this one count.",
+    "Focus on the next small win.",
+    "Doing better than you think.",
+    "Fresh eyes catch more.",
+    "Another round, another win.",
+    "Keep it simple. Keep going.",
+    "Recharged. Let's build.",
+    "Nice break. Now, one task.",
+    "Ship something small.",
+    "Easy does it. Back to it.",
+];
+
+/// The line for a break that ended at `at_ms`: the core reads no clock, so
+/// the moment itself picks one.
+fn break_line(at_ms: u64) -> &'static str {
+    BREAK_LINES[(at_ms / 1000 % BREAK_LINES.len() as u64) as usize]
+}
 
 /// A countdown that can peek.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,12 +182,43 @@ pub(super) enum Clock {
 
 const CLOCKS: [Clock; 2] = [Clock::Pomodoro, Clock::Timer];
 
+/// A reminder counted in screen time.
+#[derive(Debug, Clone, Copy)]
+enum ScreenTimer {
+    Eye,
+    Move,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Peek {
     pub kind: PeekKind,
-    /// The countdown it is about; `None` for a track change.
+    /// The countdown it is about; `None` for a track change or a nudge.
     pub clock: Option<Clock>,
+    /// A nudge's title and line; empty otherwise.
+    pub title: &'static str,
+    pub text: &'static str,
     pub until_ms: u64,
+}
+
+impl Peek {
+    fn about(kind: PeekKind, clock: Clock) -> Self {
+        Self::new(kind, Some(clock), "", "")
+    }
+
+    fn nudge(kind: PeekKind, title: &'static str, text: &'static str) -> Self {
+        Self::new(kind, None, title, text)
+    }
+
+    /// `until_ms` is set when it starts showing.
+    fn new(kind: PeekKind, clock: Option<Clock>, title: &'static str, text: &'static str) -> Self {
+        Self {
+            kind,
+            clock,
+            title,
+            text,
+            until_ms: 0,
+        }
+    }
 }
 
 /// A countdown's state at one moment.
@@ -125,25 +276,124 @@ impl Core {
         u64::from(self.settings.peek.time_warning_secs) * 1000
     }
 
-    /// Records a track change from the media module.
-    pub(super) fn track_changed(&mut self, now: u64) {
-        if self.settings.peek.track_change {
-            self.peek = Some(Peek {
-                kind: PeekKind::TrackChanged,
-                clock: None,
-                until_ms: now.saturating_add(PEEK_MS),
-            });
+    fn eye_ms(&self) -> u64 {
+        u64::from(self.settings.peek.eye_break_mins) * 60_000
+    }
+
+    fn move_ms(&self) -> u64 {
+        u64::from(self.settings.peek.move_mins) * 60_000
+    }
+
+    fn move_counts_focus(&self) -> bool {
+        self.settings.peek.move_mins > 0 && self.settings.peek.move_counts == CountTime::Focus
+    }
+
+    /// Shows a peek now, or after the nudge that is showing. A nudge that
+    /// replaces a peek shown for less than half its time brings that peek
+    /// back afterwards.
+    fn start_peek(&mut self, peek: Peek, now: u64) {
+        let new = Peek {
+            until_ms: now.saturating_add(peek.kind.duration_ms()),
+            ..peek
+        };
+        match self.peek.filter(|p| p.until_ms > now) {
+            Some(cur) if cur.kind.is_nudge() && !new.kind.is_nudge() => {
+                self.peek_next = Some(new);
+            }
+            Some(cur) if !cur.kind.is_nudge() && new.kind.is_nudge() => {
+                if cur.until_ms - now > cur.kind.duration_ms() / 2 {
+                    self.peek_next = Some(cur);
+                }
+                self.peek = Some(new);
+            }
+            _ => self.peek = Some(new),
         }
     }
 
+    /// Records a track change from the media module.
+    pub(super) fn track_changed(&mut self, now: u64) {
+        if self.settings.peek.track_change {
+            self.start_peek(Peek::new(PeekKind::TrackChanged, None, "", ""), now);
+        }
+    }
+
+    /// A pomodoro break completed: its line shows once nothing covers it.
+    pub(super) fn break_done(&mut self, now: u64) {
+        if self.settings.peek.break_quote {
+            self.quote_due = Some(now);
+        }
+    }
+
+    /// A Move mark of a running focus phase was crossed since the last
+    /// look, just now (not slept through), and the user is here.
+    fn focus_move(&self, prev_left: u64, cur: &Left, now: u64) -> bool {
+        if !self.move_counts_focus()
+            || self.away
+            || self.pomodoro.snapshot(now).phase != Phase::Focus
+            || prev_left <= cur.left_ms
+        {
+            return false;
+        }
+        let step = self.move_ms();
+        let before = cur.total_ms.saturating_sub(prev_left) / step;
+        let elapsed = cur.total_ms.saturating_sub(cur.left_ms);
+        elapsed / step > before && elapsed % step <= LATE_MS
+    }
+
+    /// Part of `settle_peeks` for a reminder counted in screen time. Away
+    /// (or off) its interval starts over.
+    fn screen_due(&mut self, which: ScreenTimer, now: u64) -> bool {
+        let (on, step) = match which {
+            ScreenTimer::Eye => (self.settings.peek.eye_break_mins > 0, self.eye_ms()),
+            ScreenTimer::Move => (
+                self.settings.peek.move_mins > 0
+                    && self.settings.peek.move_counts == CountTime::Screen,
+                self.move_ms(),
+            ),
+        };
+        let away = self.away;
+        let since = match which {
+            ScreenTimer::Eye => &mut self.eye_since,
+            ScreenTimer::Move => &mut self.move_since,
+        };
+        if !on || away {
+            *since = None;
+            return false;
+        }
+        let Some(start) = *since else {
+            *since = Some(now);
+            return false;
+        };
+        let due = start.saturating_add(step);
+        if now < due {
+            return false;
+        }
+        *since = Some(now);
+        now - due <= LATE_MS
+    }
+
     /// Part of `settle`: starts a peek when a running countdown crosses the
-    /// warning since the last look, and ends an expired peek.
+    /// warning or a Move mark since the last look, and ends an expired
+    /// peek.
     ///
     /// A crossing needs time left to go from above a mark to at or below it
     /// while running. Pausing keeps time left still, so pause and resume
     /// never repeat a peek; a new phase jumps back up, which arms it again.
     pub(super) fn settle_peeks(&mut self, now: u64) {
+        if let Some(ended) = self.peek.map(|p| p.until_ms).filter(|&t| t <= now) {
+            // What waited behind a nudge starts now, unless that was long
+            // ago (the Mac slept).
+            self.peek = self
+                .peek_next
+                .take()
+                .filter(|_| now - ended <= LATE_MS)
+                .map(|p| Peek {
+                    until_ms: now.saturating_add(p.kind.duration_ms()),
+                    ..p
+                });
+        }
         let warn = self.warn_ms();
+        let mut moved = false;
         for clock in CLOCKS {
             let i = Self::clock_index(clock);
             let cur = self.clock_left(clock, now);
@@ -154,17 +404,34 @@ impl Core {
             if !cur.running || cur.left_ms == 0 {
                 continue;
             }
-            if !(warn > 0 && cur.total_ms > 2 * warn && prev > warn && cur.left_ms <= warn) {
-                continue;
+            moved |= clock == Clock::Pomodoro && self.focus_move(prev, &cur, now);
+            if warn > 0 && cur.total_ms > 2 * warn && prev > warn && cur.left_ms <= warn {
+                self.start_peek(Peek::about(PeekKind::TimeWarning, clock), now);
             }
-            self.peek = Some(Peek {
-                kind: PeekKind::TimeWarning,
-                clock: Some(clock),
-                until_ms: now.saturating_add(PEEK_MS),
-            });
         }
-        if self.peek.is_some_and(|p| p.until_ms <= now) {
-            self.peek = None;
+        if self.screen_due(ScreenTimer::Eye, now) {
+            let eye = Peek::nudge(PeekKind::EyeBreak, EYE_BREAK_TITLE, EYE_BREAK_LINE);
+            self.start_peek(eye, now);
+        }
+        // After the eye break, so a Move falling at the same moment wins.
+        moved |= self.screen_due(ScreenTimer::Move, now);
+        if moved {
+            let i = move_line(now, self.move_last);
+            self.move_last = Some(i);
+            let (title, line) = MOVE_LINES[i];
+            self.start_peek(Peek::nudge(PeekKind::Move, title, line), now);
+        }
+        if let Some(at) = self.quote_due {
+            let covered = self.notify.current_banner().is_some()
+                || !self.agents.pending().is_empty()
+                || self.away;
+            if now.saturating_sub(at) > QUOTE_WAIT_MS {
+                self.quote_due = None;
+            } else if !covered {
+                self.quote_due = None;
+                let quote = Peek::nudge(PeekKind::Quote, QUOTE_TITLE, break_line(at));
+                self.start_peek(quote, now);
+            }
         }
     }
 
@@ -189,7 +456,22 @@ impl Core {
             if warn > 0 && left > warn && total_ms(clock) > 2 * warn {
                 times.push(Some(end.saturating_sub(warn)));
             }
+            if clock == Clock::Pomodoro
+                && self.move_counts_focus()
+                && !self.away
+                && self.pomodoro.is_focus_running()
+            {
+                // The next multiple of the interval into the phase, before
+                // its end.
+                let (total, step) = (total_ms(clock), self.move_ms());
+                let mark = (total.saturating_sub(left) / step + 1) * step;
+                if mark < total {
+                    times.push(end.checked_sub(total - mark));
+                }
+            }
         }
+        times.push(self.eye_since.map(|s| s.saturating_add(self.eye_ms())));
+        times.push(self.move_since.map(|s| s.saturating_add(self.move_ms())));
         times.into_iter().flatten().min()
     }
 
@@ -200,10 +482,13 @@ impl Core {
         media: &Option<MediaView>,
     ) -> Option<CompactView> {
         let peek = self.peek?;
-        let shown = match peek.clock {
-            None => playing_view(media)?,
-            Some(Clock::Pomodoro) => pomodoro_view(pomodoro)?,
-            Some(Clock::Timer) => self.timer_view()?,
+        let shown = match (peek.kind, peek.clock) {
+            (PeekKind::EyeBreak | PeekKind::Move | PeekKind::Quote, _) => {
+                view(ActivityKind::Nudge, peek.title, peek.text)
+            }
+            (_, None) => playing_view(media)?,
+            (_, Some(Clock::Pomodoro)) => pomodoro_view(pomodoro)?,
+            (_, Some(Clock::Timer)) => self.timer_view()?,
         };
         Some(CompactView {
             peek: Some(peek.kind),
@@ -449,5 +734,418 @@ mod tests {
         )
         .expect("settings with dropped keys");
         assert_eq!(newer.peek.time_warning_secs, 60);
+    }
+
+    /// A core with the Move reminder on.
+    fn moving(counts: CountTime) -> Core {
+        let mut c = Core::default();
+        with(
+            &mut c,
+            |s| {
+                s.peek.move_mins = 20;
+                s.peek.move_counts = counts;
+            },
+            T0,
+        );
+        c
+    }
+
+    /// A core with the eye break on every `mins`.
+    fn blinking(mins: u32) -> Core {
+        let mut c = Core::default();
+        with(&mut c, |s| s.peek.eye_break_mins = mins, T0);
+        c
+    }
+
+    /// Ticks at every deadline up to and including `until`, as the runtime
+    /// does.
+    fn run_to(c: &mut Core, until: u64) {
+        while let Some(t) = c.next_deadline().filter(|&t| t <= until) {
+            c.apply(Input::Tick, t);
+        }
+        c.apply(Input::Tick, until);
+    }
+
+    fn away(c: &mut Core, away: bool, now: u64) {
+        cmd(c, Command::ScreenAway { away }, now);
+    }
+
+    /// A 50-minute focus with no warning, so only Move peeks.
+    fn long_focus(c: &mut Core, now: u64) {
+        with(
+            c,
+            |s| {
+                s.pomodoro.focus_secs = 3000;
+                s.peek.time_warning_secs = 0;
+            },
+            now,
+        );
+        cmd(c, Command::PomodoroToggle, now);
+    }
+
+    #[test]
+    fn move_peeks_every_twenty_minutes_of_focus_with_another_kind_each_time() {
+        assert_eq!(
+            Core::default().settings().peek.move_mins,
+            0,
+            "off by default"
+        );
+        let mut c = moving(CountTime::Focus);
+        long_focus(&mut c, T0);
+        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN));
+        c.apply(Input::Tick, T0 + 20 * MIN);
+        let first = compact(&c, T0 + 20 * MIN);
+        assert_eq!(
+            (first.kind, first.peek),
+            (ActivityKind::Nudge, Some(PeekKind::Move))
+        );
+        assert!(MOVE_LINES.contains(&(first.title.as_str(), first.value.as_str())));
+        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN + NUDGE_MS));
+        c.apply(Input::Tick, T0 + 20 * MIN + NUDGE_MS);
+        assert_eq!(compact(&c, T0 + 20 * MIN + NUDGE_MS).peek, None);
+        assert_eq!(c.next_deadline(), Some(T0 + 40 * MIN), "fires once");
+        run_to(&mut c, T0 + 40 * MIN);
+        let second = compact(&c, T0 + 40 * MIN);
+        assert_eq!(second.peek, Some(PeekKind::Move));
+        assert_ne!(second.title, first.title, "shuffled to another kind");
+        run_to(&mut c, T0 + 40 * MIN + NUDGE_MS);
+        // No mark at the end of the phase: the break is coming.
+        assert_eq!(c.next_deadline(), Some(T0 + 50 * MIN));
+    }
+
+    #[test]
+    fn pausing_focus_does_not_repeat_a_move() {
+        let mut c = moving(CountTime::Focus);
+        long_focus(&mut c, T0);
+        run_to(&mut c, T0 + 20 * MIN + NUDGE_MS);
+        cmd(&mut c, Command::PomodoroToggle, T0 + 21 * MIN);
+        assert_eq!(c.next_deadline(), None, "paused: nothing to wake for");
+        cmd(&mut c, Command::PomodoroToggle, T0 + 31 * MIN);
+        assert_eq!(compact(&c, T0 + 31 * MIN).peek, None);
+        // 19 more minutes of focus to the next mark.
+        let next = T0 + 50 * MIN;
+        assert_eq!(c.next_deadline(), Some(next));
+        assert!(next > T0 + 31 * MIN, "deadlines are ahead");
+        c.apply(Input::Tick, next);
+        assert_eq!(compact(&c, next).peek, Some(PeekKind::Move));
+    }
+
+    #[test]
+    fn move_in_focus_only_counts_focus_and_can_be_turned_off() {
+        let mut c = moving(CountTime::Focus);
+        with(&mut c, |s| s.pomodoro.short_break_secs = 1800, T0);
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        run_to(&mut c, T0 + 26 * MIN);
+        assert_eq!(c.view(T0 + 26 * MIN).pomodoro.phase, Phase::ShortBreak);
+        run_to(&mut c, T0 + 54 * MIN);
+        assert_ne!(compact(&c, T0 + 54 * MIN).peek, Some(PeekKind::Move));
+        assert_eq!(c.next_deadline(), Some(T0 + 55 * MIN), "only the break end");
+
+        let mut c = moving(CountTime::Focus);
+        with(&mut c, |s| s.peek.move_mins = 0, T0);
+        long_focus(&mut c, T0);
+        assert_eq!(c.next_deadline(), Some(T0 + 50 * MIN));
+    }
+
+    #[test]
+    fn no_move_while_the_screen_is_locked_or_after_sleep() {
+        let mut c = moving(CountTime::Focus);
+        long_focus(&mut c, T0);
+        away(&mut c, true, T0 + 10 * MIN);
+        assert_eq!(c.next_deadline(), Some(T0 + 50 * MIN), "no wake while away");
+        c.apply(Input::Tick, T0 + 20 * MIN);
+        assert_eq!(compact(&c, T0 + 20 * MIN).peek, None);
+        away(&mut c, false, T0 + 30 * MIN);
+        assert_eq!(compact(&c, T0 + 30 * MIN).peek, None);
+        assert_eq!(c.next_deadline(), Some(T0 + 40 * MIN));
+
+        // The Mac slept through the mark: the tick comes late.
+        let mut c = moving(CountTime::Focus);
+        long_focus(&mut c, T0);
+        c.apply(Input::Tick, T0 + 23 * MIN);
+        assert_eq!(compact(&c, T0 + 23 * MIN).peek, None);
+        assert_eq!(c.next_deadline(), Some(T0 + 40 * MIN));
+    }
+
+    #[test]
+    fn move_can_count_screen_time() {
+        let mut c = moving(CountTime::Screen);
+        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN));
+        c.apply(Input::Tick, T0 + 20 * MIN);
+        assert_eq!(compact(&c, T0 + 20 * MIN).peek, Some(PeekKind::Move));
+        run_to(&mut c, T0 + 20 * MIN + NUDGE_MS);
+        assert_eq!(
+            compact(&c, T0 + 20 * MIN + NUDGE_MS).kind,
+            ActivityKind::Idle
+        );
+        assert_eq!(c.next_deadline(), Some(T0 + 40 * MIN));
+
+        // Locking starts the count over.
+        away(&mut c, true, T0 + 30 * MIN);
+        assert_eq!(c.next_deadline(), None);
+        away(&mut c, false, T0 + 35 * MIN);
+        assert_eq!(c.next_deadline(), Some(T0 + 55 * MIN));
+
+        // A sleep without word from the shell: late, so skipped.
+        c.apply(Input::Tick, T0 + 90 * MIN);
+        assert_eq!(compact(&c, T0 + 90 * MIN).peek, None);
+        assert_eq!(c.next_deadline(), Some(T0 + 110 * MIN));
+
+        with(&mut c, |s| s.peek.move_mins = 45, T0 + 91 * MIN);
+        assert_eq!(c.next_deadline(), Some(T0 + 135 * MIN));
+        with(
+            &mut c,
+            |s| s.peek.move_counts = CountTime::Focus,
+            T0 + 92 * MIN,
+        );
+        assert_eq!(c.next_deadline(), None, "no focus running");
+    }
+
+    #[test]
+    fn an_eye_break_is_a_quick_blink_every_few_minutes_at_the_screen() {
+        assert_eq!(
+            Core::default().settings().peek.eye_break_mins,
+            0,
+            "off by default"
+        );
+        let mut c = blinking(5);
+        assert_eq!(c.next_deadline(), Some(T0 + 5 * MIN));
+        c.apply(Input::Tick, T0 + 5 * MIN);
+        let v = compact(&c, T0 + 5 * MIN);
+        assert_eq!(
+            (v.kind, v.peek, v.title.as_str(), v.value.as_str()),
+            (
+                ActivityKind::Nudge,
+                Some(PeekKind::EyeBreak),
+                "Eye break",
+                "Look away"
+            )
+        );
+        assert_eq!(c.next_deadline(), Some(T0 + 5 * MIN + EYE_MS), "a glance");
+        c.apply(Input::Tick, T0 + 5 * MIN + EYE_MS);
+        assert_eq!(compact(&c, T0 + 5 * MIN + EYE_MS).peek, None);
+        assert_eq!(c.next_deadline(), Some(T0 + 10 * MIN), "once per interval");
+
+        // Away: no wake, and the count starts over on return.
+        away(&mut c, true, T0 + 7 * MIN);
+        assert_eq!(c.next_deadline(), None);
+        away(&mut c, false, T0 + 12 * MIN);
+        assert_eq!(c.next_deadline(), Some(T0 + 17 * MIN));
+        // Slept through: skipped.
+        c.apply(Input::Tick, T0 + 30 * MIN);
+        assert_eq!(compact(&c, T0 + 30 * MIN).peek, None);
+        assert_eq!(c.next_deadline(), Some(T0 + 35 * MIN));
+
+        with(&mut c, |s| s.peek.eye_break_mins = 0, T0 + 31 * MIN);
+        assert_eq!(c.next_deadline(), None);
+    }
+
+    #[test]
+    fn a_nudge_is_not_cut_short_and_what_came_with_it_follows() {
+        let mut c = moving(CountTime::Focus);
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        // 25-minute focus: the Move and the 5-minute warning both fall at
+        // 20 minutes.
+        c.apply(Input::Tick, T0 + 20 * MIN);
+        assert_eq!(compact(&c, T0 + 20 * MIN).peek, Some(PeekKind::Move));
+        play(&mut c, "Song", T0 + 20 * MIN + 1_000);
+        assert_eq!(
+            compact(&c, T0 + 20 * MIN + 1_000).peek,
+            Some(PeekKind::Move),
+            "a new track waits"
+        );
+        let after = T0 + 20 * MIN + NUDGE_MS;
+        c.apply(Input::Tick, after);
+        let v = compact(&c, after);
+        assert_eq!(
+            (v.kind, v.peek, v.title.as_str()),
+            (ActivityKind::Media, Some(PeekKind::TrackChanged), "Song"),
+            "the newest waiting peek"
+        );
+        assert_eq!(c.next_deadline(), Some(after + PEEK_MS));
+        c.apply(Input::Tick, after + PEEK_MS);
+        assert_eq!(compact(&c, after + PEEK_MS).peek, None);
+
+        // A nudge over a peek that has mostly shown does not bring it back.
+        let mut c = moving(CountTime::Screen);
+        play(&mut c, "Song", T0 + 20 * MIN - 3_000);
+        c.apply(Input::Tick, T0 + 20 * MIN);
+        assert_eq!(compact(&c, T0 + 20 * MIN).peek, Some(PeekKind::Move));
+        c.apply(Input::Tick, T0 + 20 * MIN + NUDGE_MS);
+        assert_eq!(compact(&c, T0 + 20 * MIN + NUDGE_MS).peek, None);
+    }
+
+    #[test]
+    fn a_move_wins_over_an_eye_break_at_the_same_moment() {
+        let mut c = moving(CountTime::Screen);
+        with(&mut c, |s| s.peek.eye_break_mins = 5, T0);
+        run_to(&mut c, T0 + 20 * MIN);
+        assert_eq!(compact(&c, T0 + 20 * MIN).peek, Some(PeekKind::Move));
+        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN + NUDGE_MS));
+    }
+
+    #[test]
+    fn a_peek_waiting_through_a_sleep_is_dropped() {
+        let mut c = moving(CountTime::Focus);
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        c.apply(Input::Tick, T0 + 20 * MIN);
+        // The warning waits behind the Move, then the Mac sleeps.
+        c.apply(Input::Tick, T0 + 22 * MIN);
+        assert_eq!(compact(&c, T0 + 22 * MIN).peek, None);
+    }
+
+    /// Runs a default pomodoro through its focus and short break; the break
+    /// ends at 30 minutes.
+    fn through_a_break(c: &mut Core) -> u64 {
+        cmd(c, Command::PomodoroToggle, T0);
+        // Breaks start by themselves.
+        run_to(c, T0 + 25 * MIN + 5_000);
+        let end = T0 + 30 * MIN;
+        assert_eq!(c.next_deadline(), Some(end));
+        c.apply(Input::Tick, end);
+        end
+    }
+
+    #[test]
+    fn a_line_follows_the_break_over_banner() {
+        let mut c = Core::default();
+        let end = through_a_break(&mut c);
+        let v = compact(&c, end);
+        assert_eq!(
+            (v.kind, v.title.as_str()),
+            (ActivityKind::Banner, "Break over"),
+            "the banner first"
+        );
+        let shown = end + 5_000;
+        assert_eq!(c.next_deadline(), Some(shown));
+        c.apply(Input::Tick, shown);
+        let v = compact(&c, shown);
+        assert_eq!(
+            (v.kind, v.peek, v.title.as_str()),
+            (ActivityKind::Nudge, Some(PeekKind::Quote), "Break over")
+        );
+        assert_eq!(v.value, break_line(end));
+        assert!(BREAK_LINES.contains(&v.value.as_str()));
+        assert_eq!(c.next_deadline(), Some(shown + NUDGE_MS));
+        c.apply(Input::Tick, shown + NUDGE_MS);
+        assert_eq!(compact(&c, shown + NUDGE_MS).peek, None);
+        assert_eq!(c.next_deadline(), None, "once");
+        // Starting the next focus brings no second line.
+        cmd(&mut c, Command::PomodoroToggle, shown + MIN);
+        assert_eq!(compact(&c, shown + MIN).peek, None);
+    }
+
+    #[test]
+    fn no_line_after_a_skipped_break_or_with_it_off() {
+        let mut c = Core::default();
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        cmd(&mut c, Command::PomodoroSkip, T0 + MIN);
+        cmd(&mut c, Command::PomodoroSkip, T0 + 2 * MIN);
+        run_to(&mut c, T0 + 3 * MIN);
+        assert_eq!(compact(&c, T0 + 3 * MIN).peek, None);
+
+        let mut c = Core::default();
+        with(&mut c, |s| s.peek.break_quote = false, T0);
+        let end = through_a_break(&mut c);
+        run_to(&mut c, end + 6_000);
+        assert_eq!(compact(&c, end + 6_000).peek, None);
+    }
+
+    #[test]
+    fn a_line_waits_for_an_approval_but_not_forever() {
+        let mut c = Core::default();
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        run_to(&mut c, T0 + 25 * MIN + 5_000);
+        // It expires 120 s later, 90 s after the break ends.
+        approval(&mut c, T0 + 29 * MIN + 30_000);
+        let end = T0 + 30 * MIN;
+        run_to(&mut c, end + 30_000);
+        assert_eq!(compact(&c, end + 30_000).kind, ActivityKind::Approval);
+        // Over a minute after the break the line is dropped.
+        let gone = end + 90_000;
+        run_to(&mut c, gone);
+        let v = compact(&c, gone);
+        assert_ne!(v.kind, ActivityKind::Approval, "expired");
+        assert_eq!(v.peek, None);
+        run_to(&mut c, gone + MIN);
+        assert_eq!(compact(&c, gone + MIN).peek, None);
+    }
+
+    #[test]
+    fn a_line_waits_while_away() {
+        let mut c = Core::default();
+        let end = through_a_break(&mut c);
+        away(&mut c, true, end + 1_000);
+        run_to(&mut c, end + 10_000);
+        assert_eq!(compact(&c, end + 10_000).peek, None);
+        away(&mut c, false, end + 20_000);
+        assert_eq!(compact(&c, end + 20_000).peek, Some(PeekKind::Quote));
+    }
+
+    #[test]
+    fn break_lines_are_short_distinct_and_picked_by_the_moment() {
+        for line in BREAK_LINES {
+            assert!(line.chars().count() <= 30, "{line}");
+        }
+        let mut sorted = BREAK_LINES.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), BREAK_LINES.len());
+        assert_eq!(break_line(0), BREAK_LINES[0]);
+        assert_eq!(break_line(1_999), BREAK_LINES[1]);
+        assert_eq!(break_line(20_000), BREAK_LINES[0]);
+    }
+
+    #[test]
+    fn move_lines_take_turns_and_never_repeat_a_kind() {
+        for (i, (kind, line)) in MOVE_LINES.iter().enumerate() {
+            assert_eq!(*kind, ["Stretch", "Walk", "Water"][i % 3]);
+            assert!(line.chars().count() <= 30, "{line}");
+        }
+        assert_eq!(move_line(0, None), 0);
+        assert_eq!(move_line(0, Some(3)), 1, "same kind as last: the next one");
+        assert_eq!(move_line(5_000, Some(0)), 5);
+        assert_eq!(move_line(5_000, Some(2)), 0, "wraps around");
+        for at in 0..12 {
+            for last in 0..MOVE_LINES.len() {
+                assert_ne!(move_line(at * 1000, Some(last)) % 3, last % 3);
+            }
+        }
+    }
+
+    #[test]
+    fn reminder_settings_are_clamped_and_load_from_old_files() {
+        let mut c = Core::default();
+        with(
+            &mut c,
+            |s| {
+                s.peek.eye_break_mins = 999;
+                s.peek.move_mins = 1;
+            },
+            T0,
+        );
+        assert_eq!(c.settings().peek.eye_break_mins, 60);
+        assert_eq!(c.settings().peek.move_mins, 5);
+        with(&mut c, |s| s.peek.move_mins = 9_999, T0);
+        assert_eq!(c.settings().peek.move_mins, 180);
+        with(&mut c, |s| s.peek.eye_break_mins = 0, T0);
+        assert_eq!(c.settings().peek.eye_break_mins, 0, "0 stays off");
+
+        let old: PeekConfig =
+            serde_json::from_value(json!({"track_change":false})).expect("old peek settings");
+        assert_eq!(
+            (
+                old.eye_break_mins,
+                old.move_mins,
+                old.move_counts,
+                old.break_quote
+            ),
+            (0, 0, CountTime::Focus, true)
+        );
+        let t: CountTime = serde_json::from_value(json!("screen")).expect("count time");
+        assert_eq!(t, CountTime::Screen);
+        let cmd: Command =
+            serde_json::from_str(r#"{"cmd":"screen_away","away":true}"#).expect("command");
+        assert_eq!(cmd, Command::ScreenAway { away: true });
     }
 }

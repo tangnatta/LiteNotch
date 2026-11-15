@@ -107,6 +107,28 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   not held by focus. A countdown peek fires when time left crosses the
   mark while running; pausing keeps time left still, so it never repeats.
   Warning times join `next_deadline`, so peeks add no polling.
+  Three wellbeing peeks (`ActivityKind::Nudge`), each with an Off choice
+  in Settings › Timer:
+  the eye break (`peek.eye_break_mins`, 0 = off, the default; every few
+  minutes of screen time), a quick blinking `>_<` with "Look away" for 3 s
+  (`EYE_MS`) so the user blinks; the Move reminder (`peek.move_mins`, 0 =
+  off, the default; `move_counts`: Focus = time into a running focus
+  phase, tied to focus rather than the wall clock so it is not ignored as
+  background noise, or Screen = time the screen is on), one of
+  `MOVE_LINES` (stretch, walk, water) picked from `now_ms` and never the
+  same kind twice in a row, 8 s (`NUDGE_MS`) so its line can scroll; and a
+  line after a completed (not skipped) break (`peek.break_quote`, on by
+  default), one of `BREAK_LINES` picked from `now_ms`, which waits until
+  the "Break over" banner (or an approval) is gone and is dropped after
+  60 s. A nudge is not cut short: a countdown or track peek arriving
+  meanwhile waits and follows it (with a 25-minute focus and Move every
+  20, the Move and the 5-minute warning both fall at 20 minutes); when
+  the eye break and Move fall together, Move shows. The shell reports the
+  screen locked, the displays or the Mac asleep, or another user's
+  session in front (`ScreenPresenceObserver`, system notifications, no
+  polling) as `screen_away`; reminders are skipped then and screen-time
+  counts start over. A mark seen over 60 s late was slept through and is
+  skipped too, so it needs no word from the shell.
 - **Shell layout.** Tabs: Home (dashboard: now playing, timer, agents,
   inbox), Music, Timer, Clipboard, Agents (Sessions | Usage) on the left of
   the notch; keep-awake toggle (cup icon), Inbox, Settings on the right.
@@ -340,7 +362,8 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   did this once it had ten entries. `OverflowTests` checks every tab,
   pane and Settings section; add new ones there.
 - Anything that moves continuously in the shell (the equaliser bars, the
-  scrolling title of a track-change peek, `MarqueeText`) must be
+  scrolling title of a track-change peek, `MarqueeText`, the eye-break
+  face's blink, `BlinkingFaceNSView`) must be
   a Core Animation layer animation, not a SwiftUI animation: the SwiftUI
   version re-rendered the notch every frame and cost 9 % CPU while music
   played. `scripts/bench.sh` only measures idle, so check by hand with

@@ -289,6 +289,23 @@ struct SettingsTab: View {
             SegmentedPill(options: [(0, "Off"), (60, "1"), (180, "3"), (300, "5"), (600, "10 min")],
                           selection: $draft.peek.timeWarningSecs, label: "Heads-up before it ends", height: 22)
         }
+        Hairline().padding(.vertical, 2)
+        wideRow("Eye break", caption: "A quick blink and look away.") {
+            SegmentedPill(options: [(0, "Off"), (5, "5"), (10, "10"), (15, "15"), (20, "20 min")],
+                          selection: $draft.peek.eyeBreakMins, label: "Eye break", height: 22)
+        }
+        wideRow("Move", caption: "Stretch, walk or drink water.") {
+            SegmentedPill(options: [(0, "Off"), (20, "20"), (30, "30"), (45, "45"), (60, "60 min")],
+                          selection: $draft.peek.moveMins, label: "Move", height: 22)
+        }
+        if draft.peek.moveMins > 0 {
+            row("Count", caption: draft.peek.moveCounts == .screen ? "Time at the Mac." : "Focus time only.") {
+                SegmentedPill(options: [(CountTime.focus, "In focus"), (.screen, "At the Mac")],
+                              selection: $draft.peek.moveCounts, label: "Move counts", height: 22)
+            }
+        }
+        toggle("A few words after a break", $draft.peek.breakQuote,
+               caption: "The closed notch shows a short line of encouragement when a break ends.")
     }
 
     @ViewBuilder private var music: some View {

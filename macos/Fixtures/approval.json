@@ -455,7 +455,11 @@
     },
     "peek": {
       "track_change": true,
-      "time_warning_secs": 300
+      "time_warning_secs": 300,
+      "eye_break_mins": 0,
+      "move_mins": 0,
+      "move_counts": "focus",
+      "break_quote": true
     }
   }
 }

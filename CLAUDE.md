@@ -71,8 +71,18 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   working agent; deadlines other people wait on, then ones the user set,
   then things that are merely on), those in `notch.hidden` left out. The
   first is `compact`; with `notch.two_places` the second is
-  `compact_secondary`. `waiting` (the dot, `notch.waiting_dot`) is true
+  `compact_secondary`. `waiting` (the dot, `notch.waiting_dot`, agents only) is true
   while a session is `WaitingInput` or an agent notification is unread.
+  `agent_seen` clears it for one session until that session's next hook
+  event: the shell sends it when the session or its notice is clicked,
+  and when the session's terminal comes to the front
+  (`AgentAttentionObserver`: on app activation and when a session starts
+  waiting, never on a timer). For Terminal and iTerm2 it asks which tab
+  is in front and clears only the session on that device; where that
+  cannot be told (another terminal, or control not yet allowed, which is
+  checked without ever raising the permission question) the app being in
+  front counts for all its waiting sessions. Switching tabs inside a
+  terminal that is already in front is not noticed.
   The shell draws one activity exactly as before (icon left, value right);
   two as icon + time on each side, the second dimmed
   (`ClosedActivityView`, widths in `NotchGeometry.wingWidth(for:floating:)`).
@@ -299,7 +309,8 @@ scripts/         build-app.sh, bench.sh, coverage.sh
     whether LiteNotch may read the calendars.
   - With that permission LiteNotch could tell the terminal to do anything,
     so the scripts it sends are fixed text that only select a tab and raise
-    a window (no `do script`, no `write text`; tested). The terminal device
+    a window, or only read which tab is in front (no `do script`, no
+    `write text`; tested). The terminal device
     is accepted only as `ttys` plus one to four digits, in the core and
     again in the shell, and is passed to `osascript` as an argument, never
     written into a script. The CLI drops any `litenotch_tty` already in a

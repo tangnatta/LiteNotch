@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var panel = NotchPanelController(model: model)
     private lazy var systemNotifications = SystemNotificationObserver(model: model)
     private lazy var calendar = CalendarObserver(model: model)
+    private lazy var attention = AgentAttentionObserver(model: model)
     private var started = false
     private var dstWork: DispatchWorkItem?
     private var signalSources: [DispatchSourceSignal] = []
@@ -40,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.show()
         model.onResetAccessibility = { [weak self] in self?.systemNotifications.resetPermission() }
         systemNotifications.start()
+        attention.start()
         // A benchmark run supplies its own events and must not put up the
         // calendar permission question.
         if !Bench.scripted { calendar.start() }
@@ -62,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         guard started else { return }
         systemNotifications.stop()
+        attention.stop()
         calendar.stop()
         ln_stop()
     }

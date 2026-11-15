@@ -1679,6 +1679,21 @@ final class ReportedIssueTests: XCTestCase {
     /// Reported: a typed number was lost unless Return was pressed. A click
     /// anywhere but the field ends the typing (keeping the number); a click
     /// in the field, to move the caret, does not.
+    func testATypedStepperNumberIsKeptAsItIsTypedWithoutReturn() {
+        // Typing 4 then 5 over a 12: each keystroke that makes a number sets it.
+        XCTAssertEqual(MiniStepper.liveValue("4", current: 12, range: 1...240), 4)
+        XCTAssertEqual(MiniStepper.liveValue("45", current: 4, range: 1...240), 45)
+        // Nothing to set: unchanged, emptied while retyping, or not typing.
+        XCTAssertNil(MiniStepper.liveValue("45", current: 45, range: 1...240))
+        XCTAssertNil(MiniStepper.liveValue("", current: 45, range: 1...240))
+        XCTAssertNil(MiniStepper.liveValue(nil, current: 45, range: 1...240))
+        // Out of range is brought into it at once.
+        XCTAssertEqual(MiniStepper.liveValue("999", current: 45, range: 1...240), 240)
+        // Reported: the number looked grey while editing. The field starts
+        // with the value as real text, not empty over a placeholder.
+        XCTAssertEqual(MiniStepper.startingText(12), "12")
+    }
+
     func testAClickOutsideTheStepperFieldEndsTheTyping() {
         // The field at x 100–134, 40–62 pt below the top of a 300 pt window.
         let field = CGRect(x: 100, y: 40, width: 34, height: 22)

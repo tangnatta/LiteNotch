@@ -1,3 +1,4 @@
+import CoreServices
 import Foundation
 
 /// Brings forward the terminal window and tab a Claude Code session runs
@@ -76,6 +77,79 @@ public enum TerminalWindow {
         return "none"
     end run
     """
+
+    // MARK: Which tab is in front
+
+    /// A script that only reads: it prints the device of the tab in front
+    /// (`/dev/ttys003`), or `none`. Nil for apps that cannot be asked.
+    public static func frontScript(bundleId: String) -> String? {
+        switch bundleId {
+        case "com.apple.Terminal": return terminalFrontScript
+        case "com.googlecode.iterm2": return iTermFrontScript
+        default: return nil
+        }
+    }
+
+    static let terminalFrontScript = """
+    tell application id "com.apple.Terminal"
+        if (count of windows) is 0 then return "none"
+        return tty of selected tab of front window
+    end tell
+    """
+
+    static let iTermFrontScript = """
+    tell application id "com.googlecode.iterm2"
+        if (count of windows) is 0 then return "none"
+        return tty of current session of current window
+    end tell
+    """
+
+    /// `ttys003` from what a front script printed; nil for anything else.
+    public static func ttyName(fromOutput output: String) -> String? {
+        let line = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard line.hasPrefix("/dev/") else { return nil }
+        let name = String(line.dropFirst(5))
+        return validTTY(name) ? name : nil
+    }
+
+    /// Whether the user has already allowed LiteNotch to control this app.
+    /// Never asks: looking at a terminal must not put up a permission
+    /// question. May take a moment, so not for the main thread.
+    public static func alreadyAllowed(bundleId: String) -> Bool {
+        var target = AEDesc()
+        let made = Array(bundleId.utf8).withUnsafeBytes {
+            AECreateDesc(typeApplicationBundleID, $0.baseAddress, $0.count, &target)
+        }
+        guard made == noErr else { return false }
+        defer { AEDisposeDesc(&target) }
+        return AEDeterminePermissionToAutomateTarget(&target, typeWildCard, typeWildCard, false) == noErr
+    }
+
+    /// Asks the terminal which tab is in front. `done` gets its device on
+    /// the main queue, or nil when that cannot be told (another terminal,
+    /// no permission yet, no window, or no answer within two seconds).
+    public static func frontTTY(bundleId: String, done: @escaping (String?) -> Void) {
+        guard let script = frontScript(bundleId: bundleId) else { return done(nil) }
+        DispatchQueue.global(qos: .utility).async {
+            let finish: (String?) -> Void = { tty in DispatchQueue.main.async { done(tty) } }
+            guard alreadyAllowed(bundleId: bundleId) else { return finish(nil) }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", script]
+            process.environment = [:]
+            let out = Pipe()
+            process.standardOutput = out
+            process.standardError = FileHandle.nullDevice
+            process.standardInput = FileHandle.nullDevice
+            do { try process.run() } catch { return finish(nil) }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+                if process.isRunning { process.terminate() }
+            }
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            finish(process.terminationStatus == 0 ? ttyName(fromOutput: String(decoding: data, as: UTF8.self)) : nil)
+        }
+    }
 
     /// How long the script may take before the app is activated anyway.
     /// The script keeps running after that (the first time, macOS shows its

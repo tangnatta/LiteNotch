@@ -3651,12 +3651,16 @@ mod tests {
         let json = serde_json::to_value(c.view(T0).settings.appearance).unwrap();
         assert_eq!(
             json,
-            json!({"theme":"light","accent":DEFAULT_ACCENT,"notch_style":"floating","closed_notch":"dark","material":"solid"})
+            json!({"theme":"light","accent":DEFAULT_ACCENT,"notch_style":"floating","closed_notch":"dark","material":"solid","shrink":"off"})
         );
         // Settings saved before the field existed load as the original look.
         let old: Appearance =
             serde_json::from_value(json!({"theme":"dark","accent":"#000000"})).unwrap();
         assert_eq!(old.notch_style, NotchStyle::Attached);
+        assert_eq!(old.shrink, Shrink::Off);
+        let when_empty: Appearance =
+            serde_json::from_value(json!({"shrink":"when_empty"})).unwrap();
+        assert_eq!(when_empty.shrink, Shrink::WhenEmpty);
     }
 
     #[test]

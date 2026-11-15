@@ -47,6 +47,7 @@ pub enum Feature {
     MeetingFinish,
     ColorPick,
     TimerStart,
+    CalendarAlert,
 }
 
 impl Feature {
@@ -82,6 +83,7 @@ impl Feature {
             Feature::MeetingFinish => "meeting_finish",
             Feature::ColorPick => "color_pick",
             Feature::TimerStart => "timer_start",
+            Feature::CalendarAlert => "calendar_alert",
         }
     }
 }

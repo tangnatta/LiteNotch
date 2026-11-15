@@ -41,6 +41,9 @@ public enum SnapshotRenderer {
                     try add("floating-notchless-pomodoro-expanded-home", floating, notchless: true)
                 }
             }
+            if name == "calendar" {
+                try add("calendar-expanded-settings-calendar", vm, tab: .settings, section: .calendar)
+            }
             if name == "approval" {
                 var long = vm
                 long.agents.pending[0].truncated = true

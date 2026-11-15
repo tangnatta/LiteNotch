@@ -336,6 +336,9 @@
       1800
     ]
   },
+  "calendar": {
+    "events": []
+  },
   "colors": [],
   "analytics": [
     {
@@ -412,6 +415,11 @@
     "analytics": {
       "enabled": true,
       "share": false
+    },
+    "calendar": {
+      "enabled": false,
+      "alert_minutes": 5,
+      "alert_at_start": true
     }
   }
 }

@@ -62,6 +62,8 @@ public enum ShellCommand: Equatable {
     case media(MediaAction)
     /// Another app's notification, captured by `SystemNotificationObserver`.
     case notifySystem(app: String, title: String, body: String)
+    /// The upcoming events, read by `CalendarObserver`; replaces the last list.
+    case calendarEvents([CalendarEventInput])
     case agentDecide(requestId: String, decision: Decision)
     case caffeineToggle
     case caffeineActivate(mode: AwakeMode, durationSecs: Int?)
@@ -117,6 +119,7 @@ public enum ShellCommand: Equatable {
         case .media(let a): return c("media", ["action": a.rawValue])
         case .notifySystem(let app, let title, let body):
             return c("notify_system", ["app": app, "title": title, "body": body])
+        case .calendarEvents(let events): return c("calendar_events", ["events": events.map(\.object)])
         case .agentDecide(let id, let d): return c("agent_decide", ["request_id": id, "decision": d.rawValue])
         case .caffeineToggle: return c("caffeine_toggle")
         case .caffeineActivate(let mode, let secs):
@@ -157,7 +160,7 @@ public enum ShellCommand: Equatable {
 
 /// Categories of the Settings tab.
 public enum SettingsSection: String, CaseIterable, Equatable {
-    case general, timer, music, notifications, clipboard, agents, keepAwake, privacy
+    case general, timer, music, notifications, calendar, clipboard, agents, keepAwake, privacy
 }
 
 /// The two halves of the Agents tab.
@@ -207,6 +210,8 @@ public final class AppModel: ObservableObject {
     /// True while "show other apps' notifications" is on but LiteNotch has
     /// not been allowed under Privacy & Security › Accessibility.
     @Published public var accessibilityNeeded = false
+    /// Whether the calendars may be read; set by `CalendarObserver`.
+    @Published public var calendarAccess: CalendarAccess = .unknown
     /// One per notch; the first always exists (tests and snapshots use it).
     @Published public private(set) var panels: [PanelState] = []
     /// Fires whenever any panel goes from closed to open.
@@ -223,6 +228,13 @@ public final class AppModel: ObservableObject {
     /// What "Open Settings" (Accessibility permission) does.
     public var onOpenAccessibilitySettings: () -> Void = {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// What "Open Settings" (calendar permission) does.
+    public var onOpenCalendarSettings: () -> Void = {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
             NSWorkspace.shared.open(url)
         }
     }
@@ -427,6 +439,7 @@ public final class PanelState: ObservableObject {
 
     public var view: ViewModel? { app?.view }
     public var accessibilityNeeded: Bool { app?.accessibilityNeeded ?? false }
+    public var calendarAccess: CalendarAccess { app?.calendarAccess ?? .unknown }
 
     public func send(_ command: ShellCommand) { app?.send(command) }
 

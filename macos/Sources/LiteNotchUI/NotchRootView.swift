@@ -168,6 +168,8 @@ struct ClosedActivityView: View {
             Image(systemName: "hourglass").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
         case .meeting:
             Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold)).foregroundStyle(NT.accentText)
+        case .calendar:
+            Image(systemName: "calendar").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
         case .approval:
             Circle().fill(NT.accentText).frame(width: 9, height: 9)
         case .banner:
@@ -201,7 +203,7 @@ struct ClosedActivityView: View {
             }
         case .agent:
             VText(compact.title).wingText(mono: false)
-        case .timer:
+        case .timer, .calendar:
             if let end = compact.endsAtMs {
                 EverySecond { now in
                     VText(Format.countdown(seconds: Format.secondsLeft(until: end, nowMs: now)))

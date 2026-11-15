@@ -17,7 +17,7 @@ private func decodeLenient<E: LenientEnum>(_ decoder: Decoder) throws -> E {
 }
 
 public enum ActivityKind: String, LenientEnum {
-    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, unknown
+    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, calendar, unknown
     static var unknownCase: ActivityKind { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
@@ -279,6 +279,16 @@ public struct AnalyticsConfig: Codable, Equatable {
     public var share: Bool
 }
 
+/// Mirrors `calendar::CalendarConfig`.
+public struct CalendarConfig: Codable, Equatable {
+    public var enabled: Bool
+    /// Minutes before an event to remind; 0 for no reminder.
+    public var alertMinutes: Int
+    public var alertAtStart: Bool
+
+    public static let `default` = CalendarConfig(enabled: false, alertMinutes: 5, alertAtStart: true)
+}
+
 public struct Settings: Codable, Equatable {
     public var general: GeneralSettings
     public var appearance: AppearanceConfig
@@ -289,6 +299,7 @@ public struct Settings: Codable, Equatable {
     public var caffeine: CaffeineConfig
     public var agent: AgentConfig
     public var analytics: AnalyticsConfig
+    public var calendar: CalendarConfig
 }
 
 extension Settings {
@@ -303,6 +314,7 @@ extension Settings {
         caffeine = try c.decode(CaffeineConfig.self, forKey: .caffeine)
         agent = try c.decode(AgentConfig.self, forKey: .agent)
         analytics = try c.decode(AnalyticsConfig.self, forKey: .analytics)
+        calendar = (try? c.decodeIfPresent(CalendarConfig.self, forKey: .calendar)) ?? .default
     }
 }
 
@@ -645,6 +657,35 @@ public enum TimerRunState: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// One upcoming (or running) calendar event.
+public struct CalendarEvent: Codable, Equatable, Identifiable {
+    public var id: String
+    public var title: String
+    public var startMs: Int
+    public var endMs: Int
+    public var calendar: String
+    /// The calendar's colour, `#RRGGBB`.
+    public var color: String?
+    public var location: String
+
+    public init(id: String, title: String, startMs: Int, endMs: Int, calendar: String = "",
+                color: String? = nil, location: String = "") {
+        self.id = id; self.title = title; self.startMs = startMs; self.endMs = endMs
+        self.calendar = calendar; self.color = color; self.location = location
+    }
+}
+
+public struct CalendarView: Codable, Equatable {
+    /// Soonest first; may still hold one that ended since it was sent.
+    public var events: [CalendarEvent]
+    public static let empty = CalendarView(events: [])
+
+    /// The event to show at `nowMs`: the first that has not ended.
+    public func current(nowMs: Int) -> CalendarEvent? { events.first { $0.endMs > nowMs } }
+    /// How many more follow it.
+    public func later(nowMs: Int) -> Int { max(0, events.filter { $0.endMs > nowMs }.count - 1) }
+}
+
 /// The plain countdown timer.
 public struct CountdownView: Codable, Equatable {
     public var durationSecs: Int
@@ -727,6 +768,7 @@ public struct ViewModel: Codable, Equatable {
     public var caffeine: CaffeineView
     public var meeting: MeetingView
     public var timer: CountdownView
+    public var calendar: CalendarView
     /// Colours picked from the screen, newest first.
     public var colors: [String]
     public var analytics: [FeatureCount]
@@ -748,6 +790,7 @@ extension ViewModel {
         caffeine = try c.decode(CaffeineView.self, forKey: .caffeine)
         meeting = (try? c.decodeIfPresent(MeetingView.self, forKey: .meeting)) ?? .empty
         timer = (try? c.decodeIfPresent(CountdownView.self, forKey: .timer)) ?? .empty
+        calendar = (try? c.decodeIfPresent(CalendarView.self, forKey: .calendar)) ?? .empty
         colors = (try? c.decodeIfPresent([String].self, forKey: .colors)) ?? []
         analytics = try c.decode([FeatureCount].self, forKey: .analytics)
         settings = try c.decode(Settings.self, forKey: .settings)

@@ -7,5 +7,10 @@
          (TerminalWindow.swift). Nothing else is relaxed. -->
     <key>com.apple.security.automation.apple-events</key>
     <true/>
+    <!-- Lets macOS ask the user whether LiteNotch may read the calendars
+         (CalendarObserver.swift); under the hardened runtime the request is
+         refused without it. -->
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
 </dict>
 </plist>

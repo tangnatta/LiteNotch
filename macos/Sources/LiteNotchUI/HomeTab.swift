@@ -16,6 +16,10 @@ struct HomeTab: View {
             VStack(spacing: 0) {
                 timerRow
                 Hairline()
+                if vm.settings.calendar.enabled {
+                    calendarRow
+                    Hairline()
+                }
                 agentsRow
                 Hairline()
                 inboxRow
@@ -183,6 +187,56 @@ struct HomeTab: View {
         .opens("Timer", model) { model.openTimer(.focus) }
     }
 
+    /// The next event (or the one running). Shown only while the calendar
+    /// is on; a click opens the Calendar app, or the setting when access is
+    /// missing.
+    private var calendarRow: some View {
+        EverySecond(interval: 20) { now in
+            let event = vm.calendar.current(nowMs: now)
+            let later = vm.calendar.later(nowMs: now)
+            let denied = model.calendarAccess == .denied
+            let near = event.map { $0.startMs - now <= max(1, vm.settings.calendar.alertMinutes) * 60_000 } ?? false
+            HomeRow(symbol: "calendar", tint: near ? NT.accent : NT.text2) {
+                if denied {
+                    Text(verbatim: "Calendar needs permission").nfont(.emphasis).foregroundStyle(NT.text2).lineLimit(1)
+                    Text(verbatim: "Open Settings \u{203A} Calendar").nfont(.caption).foregroundStyle(NT.text3).lineLimit(1)
+                } else if let e = event {
+                    HStack(spacing: 5) {
+                        if let hex = e.color {
+                            Circle().fill(NT.color(hex)).frame(width: 6, height: 6).accessibilityHidden(true)
+                        }
+                        VText(e.title).nfont(.emphasis).foregroundStyle(NT.text1).lineLimit(1)
+                    }
+                    VText(CalendarText.detail(e, nowMs: now))
+                        .nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
+                } else {
+                    Text(verbatim: "No upcoming events").nfont(.emphasis).foregroundStyle(NT.text2).lineLimit(1)
+                    Text(verbatim: "Nothing in the next two days").nfont(.caption).foregroundStyle(NT.text3).lineLimit(1)
+                }
+            } trailing: {
+                if !denied, let e = event {
+                    Text(verbatim: Format.startsIn(startMs: e.startMs, nowMs: now))
+                        .nfont(.caption).monospacedDigit()
+                        .foregroundStyle(near ? NT.accentText : NT.text3).lineLimit(1).fixedSize()
+                    if later > 0 {
+                        Text(verbatim: "+\(later)")
+                            .nfont(.caption).monospacedDigit().foregroundStyle(NT.text3).lineLimit(1).fixedSize()
+                            .help(later == 1 ? "1 more event after this" : "\(later) more events after this")
+                    }
+                }
+                Chevron()
+            }
+            .opens(denied ? "calendar settings" : "Calendar", model) {
+                if denied {
+                    model.settingsSection = .calendar
+                    model.selectTab(.settings)
+                } else {
+                    model.follow(.app(bundleId: CalendarText.appBundleId, tty: nil))
+                }
+            }
+        }
+    }
+
     private var agentsRow: some View {
         let waiting = vm.agents.sessions.contains { $0.status == .waitingApproval || $0.status == .waitingInput }
         let detail = Format.agentsDetail(vm.usage)
@@ -274,5 +328,19 @@ private extension View {
             .onTapGesture(perform: go)
             .help("Open \(name)")
             .accessibilityAction(named: Text(verbatim: "Open \(name)"), go)
+    }
+}
+
+/// Text for a calendar event; pure so it can be unit tested.
+public enum CalendarText {
+    /// Apple's Calendar app, which a click on the event opens.
+    public static let appBundleId = "com.apple.iCal"
+
+    /// The times, then the place if there is one.
+    public static func detail(_ e: CalendarEvent, nowMs: Int, calendar: Calendar = .current,
+                              locale: Locale = .current) -> String {
+        let time = Format.eventTime(startMs: e.startMs, endMs: e.endMs, nowMs: nowMs,
+                                    calendar: calendar, locale: locale)
+        return e.location.isEmpty ? time : "\(time) \u{b7} \(e.location)"
     }
 }

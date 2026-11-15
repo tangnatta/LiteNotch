@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var model = AppModel(bridge: bridge)
     private lazy var panel = NotchPanelController(model: model)
     private lazy var systemNotifications = SystemNotificationObserver(model: model)
+    private lazy var calendar = CalendarObserver(model: model)
     private var started = false
     private var dstWork: DispatchWorkItem?
     private var signalSources: [DispatchSourceSignal] = []
@@ -39,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.show()
         model.onResetAccessibility = { [weak self] in self?.systemNotifications.resetPermission() }
         systemNotifications.start()
+        // A benchmark run supplies its own events and must not put up the
+        // calendar permission question.
+        if !Bench.scripted { calendar.start() }
         Bench.run(model: model)
         quitCleanlyOnSignals()
     }
@@ -58,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         guard started else { return }
         systemNotifications.stop()
+        calendar.stop()
         ln_stop()
     }
 
@@ -106,6 +111,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 enum Bench {
     private static let env = ProcessInfo.processInfo.environment
     private static var enabled: Bool { !(env["LITENOTCH_DATA_DIR"] ?? "").isEmpty }
+
+    /// True when start-up commands were given: a scripted run.
+    static var scripted: Bool { enabled && !(env["LITENOTCH_BENCH_COMMANDS"] ?? "").isEmpty }
 
     /// A stand-in now-playing helper (the benchmark's "music is playing").
     static var nowPlayingLib: String? {

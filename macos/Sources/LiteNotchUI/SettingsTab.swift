@@ -85,28 +85,39 @@ struct SettingsTab: View {
 
     // MARK: Sidebar
 
+    /// Scrolls: with more sections than fit, a fixed column made the whole
+    /// tab taller than the panel and cut off the bottom of the pane beside it.
     private var sidebar: some View {
-        VStack(spacing: 2) {
-            ForEach(SettingsSection.allCases, id: \.self) { s in
-                let on = s == model.settingsSection
-                Button { model.settingsSection = s } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: s.symbol).glyph(11)
-                            .frame(width: 16)
-                        Text(verbatim: s.title).nfont(on ? .emphasis : .body).lineLimit(1)
-                        Spacer(minLength: 0)
+        ScrollViewReader { proxy in
+            NotchScroll {
+                VStack(spacing: 2) {
+                    ForEach(SettingsSection.allCases, id: \.self) { s in
+                        let on = s == model.settingsSection
+                        Button { model.settingsSection = s } label: {
+                            HStack(spacing: 7) {
+                                Image(systemName: s.symbol).glyph(11)
+                                    .frame(width: 16)
+                                Text(verbatim: s.title).nfont(on ? .emphasis : .body).lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .foregroundStyle(on ? NT.text1 : NT.text2)
+                            .padding(.horizontal, 8)
+                            .frame(height: 24)
+                            .background(on ? NT.fillHi : Color.clear, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
+                            .contentShape(Rectangle())
+                            .rowHover(inset: 0)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                        .id(s)
                     }
-                    .foregroundStyle(on ? NT.text1 : NT.text2)
-                    .padding(.horizontal, 8)
-                    .frame(height: 24)
-                    .background(on ? NT.fillHi : Color.clear, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
-                    .contentShape(Rectangle())
-                    .rowHover(inset: 0)
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(on ? .isSelected : [])
             }
-            Spacer(minLength: 0)
+            .frame(maxHeight: .infinity, alignment: .top)
+            // A section opened from elsewhere (a notification, Home) may be
+            // one of those below the fold.
+            .onAppear { proxy.scrollTo(model.settingsSection) }
+            .onChange(of: model.settingsSection) { _, section in proxy.scrollTo(section) }
         }
     }
 

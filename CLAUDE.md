@@ -306,6 +306,12 @@ scripts/         build-app.sh, bench.sh, coverage.sh
     payload and adds its own.
   - The socket lives in a 0700 directory with mode 0600; server and CLI both
     check the peer uid. A request line must arrive within 5 s in total.
+- Every tab must fit the space the open panel gives it (220 pt high);
+  anything longer scrolls inside a `NotchScroll`. A fixed column that is
+  too tall pushes the whole tab past the bottom edge, and the scroll view
+  beside it then cannot reach its last rows: the Settings section list
+  did this once it had ten entries. `OverflowTests` checks every tab,
+  pane and Settings section; add new ones there.
 - Anything that moves continuously in the shell (the equaliser bars) must be
   a Core Animation layer animation, not a SwiftUI animation: the SwiftUI
   version re-rendered the notch every frame and cost 9 % CPU while music
@@ -392,8 +398,7 @@ the plain animation.
 
 - Two activities in the closed notch, the waiting dot, the Pause focus
   button and Settings › Notch are covered by unit tests and snapshots
-  only; none has been used in the running app. The order list in that
-  pane sits below the fold and was not seen in a snapshot.
+  only; none has been used in the running app.
 - The calendar: the core's alerts and the observer's logic are unit-tested
   (the observer against a fake store). Not exercised: the real EventKit
   store, macOS's permission question, and a real event coming due in the

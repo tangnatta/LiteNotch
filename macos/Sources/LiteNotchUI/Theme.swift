@@ -10,18 +10,34 @@ import SwiftUI
 enum NT {
     /// The accent and the colour of text drawn on it. Main thread only;
     /// `AppModel.apply` updates them and the root view rebuilds on change.
+    /// `#RRGGBB`, or `mono` for the black/white accent.
     private(set) static var accentHex = AppearanceConfig.defaultAccent
+    /// The operating system's accent as `#RRGGBB`. Tests replace it.
+    static var systemAccent: () -> String? = { ColorMath.hex(of: NSColor.controlAccentColor) }
     private(set) static var accent = color(AppearanceConfig.defaultAccent)
     private(set) static var onAccent = Color.black
     /// The accent for text and icons: on the light panel a pale accent
     /// (the default orange is one) is darkened until it reads.
     private(set) static var accentText = accentForeground(AppearanceConfig.defaultAccent)
 
-    /// Sets the accent from a settings string; an invalid one means the
-    /// default. Returns whether anything changed.
+    /// Sets the accent from a settings string: a colour, `system` (the
+    /// operating system's accent, as it is now) or `mono`; an invalid one
+    /// means the default. Returns whether anything changed.
     @discardableResult
     static func setAccent(_ raw: String) -> Bool {
-        let hex = ColorMath.normalize(raw) ?? AppearanceConfig.defaultAccent
+        let hex: String
+        switch AccentChoice(raw) {
+        case .mono:
+            guard accentHex != "mono" else { return false }
+            accentHex = "mono"
+            // The primary text colour of each scheme, and its opposite on it.
+            accent = text1
+            accentText = text1
+            onAccent = dynamic(dark: .black, light: .white)
+            return true
+        case .system: hex = systemAccent().flatMap(ColorMath.normalize) ?? AppearanceConfig.defaultAccent
+        case .color(let h): hex = h
+        }
         guard hex != accentHex else { return false }
         accentHex = hex
         accent = color(hex)

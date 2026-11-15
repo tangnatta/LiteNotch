@@ -230,6 +230,7 @@ public final class AppModel: ObservableObject {
     private let bridge: CoreBridge
     private let sampler: ColorSampling
     private var openPanels: Set<ObjectIdentifier> = []
+    private var systemColors: NSObjectProtocol?
 
     /// Brings the app a target names to the front. A bundle id that is not
     /// running is launched only from the standard application folders, so a
@@ -272,6 +273,20 @@ public final class AppModel: ObservableObject {
         self.bridge = bridge
         self.sampler = sampler
         panels = [PanelState(app: self)]
+        // The `system` accent follows System Settings › Appearance live.
+        systemColors = NotificationCenter.default.addObserver(
+            forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.systemAccentChanged() }
+    }
+
+    deinit {
+        if let systemColors { NotificationCenter.default.removeObserver(systemColors) }
+    }
+
+    /// Re-reads the accent; redraws only if it is the system's and changed.
+    func systemAccentChanged() {
+        guard let vm = view, NT.setAccent(vm.settings.appearance.accent) else { return }
+        view = vm
     }
 
     /// The first panel: the built-in (or main) display's.

@@ -133,6 +133,19 @@ public enum SnapshotRenderer {
                 var purpleLight = light
                 purpleLight.settings.appearance.accent = "#BF5AF2"
                 try add("accent-purple-light-expanded-home", purpleLight)
+                // A colour that is no preset: the hue strip shows, knob on purple.
+                var custom = vm
+                custom.settings.appearance.accent = "#BF5AF2"
+                try add("accent-custom-expanded-settings-general", custom, tab: .settings, section: .general)
+                // Black/white: white on the dark panel, black on the light one.
+                var mono = vm
+                mono.settings.appearance.accent = "mono"
+                try add("accent-mono-expanded-settings-general", mono, tab: .settings, section: .general)
+                try add("accent-mono-expanded-home", mono)
+                var monoLight = light
+                monoLight.settings.appearance.accent = "mono"
+                try add("accent-mono-light-expanded-settings-general", monoLight, tab: .settings, section: .general)
+                try add("accent-mono-light-expanded-home", monoLight)
                 // Liquid Glass chosen. ImageRenderer draws no glass (the
                 // window server makes it), so these show the Solid fallback
                 // and the Settings row as this build and system offer it.

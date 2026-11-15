@@ -93,8 +93,8 @@ All under **Settings › General**. The defaults are the original look.
 | Setting | Choices |
 |---|---|
 | **Theme** | System, Dark or Light, for the open panel. |
-| **Accent** | A preset colour or any colour you pick. |
-| **Notch** | **Attached** hangs from the top edge in the notch's own shape. **Floating** is a small capsule inside the menu bar, with notifications and the open panel just below it; it suits a Mac or an external display without a notch. |
+| **Accent** | The accent colour you chose in macOS (it follows when you change it there), plain black/white to match the theme, one of four presets, or your own: the rainbow swatch opens a strip to drag along, with an eyedropper beside it to take a colour from the screen. |
+| **Notch** | **Attached** hangs from the top edge in the notch's own shape. **Floating** is a small capsule inside the menu bar, with notifications and the open panel floating just below it; it suits a Mac or an external display without a notch. |
 | **Closed notch** | **Always dark**, or **Match theme** so the closed notch and notifications turn white in the light theme. Offered only on a display without a notch: around a real notch, which is always black, it stays dark. |
 | **Panel** | **Solid**, or **Glass** to draw the open panel with macOS 26's Liquid Glass. Approval requests are always shown on the solid panel so they stay readable. |
 

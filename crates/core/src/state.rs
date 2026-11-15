@@ -146,7 +146,7 @@ pub const DEFAULT_ACCENT: &str = "#FF9E0A";
 #[serde(default)]
 pub struct Appearance {
     pub theme: ThemeChoice,
-    /// `#RRGGBB`, upper case.
+    /// `#RRGGBB` (upper case), `system` or `mono`; see `normalize_accent`.
     pub accent: String,
     pub notch_style: NotchStyle,
     pub closed_notch: ClosedNotch,
@@ -170,6 +170,19 @@ pub fn normalize_hex(s: &str) -> Option<String> {
     let digits = s.trim().trim_start_matches('#');
     (digits.len() == 6 && digits.chars().all(|c| c.is_ascii_hexdigit()))
         .then(|| format!("#{}", digits.to_ascii_uppercase()))
+}
+
+/// Accents that are not one colour: `system` follows the operating
+/// system's accent, `mono` is white on a dark panel and black on a light one.
+pub const NAMED_ACCENTS: [&str; 2] = ["system", "mono"];
+
+/// A named accent or `#RRGGBB`; anything else is the default.
+pub fn normalize_accent(s: &str) -> String {
+    let name = s.trim().to_ascii_lowercase();
+    if NAMED_ACCENTS.contains(&name.as_str()) {
+        return name;
+    }
+    normalize_hex(s).unwrap_or_else(|| DEFAULT_ACCENT.to_string())
 }
 
 /// Most colours remembered from the picker.
@@ -1013,8 +1026,7 @@ impl Core {
     }
 
     fn set_settings(&mut self, mut settings: Settings, now: u64) {
-        settings.appearance.accent = normalize_hex(&settings.appearance.accent)
-            .unwrap_or_else(|| DEFAULT_ACCENT.to_string());
+        settings.appearance.accent = normalize_accent(&settings.appearance.accent);
         // The offset comes from the system, not from the settings form.
         settings.pomodoro.utc_offset_secs = self.utc_offset_secs;
         self.pomodoro.set_config(settings.pomodoro.clone());
@@ -2905,6 +2917,32 @@ mod tests {
             T0,
         );
         assert_eq!(c.view(T0).settings.appearance.accent, DEFAULT_ACCENT);
+        // The two accents that are not a colour are kept by name.
+        assert_eq!(normalize_accent(" System "), "system");
+        assert_eq!(normalize_accent("mono"), "mono");
+        assert_eq!(normalize_accent("monochrome"), DEFAULT_ACCENT);
+        assert_eq!(normalize_accent("0a84ff"), "#0A84FF");
+        for name in NAMED_ACCENTS {
+            let mut s = c.view(T0).settings;
+            s.appearance.accent = name.to_uppercase();
+            cmd(
+                &mut c,
+                Command::SetSettings {
+                    settings: Box::new(s),
+                },
+                T0,
+            );
+            assert_eq!(c.view(T0).settings.appearance.accent, name);
+        }
+        let mut s = c.view(T0).settings;
+        s.appearance.accent = DEFAULT_ACCENT.into();
+        cmd(
+            &mut c,
+            Command::SetSettings {
+                settings: Box::new(s),
+            },
+            T0,
+        );
         let json = serde_json::to_value(c.view(T0).settings.appearance).unwrap();
         assert_eq!(
             json,

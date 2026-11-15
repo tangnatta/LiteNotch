@@ -1573,6 +1573,21 @@ final class ReportedIssueTests: XCTestCase {
         }
     }
 
+    /// Reported: a typed number was lost unless Return was pressed. A click
+    /// anywhere but the field ends the typing (keeping the number); a click
+    /// in the field, to move the caret, does not.
+    func testAClickOutsideTheStepperFieldEndsTheTyping() {
+        // The field at x 100–134, 40–62 pt below the top of a 300 pt window.
+        let field = CGRect(x: 100, y: 40, width: 34, height: 22)
+        func ends(_ x: CGFloat, fromTop y: CGFloat) -> Bool {
+            MiniStepper.clickEndsTyping(windowPoint: CGPoint(x: x, y: 300 - y), contentHeight: 300, field: field)
+        }
+        XCTAssertFalse(ends(110, fromTop: 50))
+        XCTAssertTrue(ends(110, fromTop: 100))
+        XCTAssertTrue(ends(90, fromTop: 50))
+        XCTAssertTrue(ends(110, fromTop: 250), "the mirrored point must not count as inside")
+    }
+
     /// Reported: scrolling with the pointer over an empty part of Settings
     /// scrolled the app behind. Inside the shape the panel always takes the
     /// event; outside it, clicks still fall through.

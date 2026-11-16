@@ -881,6 +881,123 @@ final class HoverAndClickTests: XCTestCase {
     }
 }
 
+/// Which tab a panel opened by hover or click starts on.
+final class PanelLandingTests: XCTestCase {
+    private var bridge = MockBridge()
+    private var app: AppModel?
+    private var clock: TimeInterval = 1000
+    private var vm: ViewModel?
+    private var nextId = 100
+
+    private func makeModel() throws -> PanelState {
+        bridge = MockBridge()
+        let model = AppModel(bridge: bridge)
+        model.uptime = { [unowned self] in self.clock }
+        app = model
+        vm = try loadFixture("idle")
+        model.apply(try XCTUnwrap(vm))
+        return model.primary
+    }
+
+    /// A banner shows, then (like the core after `banner_secs`) goes away.
+    private func banner(source: String = "ci", group: String? = nil, open: OpenTarget?) {
+        nextId += 1
+        clock += 1
+        let n = NotificationItem(id: nextId, source: source, title: "t", body: "b", priority: .high,
+                                 group: group, ttlSecs: nil, createdMs: 0, read: false, open: open)
+        vm?.inbox.banner = n
+        app?.apply(vm!)
+        clock += 5
+        vm?.inbox.banner = nil
+        app?.apply(vm!)
+    }
+
+    private func openedOn(_ model: PanelState, after seconds: TimeInterval = 1) -> LiteNotchUI.Tab {
+        clock += seconds
+        model.open()
+        return model.tab
+    }
+
+    private func leave(_ model: PanelState, on tab: LiteNotchUI.Tab) {
+        model.open()
+        model.selectTab(tab)
+        model.close()
+    }
+
+    func testLastTabIsKeptForFiveMinutesThenHome() throws {
+        let model = try makeModel()
+        leave(model, on: .settings)
+        XCTAssertEqual(openedOn(model, after: 4 * 60), .settings)
+        model.close()
+        XCTAssertEqual(openedOn(model, after: 5 * 60), .home)
+    }
+
+    func testAgentBannerOpensSessionsOnce() throws {
+        let model = try makeModel()
+        leave(model, on: .settings)
+        model.agentsPane = .usage
+        banner(source: "agent", group: "agent-s1", open: .app(bundleId: "com.apple.Terminal", tty: "ttys003"))
+        XCTAssertEqual(openedOn(model), .agents)
+        XCTAssertEqual(model.agentsPane, .sessions)
+        model.selectTab(.clipboard)
+        model.close()
+        XCTAssertEqual(openedOn(model), .clipboard, "the banner is used once")
+    }
+
+    func testTabTargetOpensThatPaneAndOthersOpenTheInbox() throws {
+        let model = try makeModel()
+        leave(model, on: .settings)
+        banner(source: "timer", open: .tab(.timer, pane: "countdown"))
+        XCTAssertEqual(openedOn(model), .timer)
+        XCTAssertEqual(model.timerPane, .countdown)
+        model.close()
+        banner(source: "Mail", open: .appNamed("Mail"))
+        XCTAssertEqual(openedOn(model), .inbox)
+    }
+
+    func testOldBannerNoLongerDecides() throws {
+        let model = try makeModel()
+        leave(model, on: .clipboard)
+        clock += 10
+        banner(source: "agent", group: "agent-s1", open: nil)
+        // Closed for over 5 minutes as well, so Home.
+        XCTAssertEqual(openedOn(model, after: 5 * 60), .home)
+    }
+
+    func testBannerWhileOpenIsAlreadySeen() throws {
+        let model = try makeModel()
+        model.open()
+        model.selectTab(.settings)
+        banner(source: "timer", open: .tab(.timer, pane: "countdown"))
+        clock += 1
+        model.close()
+        XCTAssertEqual(openedOn(model), .settings)
+    }
+
+    func testClickingTheToastFollowsItsTargetAndUsesItUp() throws {
+        let model = try makeModel()
+        var activated: [OpenTarget] = []
+        app?.activateApp = { activated.append($0) }
+        leave(model, on: .settings)
+        let target = OpenTarget.app(bundleId: "com.apple.Terminal", tty: nil)
+        banner(source: "agent", group: "agent-s1", open: target)
+        let item = NotificationItem(id: nextId, source: "agent", title: "t", body: "b", priority: .high,
+                                    group: "agent-s1", ttlSecs: nil, createdMs: 0, read: false, open: target)
+        model.openNotification(item, isBanner: true)
+        XCTAssertEqual(activated, [target])
+        XCTAssertFalse(model.expanded)
+        XCTAssertEqual(openedOn(model), .settings, "the clicked banner does not decide later")
+    }
+
+    func testAutomaticLandingIsNotCountedAsATabOpen() throws {
+        let model = try makeModel()
+        leave(model, on: .settings)
+        let before = bridge.sent.count
+        XCTAssertEqual(openedOn(model, after: 6 * 60), .home)
+        XCTAssertFalse(bridge.sent.dropFirst(before).contains { $0.contains("tab_opened") })
+    }
+}
+
 // MARK: - Other apps' notifications
 
 private func text(_ value: String, id: String = "") -> AXNode {

@@ -11,6 +11,7 @@ pub mod caffeine;
 pub mod calendar;
 pub mod clipboard;
 pub mod countdown;
+pub mod day;
 pub mod ipc;
 pub mod media;
 pub mod meeting;

@@ -60,6 +60,7 @@ public enum NotchPriority {
         case .media: return "Music"
         case .caffeine: return "Keep awake"
         case .agent: return "Agent working"
+        case .day: return "Day progress"
         default: return kind.rawValue
         }
     }
@@ -73,6 +74,7 @@ public enum NotchPriority {
         case .media: return "music.note"
         case .caffeine: return "cup.and.heat.waves.fill"
         case .agent: return "terminal.fill"
+        case .day: return "sun.max.fill"
         default: return "circle"
         }
     }
@@ -90,6 +92,7 @@ public enum NotchPriority {
         case .media: return view("Weightless", "Marconi Union")
         case .caffeine: return view("Awake", "")
         case .agent: return view("api", "working")
+        case .day: return view("Day", "37%")
         default: return view("", "")
         }
     }

@@ -9,8 +9,14 @@ struct HomeTab: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            nowPlaying
-                .frame(width: 236)
+            Group {
+                if let day = vm.day, DayConfig.showsDayCard(vm) {
+                    dayCard(day)
+                } else {
+                    nowPlaying
+                }
+            }
+            .frame(width: 236)
             // One list, not three cards: the now-playing card is the only
             // container on this screen.
             VStack(spacing: 0) {
@@ -20,11 +26,46 @@ struct HomeTab: View {
                     calendarRow
                     Hairline()
                 }
+                if let day = vm.day, !DayConfig.showsDayCard(vm) {
+                    dayRow(day)
+                    Hairline()
+                }
                 agentsRow
                 Hairline()
                 inboxRow
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    // MARK: Day
+
+    /// The day in the space now playing has: a big quiet number, the day's
+    /// line, the hours. No bar and no colour: hours before and after work
+    /// are the user's own, not a deficit or an overrun.
+    private func dayCard(_ d: DayView) -> some View {
+        Card(padding: 12, expand: true) {
+            EverySecond(interval: 60) { now in
+                let p = Format.dayPercent(startMs: d.startMs, endMs: d.endMs, nowMs: now)
+                VStack(spacing: 6) {
+                    Spacer(minLength: 0)
+                    Image(systemName: Format.daySymbol(startMs: d.startMs, endMs: d.endMs, nowMs: now))
+                        .font(.system(size: 22, weight: .regular)).foregroundStyle(NT.text2)
+                        .accessibilityHidden(true)
+                    Text(verbatim: Format.dayProgress(p))
+                        .font(.system(size: 52, weight: .regular)).monospacedDigit()
+                        .foregroundStyle(NT.text1).lineLimit(1).minimumScaleFactor(0.6)
+                    VText(d.line).nfont(.body).foregroundStyle(NT.text2)
+                        .multilineTextAlignment(.center).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .opens("day settings", model) {
+            model.settingsSection = .home
+            model.selectTab(.settings)
         }
     }
 
@@ -188,6 +229,25 @@ struct HomeTab: View {
         .opens("Timer", model) { model.openTimer(.focus) }
     }
 
+    /// How far through today's office hours, with the day's line. A click
+    /// opens the setting.
+    private func dayRow(_ d: DayView) -> some View {
+        EverySecond(interval: 60) { now in
+            let p = Format.dayPercent(startMs: d.startMs, endMs: d.endMs, nowMs: now)
+            HomeRow(symbol: Format.daySymbol(startMs: d.startMs, endMs: d.endMs, nowMs: now), tint: NT.text2) {
+                Text(verbatim: Format.dayProgress(p)).nfont(.emphasis).monospacedDigit()
+                    .foregroundStyle(NT.text1).lineLimit(1)
+                VText(d.line).nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
+            } trailing: {
+                Chevron()
+            }
+            .opens("day settings", model) {
+                model.settingsSection = .timer
+                model.selectTab(.settings)
+            }
+        }
+    }
+
     /// The next event (or the one running). Shown only while the calendar
     /// is on; a click opens the Calendar app, or the setting when access is
     /// missing.
@@ -345,3 +405,4 @@ public enum CalendarText {
         return e.location.isEmpty ? time : "\(time) \u{b7} \(e.location)"
     }
 }
+

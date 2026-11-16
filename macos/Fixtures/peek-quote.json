@@ -319,6 +319,7 @@
   "calendar": {
     "events": []
   },
+  "day": null,
   "colors": [],
   "analytics": [
     {
@@ -418,7 +419,8 @@
         "pomodoro",
         "media",
         "caffeine",
-        "agent"
+        "agent",
+        "day"
       ],
       "hidden": [],
       "two_places": true,
@@ -435,6 +437,13 @@
       "move_mins": 0,
       "move_counts": "focus",
       "break_quote": true
+    },
+    "day": {
+      "enabled": false,
+      "start_min": 600,
+      "end_min": 1080,
+      "days": 31,
+      "home_card": "auto"
     }
   }
 }

@@ -279,6 +279,19 @@ fn main() {
     out.push(("calendar", c));
     out.push(("pair", pair));
 
+    // Office hours on, nothing else running: the closed notch shows how far
+    // through the day it is.
+    let mut c = Core::default();
+    let mut settings = c.settings().clone();
+    settings.day.enabled = true;
+    c.apply(
+        Input::Command(Command::SetSettings {
+            settings: Box::new(settings),
+        }),
+        T0,
+    );
+    out.push(("day", c));
+
     let mut views: Vec<(&str, ViewModel)> = out
         .into_iter()
         .map(|(name, core)| (name, core.view(T0 + 20)))

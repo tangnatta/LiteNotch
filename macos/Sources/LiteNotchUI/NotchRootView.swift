@@ -148,6 +148,9 @@ struct ClosedActivityView: View {
     var oneRow = false
 
     private var paired: Bool { content.secondary != nil }
+    /// Day progress alone: its short value sits right after the icon, as
+    /// when sharing the notch, rather than across on the other side.
+    private var besideIcon: Bool { !paired && content.primary?.kind == .day }
 
     var body: some View {
         Group {
@@ -201,7 +204,7 @@ struct ClosedActivityView: View {
                 } else {
                     HStack(spacing: NotchGeometry.rowGap) {
                         icon(c).frame(minWidth: NotchGeometry.rowIcon, alignment: .leading)
-                        value(c).frame(maxWidth: .infinity, alignment: .trailing)
+                        value(c).frame(maxWidth: .infinity, alignment: besideIcon ? .leading : .trailing)
                     }
                 }
                 if content.waiting {
@@ -220,7 +223,7 @@ struct ClosedActivityView: View {
         if let c = content.primary {
             HStack(spacing: NotchGeometry.pairGap) {
                 icon(c)
-                if paired { value(c) }
+                if paired || besideIcon { value(c) }
             }
             .padding(.leading, c.kind == .media ? artworkInset ?? edgePadding : edgePadding)
         }
@@ -235,7 +238,7 @@ struct ClosedActivityView: View {
                     value(s)
                 }
                 .opacity(0.7)
-            } else if let c = content.primary {
+            } else if let c = content.primary, !besideIcon {
                 value(c)
             }
             if content.waiting {
@@ -263,6 +266,8 @@ struct ClosedActivityView: View {
             Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold)).foregroundStyle(NT.accentText)
         case .calendar:
             Image(systemName: "calendar").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
+        case .day:
+            DayIcon(compact: compact)
         case .approval:
             Circle().fill(NT.accentText).frame(width: 9, height: 9)
         case .banner:
@@ -352,6 +357,8 @@ struct ClosedActivityView: View {
             VText(compact.title).wingText(mono: false)
         case .nudge:
             VText(compact.value).wingText(mono: false)
+        case .day:
+            DayPercent(compact: compact)
         case .idle, .unknown:
             EmptyView()
         }
@@ -956,5 +963,84 @@ struct TabBar: View {
         .help(t.help)
         .accessibilityLabel(Text(verbatim: count > 0 ? "\(t.title), \(count)" : t.title))
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// The share of the working day gone, redrawn only when the whole percent
+/// changes (about every 5 minutes for an 8-hour day). The core sends the
+/// end as `ends_at_ms` and the length as `total_secs`.
+struct DayPercent: View {
+    let compact: CompactView
+    @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.clockOffsetMs) private var offset
+
+    var body: some View {
+        if let end = compact.endsAtMs, let total = compact.totalSecs {
+            let start = end - total * 1000
+            if snapshot {
+                label(start: start, end: end, now: nowMs(Date(), offset: offset))
+            } else {
+                TimelineView(DaySchedule(startMs: start, endMs: end, offsetMs: offset)) { _ in
+                    // The clock, not the entry's date: a boundary converted
+                    // to a Date and back can land a millisecond early.
+                    label(start: start, end: end, now: nowMs(Date(), offset: offset))
+                }
+            }
+        } else {
+            VText(compact.value).font(NType.body.font).monospacedDigit().foregroundStyle(NT.text1).lineLimit(1)
+        }
+    }
+
+    private func label(start: Int, end: Int, now: Int) -> some View {
+        let p = Format.dayPercent(startMs: start, endMs: end, nowMs: now)
+        // Regular weight and no colour: a quiet reading, not a deadline.
+        return VText(Format.dayProgress(p)).font(NType.body.font).monospacedDigit().foregroundStyle(NT.text1).lineLimit(1)
+    }
+}
+
+/// One entry each time the whole day percent changes.
+struct DaySchedule: TimelineSchedule {
+    let startMs: Int
+    let endMs: Int
+    let offsetMs: Int
+
+    func entries(from startDate: Date, mode: TimelineScheduleMode) -> AnySequence<Date> {
+        let (s, e, off) = (startMs, endMs, offsetMs)
+        return AnySequence(sequence(first: startDate) { date in
+            let now = nowMs(date, offset: off)
+            let next = Format.nextDayPercentMs(startMs: s, endMs: e, nowMs: now)
+            return date.addingTimeInterval(Double(next - now) / 1000)
+        })
+    }
+}
+
+/// The sun or moon for the time of day, redrawn only at the four times it
+/// changes.
+struct DayIcon: View {
+    let compact: CompactView
+    @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.clockOffsetMs) private var offset
+
+    var body: some View {
+        if let end = compact.endsAtMs, let total = compact.totalSecs {
+            let start = end - total * 1000
+            if snapshot {
+                symbol(Format.daySymbol(startMs: start, endMs: end, nowMs: nowMs(Date(), offset: offset)))
+            } else {
+                let dates = Format.daySymbolChanges(startMs: start, endMs: end)
+                    .map { Date(timeIntervalSince1970: Double($0 + 1 - offset) / 1000) }
+                TimelineView(.explicit(dates)) { _ in
+                    // The clock, not the entry's date: once every change is
+                    // past, an explicit schedule hands back an old one.
+                    symbol(Format.daySymbol(startMs: start, endMs: end, nowMs: nowMs(Date(), offset: offset)))
+                }
+            }
+        } else {
+            symbol("sun.max.fill")
+        }
+    }
+
+    private func symbol(_ name: String) -> some View {
+        Image(systemName: name).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.text1)
     }
 }

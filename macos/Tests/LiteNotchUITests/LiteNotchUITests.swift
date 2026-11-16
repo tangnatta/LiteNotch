@@ -243,7 +243,7 @@ final class CommandTests: XCTestCase {
         let inner = try XCTUnwrap(s["settings"] as? NSDictionary)
         XCTAssertEqual(Set(inner.allKeys as! [String]),
                        ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics",
-                        "calendar", "notch", "peek", "sound"])
+                        "calendar", "notch", "peek", "sound", "day"])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
         XCTAssertEqual(inner["peek"] as? NSDictionary,
                        ["track_change": true, "time_warning_secs": 300,
@@ -877,7 +877,7 @@ final class HoverAndClickTests: XCTestCase {
         XCTAssertEqual(model.tab, .settings)
         XCTAssertEqual(model.settingsSection, .timer)
         XCTAssertEqual(bridge.sent.last, #"{"cmd":"tab_opened","tab":"settings"}"#)
-        XCTAssertEqual(SettingsSection.allCases.count, 10)
+        XCTAssertEqual(SettingsSection.allCases.count, 11)
     }
 }
 

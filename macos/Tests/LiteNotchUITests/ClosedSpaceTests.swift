@@ -48,6 +48,11 @@ final class ClosedSpaceTests: XCTestCase {
             c(.caffeine, "Awake", ends: now + 3_590_000),
             c(.caffeine, "Awake", "lid"),
             c(.agent, "api", "working", count: 3),
+            // Midnight before a 10:00 start, and two hours over.
+            CompactView(kind: .day, title: "Day", value: "", endsAtMs: now + 18 * 3_600_000,
+                        totalSecs: 8 * 3600, count: 1),
+            CompactView(kind: .day, title: "Day", value: "", endsAtMs: now - 2 * 3_600_000,
+                        totalSecs: 8 * 3600, count: 1),
         ]
     }
 

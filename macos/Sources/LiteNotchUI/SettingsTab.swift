@@ -5,6 +5,7 @@ extension SettingsSection {
         switch self {
         case .general: return "General"
         case .notch: return "Notch"
+        case .home: return "Home"
         case .timer: return "Timer"
         case .music: return "Music"
         case .notifications: return "Notifications"
@@ -20,6 +21,7 @@ extension SettingsSection {
         switch self {
         case .general: return "gearshape"
         case .notch: return "rectangle.topthird.inset.filled"
+        case .home: return "house"
         case .timer: return "timer"
         case .music: return "music.note"
         case .notifications: return "bell"
@@ -128,6 +130,7 @@ struct SettingsTab: View {
         case .general: general
         case .notch: NotchPriorityPane(config: $draft.notch, floating: draft.appearance.notchStyle == .floating,
                                          hasNotch: model.hasNotch)
+        case .home: home
         case .timer: timer
         case .music: music
         case .notifications: notifications
@@ -326,6 +329,42 @@ struct SettingsTab: View {
         }
         toggle("A few words after a break", $draft.peek.breakQuote,
                caption: "The closed notch shows a short line of encouragement when a break ends.")
+        Hairline().padding(.vertical, 2)
+        toggle("Day progress", $draft.day.enabled,
+               caption: "How far through your office hours: \u{2212} before they start, + after they end.")
+        if draft.day.enabled {
+            row("Starts") {
+                TimeStepper(minutes: $draft.day.startMin, range: 0...(24 * 60 - 30), label: "Starts")
+            }
+            row("Ends") {
+                TimeStepper(minutes: $draft.day.endMin, range: 30...(24 * 60), label: "Ends")
+            }
+            row("Days") { WeekdayPicker(days: $draft.day.days) }
+        }
+    }
+
+    @ViewBuilder private var home: some View {
+        row("Big card", caption: homeCardCaption) {
+            SegmentedPill(options: [(HomeCard.auto, "Auto"), (.day, "Day"), (.media, "Music")],
+                          selection: $draft.day.homeCard, label: "Big card", height: 22)
+        }
+        .opacity(draft.day.enabled ? 1 : 0.5)
+        if !draft.day.enabled {
+            row("Day progress is off", caption: "Until it is on, the big card is always Now playing.", tint: NT.text2) {
+                TextPill(title: "Turn on", tint: NT.text1, height: 22) {
+                    model.settingsSection = .timer
+                }
+                .help("Opens Settings \u{203A} Timer")
+            }
+        }
+    }
+
+    private var homeCardCaption: String {
+        switch draft.day.homeCard {
+        case .auto: return "Music while something plays, the day otherwise."
+        case .day: return "How far through the day, always."
+        case .media: return "Now playing, always."
+        }
     }
 
     @ViewBuilder private var music: some View {
@@ -717,5 +756,60 @@ public enum AgentsText {
         case (let m, _): gone = " \(m) of them no longer exist."
         }
         return "\(what) on every Claude Code event.\(gone)"
+    }
+}
+
+/// A time of day in half-hour steps: `−  10:00  +`.
+struct TimeStepper: View {
+    @Binding var minutes: Int
+    var range: ClosedRange<Int>
+    var step = 30
+    var label = ""
+
+    var body: some View {
+        HStack(spacing: 2) {
+            button("minus", -step, "Earlier")
+            Text(verbatim: Format.minutesOfDay(minutes))
+                .nfont(.body).monospacedDigit().foregroundStyle(NT.text1)
+                .frame(minWidth: 40)
+            button("plus", step, "Later")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(verbatim: label))
+    }
+
+    private func button(_ symbol: String, _ delta: Int, _ name: String) -> some View {
+        Button {
+            minutes = min(max(minutes + delta, range.lowerBound), range.upperBound)
+        } label: {
+            Image(systemName: symbol).glyph(NGlyph.small).foregroundStyle(NT.text2)
+                .frame(width: 22, height: 22).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "\(name) \(label)"))
+    }
+}
+
+/// Seven letters, Monday first; a click turns a working day on or off.
+struct WeekdayPicker: View {
+    @Binding var days: Int
+    private static let letters = ["M", "T", "W", "T", "F", "S", "S"]
+    private static let names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<7, id: \.self) { i in
+                let on = days & (1 << i) != 0
+                Button { days ^= 1 << i } label: {
+                    Text(verbatim: Self.letters[i]).nfont(.caption)
+                        .foregroundStyle(on ? NT.onAccent : NT.text2)
+                        .frame(width: 20, height: 20)
+                        .background(on ? NT.accent : NT.hairline, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(verbatim: Self.names[i]))
+                .accessibilityValue(Text(verbatim: on ? "Working day" : "Day off"))
+            }
+        }
     }
 }

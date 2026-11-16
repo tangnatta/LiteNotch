@@ -58,7 +58,7 @@ final class OverflowTests: XCTestCase {
     }
 
     func testEveryOtherTabFitsThePanel() throws {
-        for name in ["idle", "media", "pomodoro", "pair", "banner", "caffeine", "calendar"] {
+        for name in ["idle", "media", "pomodoro", "pair", "banner", "caffeine", "calendar", "day"] {
             let (vm, p) = try panel(name)
             XCTAssertLessThanOrEqual(height(HomeTab(vm: vm, model: p)), room.height, "Home, \(name)")
             XCTAssertLessThanOrEqual(height(MusicTab(vm: vm, model: p)), room.height, "Music, \(name)")

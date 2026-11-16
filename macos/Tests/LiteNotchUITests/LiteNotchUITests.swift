@@ -406,6 +406,8 @@ final class GeometryTests: XCTestCase {
         let banner = try XCTUnwrap(vm.inbox.banner)
         XCTAssertEqual(banner.action, .skipBreak)
         XCTAssertTrue(vm.settings.peek.stillWorking)
+        XCTAssertEqual(ToastView.symbol(banner), "cup.and.saucer.fill")
+        XCTAssertEqual(ToastView.symbol(try XCTUnwrap(try loadFixture("banner").inbox.banner)), "bell.fill")
 
         let bridge = MockBridge()
         let model = AppModel(bridge: bridge)

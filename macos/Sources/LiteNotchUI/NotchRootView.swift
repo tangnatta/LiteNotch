@@ -714,11 +714,17 @@ struct ToastView: View {
     /// Runs the banner's own button.
     var act: (BannerAction) -> Void = { _ in }
 
+    /// The pomodoro's banners are about breaks (one starts, one is being
+    /// worked through, one is over): a cup, like the break reminders.
+    static func symbol(_ banner: NotificationItem) -> String {
+        banner.source == "pomodoro" ? "cup.and.saucer.fill" : "bell.fill"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: top)
             HStack(spacing: 10) {
-                Image(systemName: "bell.fill")
+                Image(systemName: Self.symbol(banner))
                     .glyph(NGlyph.regular)
                     .foregroundStyle(NT.accentText)
                     .frame(width: 18)

@@ -5,6 +5,7 @@
 pub mod battery;
 pub mod clipboard;
 pub mod display;
+pub mod idle;
 pub mod lid;
 pub mod nowplaying;
 pub mod power;

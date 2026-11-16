@@ -52,9 +52,12 @@ struct HomeTab: View {
                     Image(systemName: Format.daySymbol(startMs: d.startMs, endMs: d.endMs, nowMs: now))
                         .font(.system(size: 22, weight: .regular)).foregroundStyle(NT.text2)
                         .accessibilityHidden(true)
-                    Text(verbatim: Format.dayProgress(p))
+                    // The number large, the `%` at half size on its baseline.
+                    (Text(verbatim: String(Format.dayProgress(p).dropLast()))
                         .font(.system(size: 52, weight: .regular)).monospacedDigit()
+                     + Text(verbatim: "%").font(.system(size: 26, weight: .regular)))
                         .foregroundStyle(NT.text1).lineLimit(1).minimumScaleFactor(0.6)
+                        .accessibilityLabel(Text(verbatim: Format.dayProgress(p)))
                     VText(d.line).nfont(.body).foregroundStyle(NT.text2)
                         .multilineTextAlignment(.center).lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)

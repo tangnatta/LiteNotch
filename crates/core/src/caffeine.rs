@@ -53,14 +53,14 @@ impl Default for PowerStatus {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CaffeineConfig {
-    /// Mode used when lid mode is requested while off.
+    /// What the cup starts when nothing else is chosen.
     pub default_mode: AwakeMode,
-    /// On battery below this percentage everything turns off.
+    /// On battery below this percentage keeping awake turns off, in every
+    /// mode, with or without the lid closed; 0 = no limit.
     pub battery_floor_pct: u8,
-    /// On battery below this percentage lid mode turns off.
-    pub lid_battery_floor_pct: u8,
-    /// Lid mode only allowed on AC.
-    pub lid_requires_ac: bool,
+    /// Keep awake with the lid closed: a saved choice, applied whenever
+    /// keep awake is turned on, until the user changes it.
+    pub lid_closed: bool,
 }
 
 impl Default for CaffeineConfig {
@@ -68,8 +68,7 @@ impl Default for CaffeineConfig {
         Self {
             default_mode: AwakeMode::Display,
             battery_floor_pct: 10,
-            lid_battery_floor_pct: 25,
-            lid_requires_ac: false,
+            lid_closed: false,
         }
     }
 }
@@ -126,14 +125,6 @@ pub struct Caffeine {
     power: PowerStatus,
 }
 
-#[derive(PartialEq)]
-enum Violation {
-    /// Everything must go off.
-    All,
-    /// Only lid mode must go off.
-    Lid,
-}
-
 fn notice(title: &str, body: String) -> CaffeineEffect {
     CaffeineEffect::Notice {
         title: title.to_string(),
@@ -157,7 +148,6 @@ impl Caffeine {
 
     fn clamp(mut cfg: CaffeineConfig) -> CaffeineConfig {
         cfg.battery_floor_pct = cfg.battery_floor_pct.min(100);
-        cfg.lid_battery_floor_pct = cfg.lid_battery_floor_pct.min(100);
         cfg
     }
 
@@ -166,28 +156,39 @@ impl Caffeine {
         &self.cfg
     }
 
-    /// Replace settings (percentages clamped to 100); guards re-run on the next `on_power`.
-    pub fn set_config(&mut self, cfg: CaffeineConfig) {
+    /// Replace settings (percentages clamped to 100); the battery limit is
+    /// checked on the next `on_power`. A changed lid choice applies at once
+    /// while keep awake is on, and otherwise waits for the next time it is.
+    pub fn set_config(&mut self, cfg: CaffeineConfig) -> Vec<CaffeineEffect> {
         self.cfg = Self::clamp(cfg);
+        self.apply_lid()
     }
 
-    fn violation(&self) -> Option<(Violation, String)> {
+    /// Makes the lid state match the saved choice, while keep awake is on.
+    fn apply_lid(&mut self) -> Vec<CaffeineEffect> {
+        if self.mode == AwakeMode::Off {
+            return Vec::new();
+        }
+        match (self.cfg.lid_closed, self.lid) {
+            (true, LidState::Off) => {
+                self.lid = LidState::Pending;
+                vec![CaffeineEffect::EnableLid]
+            }
+            (false, LidState::Pending | LidState::On) => {
+                self.lid = LidState::Off;
+                vec![CaffeineEffect::DisableLid]
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Why the battery forbids keeping awake now; one limit for every mode.
+    fn violation(&self) -> Option<String> {
         if self.power.on_ac {
             return None;
         }
-        let pct = self.power.battery_pct;
-        if let Some(p) = pct {
-            if p < self.cfg.battery_floor_pct {
-                return Some((Violation::All, format!("Battery at {p}%")));
-            }
-        }
-        if self.cfg.lid_requires_ac {
-            return Some((Violation::Lid, "Lid mode needs AC power".to_string()));
-        }
-        match pct {
-            Some(p) if p < self.cfg.lid_battery_floor_pct => {
-                Some((Violation::Lid, format!("Battery at {p}%")))
-            }
+        match self.power.battery_pct {
+            Some(p) if p < self.cfg.battery_floor_pct => Some(format!("Battery at {p}%")),
             _ => None,
         }
     }
@@ -218,7 +219,7 @@ impl Caffeine {
         if mode == AwakeMode::Off {
             return self.deactivate(now_ms);
         }
-        if let Some((Violation::All, why)) = self.violation() {
+        if let Some(why) = self.violation() {
             return vec![notice("Caffeine not started", why)];
         }
         self.guard = None;
@@ -228,43 +229,20 @@ impl Caffeine {
         if self.mode == mode {
             return Vec::new();
         }
+        let was_off = self.mode == AwakeMode::Off;
         self.mode = mode;
-        vec![CaffeineEffect::SetAssertion(mode)]
+        let mut fx = vec![CaffeineEffect::SetAssertion(mode)];
+        // Turning keep awake on brings the saved lid choice with it.
+        if was_off {
+            fx.extend(self.apply_lid());
+        }
+        fx
     }
 
     /// Release the assertion and lid mode and clear any guard message.
     pub fn deactivate(&mut self, _now_ms: u64) -> Vec<CaffeineEffect> {
         self.guard = None;
         self.shut_down()
-    }
-
-    /// Request or cancel closed-lid mode. Turning it on while off starts `default_mode`
-    /// (`System` if that is `Off`).
-    pub fn set_lid(&mut self, on: bool, now_ms: u64) -> Vec<CaffeineEffect> {
-        if !on {
-            if self.lid == LidState::Off {
-                return Vec::new();
-            }
-            self.lid = LidState::Off;
-            return vec![CaffeineEffect::DisableLid];
-        }
-        if self.lid != LidState::Off {
-            return Vec::new();
-        }
-        if let Some((_, why)) = self.violation() {
-            return vec![notice("Lid mode unavailable", why)];
-        }
-        let mut fx = Vec::new();
-        if self.mode == AwakeMode::Off {
-            let m = match self.cfg.default_mode {
-                AwakeMode::Off => AwakeMode::System,
-                other => other,
-            };
-            fx = self.activate(m, None, now_ms);
-        }
-        self.lid = LidState::Pending;
-        fx.push(CaffeineEffect::EnableLid);
-        fx
     }
 
     /// Platform reports whether the privileged lid step worked. A success that
@@ -302,7 +280,7 @@ impl Caffeine {
             CaffeineEffect::DisableLid,
             notice(
                 "Lid mode stopped",
-                "The Mac is no longer kept awake with the lid closed. Turn it on again if you need it."
+                "The Mac is no longer kept awake with the lid closed. It starts again the next time keep awake is turned on."
                     .to_string(),
             ),
         ]
@@ -320,7 +298,7 @@ impl Caffeine {
             CaffeineEffect::DisableLid,
             notice(
                 "Mac slept with the lid closed",
-                "Closed-lid mode did not keep it awake, so sessions and timers paused. Turn it on again if you need it."
+                "Closed-lid mode did not keep it awake, so sessions and timers paused. It starts again the next time keep awake is turned on."
                     .to_string(),
             ),
         ]
@@ -332,35 +310,20 @@ impl Caffeine {
             .then(|| self.lid_since_ms.saturating_add(LID_MAX_HOURS * 3_600_000))
     }
 
-    /// Feed a power reading and apply the battery guards.
+    /// Feed a power reading and apply the battery limit.
     pub fn on_power(&mut self, status: PowerStatus, _now_ms: u64) -> Vec<CaffeineEffect> {
         self.power = status;
-        match self.violation() {
-            None => {
-                self.guard = None;
-                Vec::new()
-            }
-            Some((Violation::All, why)) => {
-                if self.mode == AwakeMode::Off && self.lid == LidState::Off {
-                    return Vec::new();
-                }
-                let mut fx = self.shut_down();
-                self.guard = Some(why.clone());
-                fx.push(notice("Caffeine turned off", why));
-                fx
-            }
-            Some((Violation::Lid, why)) => {
-                if self.lid == LidState::Off {
-                    return Vec::new();
-                }
-                self.lid = LidState::Off;
-                self.guard = Some(why.clone());
-                vec![
-                    CaffeineEffect::DisableLid,
-                    notice("Lid mode turned off", why),
-                ]
-            }
+        let Some(why) = self.violation() else {
+            self.guard = None;
+            return Vec::new();
+        };
+        if self.mode == AwakeMode::Off && self.lid == LidState::Off {
+            return Vec::new();
         }
+        let mut fx = self.shut_down();
+        self.guard = Some(why.clone());
+        fx.push(notice("Caffeine turned off", why));
+        fx
     }
 
     /// Expire the timer and the closed-lid limit if due; idempotent for the
@@ -375,7 +338,7 @@ impl Caffeine {
             fx.push(CaffeineEffect::DisableLid);
             fx.push(notice(
                 "Lid mode turned off",
-                format!("It had been on for {LID_MAX_HOURS} hours. Turn it on again if you still need it."),
+                format!("It had been on for {LID_MAX_HOURS} hours. It starts again the next time keep awake is turned on."),
             ));
         }
         fx
@@ -425,6 +388,24 @@ mod tests {
     fn c() -> Caffeine {
         Caffeine::new(CaffeineConfig::default())
     }
+    /// What turning the lid choice on or off does: the choice is saved, and
+    /// applied now if keep awake is on. Starting keep awake with it set brings
+    /// the lid along.
+    trait LidChoice {
+        fn set_lid(&mut self, on: bool, now_ms: u64) -> Vec<CaffeineEffect>;
+    }
+    impl LidChoice for Caffeine {
+        fn set_lid(&mut self, on: bool, now_ms: u64) -> Vec<CaffeineEffect> {
+            let mut cfg = self.config().clone();
+            cfg.lid_closed = on;
+            let fx = self.set_config(cfg);
+            if on && self.snapshot(now_ms).mode == AwakeMode::Off {
+                let m = self.config().default_mode;
+                return self.activate(m, None, now_ms);
+            }
+            fx
+        }
+    }
     fn is_notice(e: &CaffeineEffect) -> bool {
         matches!(e, CaffeineEffect::Notice { .. })
     }
@@ -434,8 +415,7 @@ mod tests {
         let cfg = CaffeineConfig::default();
         assert_eq!(cfg.default_mode, AwakeMode::Display);
         assert_eq!(cfg.battery_floor_pct, 10);
-        assert_eq!(cfg.lid_battery_floor_pct, 25);
-        assert!(!cfg.lid_requires_ac);
+        assert!(!cfg.lid_closed);
         assert_eq!(AwakeMode::default(), AwakeMode::Off);
         assert_eq!(LidState::default(), LidState::Off);
         let p = PowerStatus::default();
@@ -617,16 +597,6 @@ mod tests {
     }
 
     #[test]
-    fn set_lid_with_off_default_falls_back_to_system() {
-        let mut k = Caffeine::new(CaffeineConfig {
-            default_mode: AwakeMode::Off,
-            ..Default::default()
-        });
-        let fx = k.set_lid(true, 0);
-        assert_eq!(fx[0], CaffeineEffect::SetAssertion(AwakeMode::System));
-    }
-
-    #[test]
     fn set_lid_while_active_keeps_mode_and_timer() {
         let mut k = c();
         k.activate(AwakeMode::System, Some(30), 0);
@@ -802,77 +772,11 @@ mod tests {
     }
 
     #[test]
-    fn mid_battery_turns_off_only_lid() {
-        let mut k = c();
-        k.activate(AwakeMode::System, None, 0);
-        k.set_lid(true, 0);
-        k.lid_result(true, 0);
-        let fx = k.on_power(batt(20), 1);
-        assert_eq!(fx.len(), 2);
-        assert_eq!(fx[0], CaffeineEffect::DisableLid);
-        assert!(is_notice(&fx[1]));
-        let s = k.snapshot(1);
-        assert_eq!((s.mode, s.lid), (AwakeMode::System, LidState::Off));
-        assert!(s.guard.is_some());
-        assert!(k.on_power(batt(19), 2).is_empty());
-    }
-
-    #[test]
     fn mid_battery_without_lid_does_nothing() {
         let mut k = c();
         k.activate(AwakeMode::System, None, 0);
         assert!(k.on_power(batt(20), 1).is_empty());
         assert_eq!(k.snapshot(1).guard, None);
-    }
-
-    #[test]
-    fn lid_requires_ac_turns_lid_off_on_battery() {
-        let mut k = Caffeine::new(CaffeineConfig {
-            lid_requires_ac: true,
-            ..Default::default()
-        });
-        k.set_lid(true, 0);
-        k.lid_result(true, 0);
-        let fx = k.on_power(batt(90), 1);
-        assert_eq!(fx[0], CaffeineEffect::DisableLid);
-        assert_eq!(k.snapshot(1).mode, AwakeMode::Display);
-        let fx = k.set_lid(true, 2);
-        assert_eq!(fx.len(), 1);
-        assert!(is_notice(&fx[0]));
-        k.on_power(ac(), 3);
-        assert_eq!(k.snapshot(3).guard, None);
-        assert_eq!(k.set_lid(true, 4), vec![CaffeineEffect::EnableLid]);
-    }
-
-    #[test]
-    fn lid_requires_ac_with_unknown_battery_pct() {
-        let mut k = Caffeine::new(CaffeineConfig {
-            lid_requires_ac: true,
-            ..Default::default()
-        });
-        k.on_power(
-            PowerStatus {
-                on_ac: false,
-                battery_pct: None,
-            },
-            0,
-        );
-        assert!(is_notice(&k.set_lid(true, 1)[0]));
-    }
-
-    #[test]
-    fn unknown_battery_pct_never_trips_floors() {
-        let mut k = c();
-        k.activate(AwakeMode::System, None, 0);
-        k.set_lid(true, 0);
-        let fx = k.on_power(
-            PowerStatus {
-                on_ac: false,
-                battery_pct: None,
-            },
-            1,
-        );
-        assert!(fx.is_empty());
     }
 
     #[test]
@@ -898,22 +802,6 @@ mod tests {
         assert_eq!(fx.len(), 1);
         assert!(is_notice(&fx[0]));
         assert_eq!(k.snapshot(1).mode, AwakeMode::Off);
-    }
-
-    #[test]
-    fn set_lid_refused_on_low_battery_without_activating() {
-        let mut k = c();
-        k.on_power(batt(15), 0);
-        let fx = k.set_lid(true, 1);
-        assert_eq!(fx.len(), 1);
-        assert!(is_notice(&fx[0]));
-        let s = k.snapshot(1);
-        assert_eq!((s.mode, s.lid), (AwakeMode::Off, LidState::Off));
-        // Plain activation is still fine at 15%.
-        assert_eq!(
-            k.activate(AwakeMode::System, None, 2),
-            vec![CaffeineEffect::SetAssertion(AwakeMode::System)]
-        );
     }
 
     #[test]
@@ -954,11 +842,9 @@ mod tests {
         let mut k = c();
         k.set_config(CaffeineConfig {
             battery_floor_pct: 200,
-            lid_battery_floor_pct: 255,
             ..Default::default()
         });
         assert_eq!(k.config().battery_floor_pct, 100);
-        assert_eq!(k.config().lid_battery_floor_pct, 100);
         k.activate(AwakeMode::System, None, 0);
         assert!(!k.on_power(batt(99), 1).is_empty());
         let k2 = Caffeine::new(CaffeineConfig {
@@ -973,9 +859,15 @@ mod tests {
         let cfg: CaffeineConfig = serde_json::from_str("{}").unwrap();
         assert_eq!(cfg, CaffeineConfig::default());
         let cfg: CaffeineConfig =
-            serde_json::from_str(r#"{"default_mode":"system","lid_requires_ac":true}"#).unwrap();
+            serde_json::from_str(r#"{"default_mode":"system","lid_closed":true}"#).unwrap();
         assert_eq!(cfg.default_mode, AwakeMode::System);
-        assert!(cfg.lid_requires_ac);
+        assert!(cfg.lid_closed);
+        // Settings saved by earlier versions, with the lid-only limits, still load.
+        let old: CaffeineConfig = serde_json::from_str(
+            r#"{"battery_floor_pct":15,"lid_battery_floor_pct":25,"lid_requires_ac":true}"#,
+        )
+        .unwrap();
+        assert_eq!((old.battery_floor_pct, old.lid_closed), (15, false));
         let s = serde_json::to_string(&CaffeineEffect::SetAssertion(AwakeMode::Display)).unwrap();
         assert_eq!(s, r#"{"set_assertion":"display"}"#);
         let snap = c().snapshot(0);
@@ -996,5 +888,158 @@ mod tests {
                 body: "ไม่พอ".into()
             }
         );
+    }
+
+    fn with_floor(floor: u8) -> Caffeine {
+        Caffeine::new(CaffeineConfig {
+            battery_floor_pct: floor,
+            lid_closed: true,
+            ..Default::default()
+        })
+    }
+
+    fn on_with_lid(k: &mut Caffeine) -> Vec<CaffeineEffect> {
+        let fx = k.activate(AwakeMode::System, None, 0);
+        k.lid_result(true, 0);
+        fx
+    }
+
+    #[test]
+    fn the_saved_lid_choice_comes_with_keep_awake_every_time_it_is_turned_on() {
+        let mut k = with_floor(10);
+        assert_eq!(
+            on_with_lid(&mut k),
+            vec![
+                CaffeineEffect::SetAssertion(AwakeMode::System),
+                CaffeineEffect::EnableLid
+            ]
+        );
+        assert_eq!(k.snapshot(0).lid, LidState::On);
+        // Off takes both away; on brings both back, with no new choice made.
+        let fx = k.deactivate(1);
+        assert_eq!(
+            fx,
+            vec![
+                CaffeineEffect::DisableLid,
+                CaffeineEffect::SetAssertion(AwakeMode::Off)
+            ]
+        );
+        assert!(k.config().lid_closed);
+        assert_eq!(
+            k.activate(AwakeMode::Display, None, 2),
+            vec![
+                CaffeineEffect::SetAssertion(AwakeMode::Display),
+                CaffeineEffect::EnableLid
+            ]
+        );
+    }
+
+    #[test]
+    fn without_the_lid_choice_keep_awake_never_brings_the_lid() {
+        let mut k = c();
+        assert_eq!(
+            k.activate(AwakeMode::System, None, 0),
+            vec![CaffeineEffect::SetAssertion(AwakeMode::System)]
+        );
+        k.deactivate(1);
+        assert_eq!(
+            k.activate(AwakeMode::System, None, 2),
+            vec![CaffeineEffect::SetAssertion(AwakeMode::System)]
+        );
+    }
+
+    #[test]
+    fn changing_the_choice_while_off_only_saves_it_and_while_on_applies_it() {
+        let mut k = c();
+        let mut cfg = k.config().clone();
+        cfg.lid_closed = true;
+        assert!(
+            k.set_config(cfg.clone()).is_empty(),
+            "nothing starts by itself"
+        );
+        assert_eq!(k.snapshot(0).mode, AwakeMode::Off);
+        cfg.lid_closed = false;
+        k.set_config(cfg.clone());
+        k.activate(AwakeMode::System, None, 0);
+        cfg.lid_closed = true;
+        assert_eq!(k.set_config(cfg.clone()), vec![CaffeineEffect::EnableLid]);
+        k.lid_result(true, 0);
+        cfg.lid_closed = false;
+        assert_eq!(k.set_config(cfg), vec![CaffeineEffect::DisableLid]);
+        assert_eq!(
+            k.snapshot(0).mode,
+            AwakeMode::System,
+            "keep awake carries on"
+        );
+    }
+
+    #[test]
+    fn a_failed_lid_step_keeps_the_choice_and_changing_the_timer_does_not_ask_again() {
+        let mut k = with_floor(10);
+        k.activate(AwakeMode::System, None, 0);
+        let fx = k.lid_result(false, 1);
+        assert!(is_notice(&fx[0]));
+        assert!(k.config().lid_closed);
+        // Picking another duration is not turning keep awake on.
+        assert!(k.activate(AwakeMode::System, Some(3600), 2).is_empty());
+        assert_eq!(k.snapshot(2).lid, LidState::Off);
+        // Turning it off and on again does ask, because the choice is still set.
+        k.deactivate(3);
+        assert!(k
+            .activate(AwakeMode::System, None, 4)
+            .contains(&CaffeineEffect::EnableLid));
+    }
+
+    #[test]
+    fn one_battery_limit_covers_every_mode_with_or_without_the_lid() {
+        // Floor 30: both modes stop below it, together.
+        let mut k = with_floor(30);
+        on_with_lid(&mut k);
+        assert!(k.on_power(batt(30), 1).is_empty());
+        let fx = k.on_power(batt(29), 2);
+        assert!(fx.contains(&CaffeineEffect::DisableLid));
+        assert!(fx.contains(&CaffeineEffect::SetAssertion(AwakeMode::Off)));
+        assert_eq!(fx.iter().filter(|f| is_notice(f)).count(), 1);
+        // And a start is refused below it, lid choice or not.
+        assert!(is_notice(&k.activate(AwakeMode::System, None, 3)[0]));
+        assert_eq!(k.snapshot(3).mode, AwakeMode::Off);
+        let mut plain = Caffeine::new(CaffeineConfig {
+            battery_floor_pct: 30,
+            ..Default::default()
+        });
+        plain.on_power(batt(29), 0);
+        assert!(is_notice(&plain.activate(AwakeMode::System, None, 1)[0]));
+    }
+
+    #[test]
+    fn a_limit_of_zero_means_no_restriction_in_either_mode() {
+        let mut k = with_floor(0);
+        k.on_power(batt(1), 0);
+        assert!(on_with_lid(&mut k).contains(&CaffeineEffect::EnableLid));
+        assert!(k.on_power(batt(0), 1).is_empty());
+        let s = k.snapshot(1);
+        assert_eq!(
+            (s.mode, s.lid, s.guard),
+            (AwakeMode::System, LidState::On, None)
+        );
+        let mut plain = Caffeine::new(CaffeineConfig {
+            battery_floor_pct: 0,
+            ..Default::default()
+        });
+        plain.on_power(batt(1), 0);
+        assert!(!plain.activate(AwakeMode::Display, None, 1).is_empty());
+        assert!(plain.on_power(batt(0), 2).is_empty());
+    }
+
+    #[test]
+    fn an_unknown_battery_level_never_trips_the_limit() {
+        let mut k = with_floor(50);
+        on_with_lid(&mut k);
+        let unknown = PowerStatus {
+            on_ac: false,
+            battery_pct: None,
+        };
+        assert!(k.on_power(unknown, 1).is_empty());
+        assert_eq!(k.snapshot(1).lid, LidState::On);
     }
 }

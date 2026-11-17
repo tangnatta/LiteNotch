@@ -109,8 +109,9 @@ pub enum OpenTarget {
 #[serde(default)]
 pub struct NotifyConfig {
     pub enabled: bool,
+    /// How long a banner stays, kept within `BANNER_SECS`.
     pub banner_secs: u32,
-    /// Clamped to at least 1.
+    /// Kept within `HISTORY_ITEMS`.
     pub max_history: usize,
     /// Advisory: the runtime calls `set_dnd` when focus starts/stops.
     pub dnd_during_focus: bool,
@@ -174,6 +175,10 @@ impl NotificationCenter {
     }
 
     /// Replaces the config; history is re-capped without touching live items.
+    pub fn config(&self) -> &NotifyConfig {
+        &self.cfg
+    }
+
     pub fn set_config(&mut self, cfg: NotifyConfig) {
         self.cfg = sanitize(cfg);
         self.trim();
@@ -438,10 +443,19 @@ impl NotificationCenter {
     }
 }
 
+/// How long a banner may stay, in seconds. A zero-second banner would vanish
+/// in the tick that shows it; the shell offers the same range.
+pub const BANNER_SECS: std::ops::RangeInclusive<u32> = 2..=30;
+/// How many notifications the inbox keeps.
+pub const HISTORY_ITEMS: std::ops::RangeInclusive<usize> = 1..=500;
+
 fn sanitize(mut cfg: NotifyConfig) -> NotifyConfig {
-    cfg.max_history = cfg.max_history.max(1);
-    // A zero-second banner would vanish in the tick that shows it.
-    cfg.banner_secs = cfg.banner_secs.max(1);
+    cfg.max_history = cfg
+        .max_history
+        .clamp(*HISTORY_ITEMS.start(), *HISTORY_ITEMS.end());
+    cfg.banner_secs = cfg
+        .banner_secs
+        .clamp(*BANNER_SECS.start(), *BANNER_SECS.end());
     cfg
 }
 
@@ -716,14 +730,28 @@ mod tests {
     }
 
     #[test]
-    fn zero_banner_secs_is_treated_as_one_second() {
+    fn banner_secs_and_history_are_kept_within_what_the_shell_offers() {
         let mut c = NotificationCenter::new(NotifyConfig {
             banner_secs: 0,
             ..NotifyConfig::default()
         });
         c.post(inp("a", Priority::Normal), 50);
-        assert_eq!(c.next_deadline(), Some(1050));
-        assert_eq!(c.tick(1050).len(), 1);
+        assert_eq!(c.next_deadline(), Some(2050), "at least 2 s");
+        assert_eq!(c.tick(2050).len(), 1);
+        for (given, kept) in [(0, 2), (2, 2), (30, 30), (31, 30), (u32::MAX, 30)] {
+            let c = NotificationCenter::new(NotifyConfig {
+                banner_secs: given,
+                ..NotifyConfig::default()
+            });
+            assert_eq!(c.config().banner_secs, kept);
+        }
+        for (given, kept) in [(0, 1), (500, 500), (501, 500), (usize::MAX, 500)] {
+            let c = NotificationCenter::new(NotifyConfig {
+                max_history: given,
+                ..NotifyConfig::default()
+            });
+            assert_eq!(c.config().max_history, kept);
+        }
     }
 
     #[test]
@@ -1035,11 +1063,11 @@ mod tests {
     fn set_config_changes_banner_duration_for_later_posts() {
         let mut c = center();
         c.set_config(NotifyConfig {
-            banner_secs: 1,
+            banner_secs: 10,
             ..NotifyConfig::default()
         });
         c.post(inp("a", Priority::Normal), 0);
-        assert_eq!(c.next_deadline(), Some(1000));
+        assert_eq!(c.next_deadline(), Some(10_000));
     }
 
     #[test]
@@ -1174,13 +1202,13 @@ mod tests {
     }
 
     #[test]
-    fn a_zero_second_banner_setting_is_raised_to_one_second() {
+    fn a_zero_second_banner_setting_is_raised_to_two_seconds() {
         let mut c = NotificationCenter::new(NotifyConfig {
             banner_secs: 0,
             ..NotifyConfig::default()
         });
         c.post(NotificationInput::new("s", "t", ""), 1000);
-        assert_eq!(c.next_deadline(), Some(2000));
+        assert_eq!(c.next_deadline(), Some(3000));
         assert!(c.tick(1000).is_empty());
         assert!(c.current_banner().is_some());
     }

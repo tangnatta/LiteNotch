@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use litenotch_core::agent::decision_output;
+use litenotch_core::agent::{allow_with_input_output, decision_output};
 use litenotch_core::ipc::{self, Request, Response, MAX_REQUEST_BYTES};
 use litenotch_core::notify::Priority;
 use litenotch_files::hooks_file;
@@ -257,10 +257,16 @@ fn hook(env: &Env, stdin: &mut dyn Read, stdout: &mut dyn Write) -> i32 {
     } else {
         QUICK_WAIT
     };
-    if let Ok(Response::Decision { decision }) = exchange(env, &Request::Hook { payload }, wait) {
-        if let Some(output) = decision_output(decision) {
-            let _ = writeln!(stdout, "{output}");
+    match exchange(env, &Request::Hook { payload }, wait) {
+        Ok(Response::Decision { decision }) => {
+            if let Some(output) = decision_output(decision) {
+                let _ = writeln!(stdout, "{output}");
+            }
         }
+        Ok(Response::Answer { updated_input }) => {
+            let _ = writeln!(stdout, "{}", allow_with_input_output(&updated_input));
+        }
+        _ => {}
     }
     0
 }

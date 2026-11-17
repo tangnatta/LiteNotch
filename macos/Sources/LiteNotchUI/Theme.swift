@@ -264,7 +264,7 @@ struct NotchShape: Shape {
     var topRadius: CGFloat
     var bottomRadius: CGFloat
     var topCorner: CGFloat = 0
-    /// Space left empty above the shape (the floating capsule sits below
+    /// Space left empty above the shape (the island capsule sits below
     /// the hardware notch).
     var topInset: CGFloat = 0
 
@@ -308,7 +308,7 @@ struct NotchShape: Shape {
     }
 }
 
-/// The area that takes the pointer: the shape, plus, above a floating
+/// The area that takes the pointer: the shape, plus, above an island
 /// shape, the column under the notch so the pointer can travel between them.
 struct PointerShape: Shape {
     var shape: NotchShape

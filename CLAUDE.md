@@ -85,7 +85,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   terminal that is already in front is not noticed.
   The shell draws one activity exactly as before (icon left, value right);
   two as icon + time on each side, the second dimmed
-  (`ClosedActivityView`, widths in `NotchGeometry.wingWidth(for:floating:)`).
+  (`ClosedActivityView`, widths in `NotchGeometry.wingWidth(for:island:)`).
   On a display without a notch there is no camera to keep clear, so in
   both styles the same content is one row with no gap in the middle
   (`NotchLayout.oneRow`, `NotchGeometry.rowWidth`): one activity is its
@@ -108,13 +108,15 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   mark while running; pausing keeps time left still, so it never repeats.
   Warning times join `next_deadline`, so peeks add no polling.
   Three wellbeing peeks (`ActivityKind::Nudge`), each with an Off choice
-  in Settings › Timer:
+  in Settings › Timer. The eye break and Move both count screen time only
+  (`Core::is_away`: the shell's `screen_away` or `lid_shut`, which is the lid
+  shut in closed-lid mode with no other display, so caffeine holding a shut
+  Mac awake does not count); they never follow the focus timer (an earlier
+  `move_counts` choice is gone, old files still load):
   the eye break (`peek.eye_break_mins`, 0 = off, the default; every few
   minutes of screen time), a quick blinking `>_<` with "Look away" for 3 s
   (`EYE_MS`) so the user blinks; the Move reminder (`peek.move_mins`, 0 =
-  off, the default; `move_counts`: Focus = time into a running focus
-  phase, tied to focus rather than the wall clock so it is not ignored as
-  background noise, or Screen = time the screen is on), one of
+  off, the default), one of
   `MOVE_LINES` (stretch, walk, water) picked from `now_ms` and never the
   same kind twice in a row, 8 s (`NUDGE_MS`) so its line can scroll; and a
   line after a completed (not skipped) break (`peek.break_quote`, on by
@@ -176,10 +178,10 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   closed 5 min, else on the last tab (`PanelState.landing`).
   Two notch styles (`appearance.notch_style`, Settings → General): Attached
   (default, the original geometry; keep it pixel-identical for existing
-  users on a display with a notch; without one it uses the one row above) and Floating, a capsule inset 3 pt inside the menu bar or notch
+  users on a display with a notch; without one it uses the one row above) and Island (called Floating before; saved settings with `floating` still load, `serde(alias)`), a capsule inset 3 pt inside the menu bar or notch
   band, with the toast overlapping it by 8 pt and the panel 6 pt below
-  (`floatingPanelDrop`; at 0 it looked hung from the bar).
-  Floating sizes derive from the measured menu bar height; all geometry
+  (`islandPanelDrop`; at 0 it looked hung from the bar).
+  Island sizes derive from the measured menu bar height; all geometry
   lives in `NotchLayout` (`Geometry.swift`).
   The accent (`appearance.accent`) is `#RRGGBB`, `system` (macOS's accent,
   re-read on `NSColor.systemColorsDidChangeNotification`) or `mono` (the
@@ -204,7 +206,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   notch already is just the notch and a strip thinner than the camera
   housing could not be found with the pointer. Peeks, banners and
   approvals still show.
-  Four layouts exist (camera housing or not, Attached or Floating) and
+  Four layouts exist (camera housing or not, Attached or Island) and
   the user can choose either style on either machine. In each, what the
   closed notch draws must fit the shape `NotchLayout.size(for:content:)`
   gives it; `ClosedSpaceTests` measures the drawn content for every
@@ -231,6 +233,24 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   status line JSON (`litenotch statusline`, the only documented source of
   `rate_limits`); today's token totals are read from the session transcripts,
   whose format is internal to Claude Code and may change.
+- **Questions** (`AskUserQuestion`): the `PermissionRequest` for that tool
+  carries `questions` (`agent::Question`: header, text, `multi_select`,
+  options), parsed and sanitized by `parse_questions`; anything that would be
+  cut short (over 4 questions, 8 options, or the length caps) gives none and
+  the prompt falls back to the plain detail view. The shell answers with
+  `agent_answer` (one list of labels or typed text per question); the core
+  checks the shape and lengths (`Agents::answer`, no answer = request stays
+  pending) and the CLI prints `allow` with `updatedInput` = the original input
+  plus `answers` keyed by question text (`Response::Answer`; multi-select
+  joins labels with ", "). The raw input stays in the core (`#[serde(skip)]`).
+  Verified against a live Claude Code (Nov 2026): it accepts `updatedInput.answers`
+  from the hook, for single, multiple and several questions, including typed
+  answers of the user's own (single choice takes one; multiple choice up to
+  `MAX_ANSWERS` = 16 in all). Its own question tool always has 2+ options, so the
+  no-option (open) layout is only exercised with a hand-made hook payload.
+  The shell form is `QuestionView.swift` (`QuestionDraft` holds the rules:
+  single choice sends on click, several questions are a stepper, an open
+  question is a typing box).
 - **One copy's hooks only.** Each copy of the app registers its own CLI
   path, so test builds and moved installs used to pile up in
   `~/.claude/settings.json`: five hook processes per Claude Code event,
@@ -313,6 +333,16 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   keeps per-day totals, today's totals by model and project, and writes the
   one-sentence summary (`usage::Usage::snapshot`). "Tokens" there means
   input + output; cache tokens are tracked separately in `today`.
+- **Lid choice and battery limit** (`caffeine::CaffeineConfig`): `lid_closed`
+  is a saved setting, not an action. Turning keep awake on (`activate` from off)
+  brings the lid with it when it is set (`apply_lid`), turning it off takes
+  both away, and changing the choice while keep awake is on applies at once;
+  while it is off, changing it only saves it. Picking another duration is not
+  turning it on, so it never asks for the password again. One
+  `battery_floor_pct` covers every mode (0 = no limit); there is no lid-only
+  limit and no AC-only switch (settings saved with `lid_battery_floor_pct` or
+  `lid_requires_ac` still load, the keys are ignored). The `caffeine_lid`
+  command sets the choice.
 - **Closed-lid keep-awake** needs root (`pmset -a disablesleep 1`). One admin
   prompt per run of LiteNotch starts a root shell loop, the helper, which
   sets the flag and then sleeps in `read` on a named pipe that LiteNotch
@@ -365,6 +395,20 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   It removes the quarantine flag in `postflight` because the app is not
   notarized; notarization needs a Developer ID certificate.
 - Only Apple silicon is built: every Mac with a notch is Apple silicon.
+
+## Core and shell are held to each other
+
+`core::schema` writes `macos/Fixtures/schema.json` with the fixtures: the
+limits the core really keeps (measured by saving extreme values through
+`SetSettings`), the sounds, and every enum's variants (listed with an
+exhaustive `match`, so a new variant does not compile until listed).
+`ParityTests` (Swift) compares the shell with it: the same enum values, sounds
+from the core, every Settings control inside what the core keeps
+(`SettingsLimits`, the one place the ranges are written), every setting the
+core writes surviving a decode and encode unchanged, and every top-level
+view-model field known to the shell. A core setting with no control must be in
+`ParityTests.withoutControl` with a reason. Regenerate with the fixtures
+command after changing the core.
 
 ## Rules that are easy to break
 
@@ -443,6 +487,17 @@ scripts/         build-app.sh, bench.sh, coverage.sh
 - Tests must not write to the user's real pasteboard, `~/.claude`, or
   `~/Library/Application Support/LiteNotch`; use `store::temp_dir` and the
   `FakePorts` harness in `crates/app/src/runtime.rs`.
+- **The one outgoing request is the update check** (`core::update`,
+  `platform::update`): `Effect::CheckUpdate` runs `/usr/bin/curl` (HTTPS only,
+  10 s, size-limited, a generic user agent, no identifier or version sent) against
+  GitHub's releases API for this repository only, from the "Check for updates"
+  button or the opt-in `general.check_updates` daily check (off by default). What
+  comes back is only data: `update::checked` accepts a version and a release page
+  under `RELEASES_PAGE` with a plain character set, and the shell opens only such a
+  page and copies only its own fixed `brew update && brew upgrade --cask
+  litenotch` (same text as the core's `BREW_COMMAND`, checked by `ParityTests`).
+  Nothing is downloaded or run; the "update" notification source is reserved.
+  There is no in-app updater (a Developer ID and notarization come first).
 - Analytics record feature-use counters per day only (`analytics::Feature`
   enum; no free-form strings). Uploading is opt-in and not implemented.
 - Clipboard history is in memory unless `general.persist_clipboard` is on.
@@ -460,7 +515,7 @@ the physical memory footprint:
 | timer | countdown running (digits redraw each second) | ≤ 1.0 % | ≤ 30 MB |
 | music | a stand-in track playing (`scripts/bench/nowplaying-fake.c`) | ≤ 1.0 % | ≤ 30 MB |
 | panel | the panel open on Home | ≤ 1.5 % | ≤ 40 MB |
-| floating | the Floating style with a countdown running | ≤ 1.0 % | ≤ 30 MB |
+| island | the Island style with a countdown running | ≤ 1.0 % | ≤ 30 MB |
 | glass | the panel open on Home, drawn with Liquid Glass | ≤ 1.5 % | ≤ 40 MB |
 | calendar | an event about to start (the closed notch counts down to it) | ≤ 1.0 % | ≤ 30 MB |
 | pair | two countdowns side by side in the closed notch | ≤ 1.0 % | ≤ 30 MB |
@@ -474,7 +529,7 @@ mostly shared framework pages, so the budget is on physical footprint.
 Single runs occasionally show a short burst (an outside event such as a
 copy landing in the window); a real regression repeats. Measured Nov 2026
 on an M-series MacBook: idle 0.05–0.30 % and 15–16 MB, timer 0.15–0.35 %,
-music 0.45 %, panel 0.70 % and 22 MB, floating 0.35 %, glass 0.25 % and
+music 0.45 %, panel 0.70 % and 22 MB, island 0.35 %, glass 0.25 % and
 28 MB, calendar 0.20–0.25 % and 16 MB, bundle 6.5 MB (EventKit added 0.2). (One run right after a build showed idle at 2.9 % and
 timer at 5.5 %; two repeats of each did not.) Glass is measured over a
 still desktop only, not over moving content.
@@ -537,7 +592,7 @@ the plain animation.
   to control Terminal" question (which, like Accessibility, an ad-hoc signed
   build has to be asked again after an update), and the iTerm2 script
   (written from its scripting dictionary, never run).
-- The Floating notch style has been seen on a Mac without a notch only, not
+- The Island notch style has been seen on a Mac without a notch only, not
   on one with a notch.
 
 - Unverified against a live Claude Code session: whether the terminal's own

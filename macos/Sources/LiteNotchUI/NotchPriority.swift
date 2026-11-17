@@ -123,7 +123,7 @@ public enum NotchPriority {
 /// The settings pane.
 struct NotchPriorityPane: View {
     @Binding var config: NotchConfig
-    let floating: Bool
+    let island: Bool
     /// Whether this display has a camera housing.
     var hasNotch = true
     @State private var situation = NotchPriority.situations[0]
@@ -132,7 +132,7 @@ struct NotchPriorityPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            NotchPreview(content: NotchPriority.content(for: situation, config: config), floating: floating,
+            NotchPreview(content: NotchPriority.content(for: situation, config: config), island: island,
                          hasNotch: hasNotch)
             SegmentedPill(options: NotchPriority.situations.map { (value: $0.id, title: $0.title) },
                           selection: Binding(get: { situation.id },
@@ -230,7 +230,7 @@ struct NotchPriorityPane: View {
 /// display (with or without a camera housing) and the chosen style.
 struct NotchPreview: View {
     let content: ClosedContent
-    let floating: Bool
+    let island: Bool
     var hasNotch = true
 
     /// The stand-in screen: a 32 pt menu bar; a notch a little narrower
@@ -239,8 +239,8 @@ struct NotchPreview: View {
     static let notchWidth: CGFloat = 150
 
     /// The layout the preview is drawn with.
-    static func layout(floating: Bool, hasNotch: Bool) -> NotchLayout {
-        NotchLayout(style: floating ? .floating : .attached,
+    static func layout(island: Bool, hasNotch: Bool) -> NotchLayout {
+        NotchLayout(style: island ? .island : .attached,
                     notch: CGSize(width: hasNotch ? notchWidth : NotchGeometry.fallbackSize.width, height: bar),
                     hasNotch: hasNotch, menuBarHeight: bar)
     }
@@ -248,25 +248,25 @@ struct NotchPreview: View {
     /// Width of the black shape: exactly what the layout gives the content.
     static func shapeWidth(_ layout: NotchLayout, content: ClosedContent) -> CGFloat {
         let width = layout.size(for: .closed, content: content).width
-        return layout.floating ? width : width - 2 * NotchGeometry.closedEar
+        return layout.island ? width : width - 2 * NotchGeometry.closedEar
     }
 
     var body: some View {
-        let layout = Self.layout(floating: floating, hasNotch: hasNotch)
+        let layout = Self.layout(island: island, hasNotch: hasNotch)
         let width = Self.shapeWidth(layout, content: content)
         ZStack(alignment: .top) {
             RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous).fill(NT.fillHi)
             Group {
-                if floating {
+                if island {
                     ClosedActivityView(content: content, notchWidth: layout.centerWidth, ear: 0,
                                        wing: layout.wingWidth(for: content),
-                                       edgePadding: NotchGeometry.floatingWingPadding,
+                                       edgePadding: NotchGeometry.islandWingPadding,
                                        artworkSize: min(20, layout.capsuleHeight - 4),
                                        artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
                                        oneRow: layout.oneRow)
                         .frame(width: width, height: layout.capsuleHeight)
                         .background(Color.black, in: Capsule())
-                        .padding(.top, NotchGeometry.floatingMargin)
+                        .padding(.top, NotchGeometry.islandMargin)
                 } else {
                     ClosedActivityView(content: content, notchWidth: layout.notch.width, ear: 0,
                                        wing: layout.wingWidth(for: content), oneRow: layout.oneRow)

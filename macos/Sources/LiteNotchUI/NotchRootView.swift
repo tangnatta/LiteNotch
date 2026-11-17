@@ -39,17 +39,17 @@ public struct NotchRootView: View {
         let ear = mode == .expanded ? NotchGeometry.expandedEar : NotchGeometry.closedEar
         let bottom: CGFloat = {
             switch mode {
-            case .closed: return layout.floating ? layout.capsuleHeight / 2 : NotchGeometry.closedBottomRadius
+            case .closed: return layout.island ? layout.capsuleHeight / 2 : NotchGeometry.closedBottomRadius
             case .toast: return NotchGeometry.toastBottomRadius
             case .expanded: return NotchGeometry.expandedBottomRadius
             }
         }()
-        // Attached: the notch silhouette with concave ears. Floating: all
+        // Attached: the notch silhouette with concave ears. Island: all
         // four corners rounded, `top` below the top of the screen.
         // Shrunk: a thin strip flush with the top edge, in either style.
         let shape = layout.minimized && !layout.hasNotch
             ? NotchShape(topRadius: NotchGeometry.minimizedEar, bottomRadius: NotchGeometry.minimizedBottomRadius)
-            : layout.floating
+            : layout.island
             ? NotchShape(topRadius: 0, bottomRadius: bottom, topCorner: bottom, topInset: top)
             : NotchShape(topRadius: ear, bottomRadius: bottom)
 
@@ -75,10 +75,10 @@ public struct NotchRootView: View {
                 let content = ClosedContent(view: model.view)
                 if !content.isEmpty && !layout.minimized {
                     Group {
-                        if layout.floating {
+                        if layout.island {
                             ClosedActivityView(content: content, notchWidth: layout.centerWidth, ear: 0,
                                                wing: layout.wingWidth(for: content),
-                                               edgePadding: NotchGeometry.floatingWingPadding,
+                                               edgePadding: NotchGeometry.islandWingPadding,
                                                artworkSize: min(20, layout.capsuleHeight - 4),
                                                artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
                                                artworkPath: model.view?.media?.artworkPath,
@@ -97,8 +97,8 @@ public struct NotchRootView: View {
                 }
             case .toast:
                 if let b = model.view?.inbox.banner {
-                    ToastView(banner: b, top: layout.floating ? top : model.notch.height,
-                              rowHeight: NotchGeometry.toastExtraHeight - (layout.floating ? 0 : 6), ear: ear,
+                    ToastView(banner: b, top: layout.island ? top : model.notch.height,
+                              rowHeight: NotchGeometry.toastExtraHeight - (layout.island ? 0 : 6), ear: ear,
                               open: { model.openNotification(b, isBanner: true) },
                               dismiss: { model.send(.notifyDismissBanner) },
                               act: { model.banner(b, perform: $0) })
@@ -140,7 +140,7 @@ struct ClosedActivityView: View {
     /// Space between the content and the outer end of each wing.
     var edgePadding: CGFloat = 12
     var artworkSize: CGFloat = 20
-    /// Floating only: the artwork is round and sits this far from the
+    /// Island only: the artwork is round and sits this far from the
     /// capsule's top, bottom and end, so it nests inside the round end.
     var artworkInset: CGFloat?
     var artworkPath: String?
@@ -712,7 +712,7 @@ extension NSColor {
 
 struct ToastView: View {
     let banner: NotificationItem
-    /// Empty space above the row: the notch, or the gap above a floating toast.
+    /// Empty space above the row: the notch, or the gap above an island toast.
     let top: CGFloat
     let rowHeight: CGFloat
     let ear: CGFloat
@@ -776,11 +776,11 @@ struct ExpandedView: View {
     @State private var shownApproval: String?
 
     /// Attached, the header row shares the notch's height and steps around
-    /// it; the floating panel sits below the notch and needs neither.
+    /// it; the island panel sits below the notch and needs neither.
     private var headerHeight: CGFloat {
-        model.layout.floating ? NotchGeometry.floatingHeaderHeight : model.notch.height
+        model.layout.island ? NotchGeometry.islandHeaderHeight : model.notch.height
     }
-    private var headerGap: CGFloat { model.layout.floating ? 0 : model.notch.width + 24 }
+    private var headerGap: CGFloat { model.layout.island ? 0 : model.notch.width + 24 }
 
     var body: some View {
         let vm = model.view
@@ -797,7 +797,7 @@ struct ExpandedView: View {
                 }
                 .frame(height: headerHeight)
                 // A new id re-arms Allow (see ApprovalView.armDelay).
-                ApprovalView(request: request, send: model.send)
+                ApprovalView(request: request, send: model.send, keyboard: model.requestKeyboard)
                     .id(request.id)
                     .padding(.horizontal, ear + 14)
                     .padding(.top, 8)
@@ -883,7 +883,7 @@ struct TabBar: View {
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Self.left, id: \.self) { tabButton($0) }
-            Spacer(minLength: model.layout.floating ? 0 : model.notch.width + 24)
+            Spacer(minLength: model.layout.island ? 0 : model.notch.width + 24)
             pickerButton
             keepAwakeButton
             ForEach(Self.right, id: \.self) { tabButton($0) }

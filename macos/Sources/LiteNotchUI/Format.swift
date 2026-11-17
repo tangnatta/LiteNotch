@@ -355,11 +355,14 @@ public struct ApprovalPresentation: Equatable {
     public let showTruncatedNotice: Bool
     public let detail: String
     public let summary: String
+    /// Claude is asking, not asking permission: show choices.
+    public let isQuestion: Bool
     public static let truncatedNotice = "Command too long to review here \u{2014} answer in Terminal"
 
     public init(_ r: PermissionRequest) {
+        isQuestion = !r.questions.isEmpty
         showAllow = !r.truncated
-        showTruncatedNotice = r.truncated
+        showTruncatedNotice = r.truncated && r.questions.isEmpty
         detail = ApprovalPresentation.visible(r.detail)
         summary = ApprovalPresentation.visible(r.summary)
     }
@@ -373,6 +376,8 @@ public struct ApprovalPresentation: Equatable {
         let tool = visible(r.toolName)
         let file = (visible(r.summary) as NSString).lastPathComponent
         switch tool {
+        case _ where !r.questions.isEmpty:
+            return "Claude Code has a question\(place)"
         case "Bash":
             return "Claude Code wants to run a command\(place)"
         case "Edit", "MultiEdit", "Write", "NotebookEdit":
@@ -387,7 +392,8 @@ public struct ApprovalPresentation: Equatable {
     /// Decisions the UI may offer. Allow is never offered for a truncated
     /// command; Deny and Pass always are.
     public var offeredDecisions: [Decision] {
-        showAllow ? [.deny, .pass, .allow] : [.deny, .pass]
+        if isQuestion { return [.pass] }
+        return showAllow ? [.deny, .pass, .allow] : [.deny, .pass]
     }
 
     /// Replaces bidirectional-override and other invisible formatting scalars

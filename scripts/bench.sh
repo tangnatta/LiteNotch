@@ -6,7 +6,7 @@
 #   timer       countdown running: the closed notch redraws its digits once a second
 #   music       a track playing: artwork and pulsing bars in the closed notch
 #   panel       the panel open on Home
-#   floating    the Floating notch style with a countdown running
+#   island    the Island notch style with a countdown running
 #   glass       the panel open on Home, drawn with Liquid Glass (macOS 26)
 #   calendar    an event about to start: the closed notch counts down to it
 #   pair        two countdowns side by side in the closed notch
@@ -30,7 +30,7 @@ CHECK=0
 if [ "${1:-}" = "--check" ]; then CHECK=1; shift; fi
 WINDOW=20
 case "${1:-}" in ''|*[!0-9]*) ;; *) WINDOW=$1; shift ;; esac
-SCENARIOS=${*:-"idle timer music panel floating glass calendar pair"}
+SCENARIOS=${*:-"idle timer music panel island glass calendar pair"}
 
 APP=dist/LiteNotch.app
 [ -x "$APP/Contents/MacOS/LiteNotch" ] || { echo "build first: scripts/build-app.sh" >&2; exit 2; }
@@ -108,7 +108,7 @@ for s in $SCENARIOS; do
             LITENOTCH_BENCH_COMMANDS='[{"cmd":"timer_set","secs":3600},{"cmd":"timer_toggle"}]' ;;
         music) run music 1.0 30 "$QUIET" LITENOTCH_BENCH_NOWPLAYING_LIB="$FAKE_LIB" ;;
         panel) run panel 1.5 40 "$QUIET" LITENOTCH_BENCH_OPEN=1 ;;
-        floating) run floating 1.0 30 '{"appearance":{"notch_style":"floating"}}' \
+        island) run island 1.0 30 '{"appearance":{"notch_style":"island"}}' \
             LITENOTCH_BENCH_COMMANDS='[{"cmd":"timer_set","secs":3600},{"cmd":"timer_toggle"}]' ;;
         glass) run glass 1.5 40 '{"appearance":{"material":"glass"}}' LITENOTCH_BENCH_OPEN=1 ;;
         calendar)

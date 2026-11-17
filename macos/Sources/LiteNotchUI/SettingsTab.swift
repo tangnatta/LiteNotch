@@ -128,7 +128,7 @@ struct SettingsTab: View {
     @ViewBuilder private var pane: some View {
         switch model.settingsSection {
         case .general: general
-        case .notch: NotchPriorityPane(config: $draft.notch, floating: draft.appearance.notchStyle == .floating,
+        case .notch: NotchPriorityPane(config: $draft.notch, island: draft.appearance.notchStyle == .island,
                                          hasNotch: model.hasNotch)
         case .home: home
         case .timer: timer
@@ -143,6 +143,8 @@ struct SettingsTab: View {
     }
 
     @ViewBuilder private var general: some View {
+        updateBlock
+        Hairline().padding(.vertical, 2)
         toggle("Open on hover", $draft.general.hoverToExpand,
                caption: "Clicking the notch always opens it.")
         toggle("Show on every display", $draft.general.allScreens,
@@ -155,8 +157,8 @@ struct SettingsTab: View {
                           label: "Theme", height: 22)
         }
         row("Notch") {
-            SegmentedPill(options: [(NotchStyle.attached, "Attached"), (NotchStyle.floating, "Floating")],
-                          selection: Binding(get: { draft.appearance.notchStyle == .floating ? .floating : .attached },
+            SegmentedPill(options: [(NotchStyle.attached, "Attached"), (NotchStyle.island, "Island")],
+                          selection: Binding(get: { draft.appearance.notchStyle == .island ? .island : .attached },
                                              set: { draft.appearance.notchStyle = $0 }),
                           label: "Notch style", height: 22)
         }
@@ -217,6 +219,38 @@ struct SettingsTab: View {
             TextPill(title: "Quit", tint: NT.text1, height: 22) { model.app?.onQuit() }
                 .help("Quit LiteNotch")
         }
+    }
+
+    /// This version, the button that asks whether there is a newer one, and
+    /// what to do when there is. Only the button (or the opt-in daily check)
+    /// contacts GitHub.
+    @ViewBuilder private var updateBlock: some View {
+        let u = vm.update
+        row("LiteNotch \(u.current)", caption: UpdateText.caption(u)) {
+            TextPill(title: u.status == .checking ? "Checking\u{2026}" : "Check for updates",
+                     tint: NT.text1, height: 22) { send(.updateCheck) }
+                .disabled(u.status == .checking)
+                .help("Asks GitHub for the newest release")
+        }
+        if u.status == .available, let latest = u.latest {
+            row("Version \(latest) is available") {
+                HStack(spacing: 6) {
+                    TextPill(title: "Copy update command", tint: .black, background: NT.allow, height: 22) {
+                        model.app?.copyText(UpdateText.brewCommand)
+                    }
+                    .help(UpdateText.brewCommand)
+                    if let page = UpdateText.releasePage(u.url) {
+                        TextPill(title: "Release page", tint: NT.text1, height: 22) { model.app?.openURL(page) }
+                    }
+                }
+            }
+            VText("Paste the command in Terminal if you installed with Homebrew. Otherwise download the new version from the release page.")
+                .nfont(.caption).foregroundStyle(NT.text2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        toggle("Check automatically", $draft.general.checkUpdates,
+               caption: "At start and once a day. This contacts GitHub; with it off nothing is sent until you press the button.")
+            .padding(.top, 6)
     }
 
     /// Solid or Liquid Glass for the open panel. Shown everywhere so the
@@ -291,15 +325,15 @@ struct SettingsTab: View {
     }
 
     @ViewBuilder private var timer: some View {
-        stepper("Focus", minutes($draft.pomodoro.focusSecs), 1...240, unit: "min")
-        stepper("Short break", minutes($draft.pomodoro.shortBreakSecs), 1...240, unit: "min")
-        stepper("Long break", minutes($draft.pomodoro.longBreakSecs), 1...240, unit: "min")
-        stepper("Rounds before a long break", $draft.pomodoro.roundsBeforeLong, 1...12)
+        stepper("Focus", minutes($draft.pomodoro.focusSecs), SettingsLimits.pomodoroMinutes, unit: "min")
+        stepper("Short break", minutes($draft.pomodoro.shortBreakSecs), SettingsLimits.pomodoroMinutes, unit: "min")
+        stepper("Long break", minutes($draft.pomodoro.longBreakSecs), SettingsLimits.pomodoroMinutes, unit: "min")
+        stepper("Rounds before a long break", $draft.pomodoro.roundsBeforeLong, SettingsLimits.rounds)
         toggle("Auto-start breaks", $draft.pomodoro.autoStartBreaks)
         toggle("Auto-start focus", $draft.pomodoro.autoStartFocus)
         Hairline().padding(.vertical, 2)
         wideRow("Heads-up before it ends", caption: "Pomodoro and timer show the time left for a moment.") {
-            SegmentedPill(options: [(0, "Off"), (60, "1"), (180, "3"), (300, "5"), (600, "10 min")],
+            SegmentedPill(options: SettingsLimits.timeWarningSecs.map { ($0, $0 == 0 ? "Off" : $0 == 600 ? "10 min" : "\($0 / 60)") },
                           selection: $draft.peek.timeWarningSecs, label: "Heads-up before it ends", height: 22)
         }
         toggle("Sound when time is up", $draft.sound.enabled,
@@ -310,22 +344,13 @@ struct SettingsTab: View {
             }
         }
         Hairline().padding(.vertical, 2)
-        wideRow("Eye break", caption: "A quick blink and look away.") {
-            SegmentedPill(options: [(0, "Off"), (5, "5"), (10, "10"), (15, "15"), (20, "20 min")],
+        wideRow("Eye break", caption: "A quick blink and look away, every so many minutes at the Mac.") {
+            SegmentedPill(options: SettingsLimits.eyeBreakMins.map { ($0, $0 == 0 ? "Off" : $0 == 20 ? "20 min" : "\($0)") },
                           selection: $draft.peek.eyeBreakMins, label: "Eye break", height: 22)
         }
-        wideRow("Move", caption: "Stretch, walk or drink water.") {
-            SegmentedPill(options: [(0, "Off"), (20, "20"), (30, "30"), (45, "45"), (60, "60 min")],
+        wideRow("Move", caption: "Stretch, walk or drink water, every so many minutes at the Mac.") {
+            SegmentedPill(options: SettingsLimits.moveMins.map { ($0, $0 == 0 ? "Off" : $0 == 60 ? "60 min" : "\($0)") },
                           selection: $draft.peek.moveMins, label: "Move", height: 22)
-        }
-        if draft.peek.moveMins > 0 {
-            // Which minutes add up to the next Move reminder.
-            row("Move counts time", caption: draft.peek.moveCounts == .screen
-                ? "Every minute at the Mac adds up to the next reminder."
-                : "Only minutes inside a focus session add up.") {
-                SegmentedPill(options: [(CountTime.focus, "In focus"), (.screen, "At the Mac")],
-                              selection: $draft.peek.moveCounts, label: "Move counts", height: 22)
-            }
         }
         toggle("A few words after a break", $draft.peek.breakQuote,
                caption: "The closed notch shows a short line of encouragement when a break ends.")
@@ -336,10 +361,18 @@ struct SettingsTab: View {
                caption: "How far through your office hours: \u{2212} before they start, + after they end.")
         if draft.day.enabled {
             row("Starts") {
-                TimeStepper(minutes: $draft.day.startMin, range: 0...(24 * 60 - 30), label: "Starts")
+                TimeStepper(minutes: Binding(get: { draft.day.startMin },
+                                             set: { start in
+                                                 draft.day.startMin = start
+                                                 // The core keeps the end at least a span after it.
+                                                 draft.day.endMin = max(draft.day.endMin, start + SettingsLimits.dayMinSpan)
+                                             }),
+                            range: SettingsLimits.dayStart, label: "Starts")
             }
             row("Ends") {
-                TimeStepper(minutes: $draft.day.endMin, range: 30...(24 * 60), label: "Ends")
+                TimeStepper(minutes: $draft.day.endMin,
+                            range: (draft.day.startMin + SettingsLimits.dayMinSpan)...SettingsLimits.dayEnd.upperBound,
+                            label: "Ends")
             }
             row("Days") { WeekdayPicker(days: $draft.day.days) }
         }
@@ -391,7 +424,7 @@ struct SettingsTab: View {
                     .help("macOS forgets the permission when LiteNotch is updated")
             }
         }
-        stepper("Banner stays for", $draft.notify.bannerSecs, 2...30, unit: "s")
+        stepper("Banner stays for", $draft.notify.bannerSecs, SettingsLimits.bannerSecs, unit: "s")
         toggle("Hold during focus", $draft.notify.dndDuringFocus,
                caption: "Less urgent notifications wait until a focus session ends.")
     }
@@ -416,7 +449,7 @@ struct SettingsTab: View {
         }
         row("Remind before it starts", caption: draft.calendar.alertMinutes == 0 ? "No reminder." : "0 turns the reminder off.") {
             HStack(spacing: 6) {
-                MiniStepper(value: $draft.calendar.alertMinutes, range: 0...60, label: "Remind before it starts")
+                MiniStepper(value: $draft.calendar.alertMinutes, range: SettingsLimits.alertMinutes, label: "Remind before it starts")
                 Text(verbatim: "min").nfont(.caption).foregroundStyle(NT.text3)
                     .frame(minWidth: 24, alignment: .leading)
             }
@@ -439,7 +472,7 @@ struct SettingsTab: View {
         toggle("Clipboard history", $draft.clipboard.enabled)
         toggle("Keep after restart", $draft.general.persistClipboard,
                caption: "When off, history is forgotten when LiteNotch quits.")
-        stepper("History size", $draft.clipboard.maxItems, 10...200, step: 10, unit: "items")
+        stepper("History size", $draft.clipboard.maxItems, SettingsLimits.clipboardItems, step: 10, unit: "items")
         toggle("Skip passwords", $draft.clipboard.ignoreConcealed,
                caption: "Ignores what password managers copy.")
     }
@@ -449,7 +482,7 @@ struct SettingsTab: View {
                caption: "Sessions and approval requests appear in the notch.")
         toggle("Usage alerts", $draft.general.usageAlerts,
                caption: "A notification when a usage limit is close.")
-        stepper("Approval wait", $draft.agent.approvalTimeoutSecs, 15...120, step: 15, unit: "s")
+        stepper("Approval wait", $draft.agent.approvalTimeoutSecs, SettingsLimits.approvalSecs, step: 15, unit: "s")
         let installed = vm.agents.hooksInstalled ?? false
         row("Claude Code", caption: installed ? "Connected" : "Not connected") {
             if installed {
@@ -492,9 +525,7 @@ struct SettingsTab: View {
                           label: "Default keep-awake mode", height: 22)
         }
         row("With the lid closed", caption: c.lid == .pending ? "" : lidCaption(c)) {
-            NotchToggle(isOn: Binding(get: { c.lid != .off && c.lid != .unknown },
-                                      set: { send(.caffeineLid(on: $0)) }),
-                        label: "Keep awake with lid closed")
+            NotchToggle(isOn: $draft.caffeine.lidClosed, label: "Keep awake with lid closed")
         }
         if c.lid == .pending {
             WarningText(text: lidCaption(c)).nfont(.caption)
@@ -503,7 +534,10 @@ struct SettingsTab: View {
             VText(g).nfont(.caption).foregroundStyle(NT.text2).lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        stepper("Stop when battery is below", $draft.caffeine.batteryFloorPct, 5...50, step: 5, unit: "%")
+        stepper("Stop keeping awake below", $draft.caffeine.batteryFloorPct, SettingsLimits.batteryFloor, step: 5, unit: "%")
+        VText("One limit for every mode, with the lid open or closed. 0 % means no limit: the Mac stays awake until the battery runs out.")
+            .nfont(.caption).foregroundStyle(NT.text2)
+            .fixedSize(horizontal: false, vertical: true)
         row("Keep awake for", caption: awakeCaption(c)) {
             HStack(spacing: 4) {
                 chip("30m", 1800); chip("1h", 3600); chip("2h", 7200); chip("\u{221E}", nil)
@@ -519,11 +553,15 @@ struct SettingsTab: View {
             .replacingOccurrences(of: " Click to stop.", with: "")
     }
 
+    /// The lid choice is saved, so the caption says what it does at each moment.
     private func lidCaption(_ c: CaffeineView) -> String {
         switch c.lid {
         case .pending: return "Waiting for your password\u{2026}"
         case .on: return "The Mac stays awake with the lid closed."
-        default: return "Asks for an admin password once."
+        default:
+            return draft.caffeine.lidClosed
+                ? "Every time keep awake is on. Asks for an admin password once."
+                : "The Mac sleeps when the lid closes."
         }
     }
 

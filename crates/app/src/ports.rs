@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use litenotch_core::caffeine::{AwakeMode, PowerStatus};
 use litenotch_core::clipboard::{ClipCapture, ClipKind};
+use litenotch_core::update::Release;
 use litenotch_platform::clipboard::{
     self as pasteboard, ImageFormat, RawClip, RawKind, RichFormat,
 };
@@ -15,6 +16,10 @@ use litenotch_platform::lid::LidGuard;
 use litenotch_platform::nowplaying::{self, NowPlayingStream};
 use litenotch_platform::power::{Awake, PowerAssertion};
 use litenotch_platform::{battery, display};
+
+/// Called, from another thread, with the newest release or why it could not
+/// be found.
+pub type UpdateDone = Box<dyn FnOnce(Result<Release, String>) + Send>;
 
 pub trait Ports: Send {
     fn set_assertion(&mut self, mode: AwakeMode);
@@ -48,6 +53,10 @@ pub trait Ports: Send {
     fn sleep_display(&mut self);
     /// Starts playing one of the system's alert sounds.
     fn play_sound(&mut self, name: &str);
+    /// Asks GitHub for the newest release; `done` is called from another
+    /// thread with its version and page, or why that failed. Called only
+    /// when the core asks (`Effect::CheckUpdate`).
+    fn check_update(&mut self, done: UpdateDone);
     /// Seconds since the keyboard or mouse was last used; `None` where it
     /// cannot be read. Called only when the core asks (`Core::wants_idle`).
     fn input_idle_secs(&mut self) -> Option<u32>;
@@ -321,6 +330,14 @@ impl Ports for MacPorts {
 
     fn play_sound(&mut self, name: &str) {
         litenotch_platform::sound::play(name);
+    }
+
+    fn check_update(&mut self, done: UpdateDone) {
+        std::thread::spawn(move || {
+            done(
+                litenotch_platform::update::latest().map(|(version, url)| Release { version, url }),
+            );
+        });
     }
 
     fn input_idle_secs(&mut self) -> Option<u32> {

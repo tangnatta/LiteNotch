@@ -5,7 +5,7 @@ import SwiftUI
 struct ApprovalHeader: View {
     let index: Int
     let total: Int
-    /// Room left for the notch between the two sides (0 when floating).
+    /// Room left for the notch between the two sides (0 when island).
     let gap: CGFloat
     let ear: CGFloat
     var step: (Int) -> Void = { _ in }
@@ -45,6 +45,7 @@ struct ApprovalHeader: View {
 struct ApprovalView: View {
     let request: PermissionRequest
     let send: (ShellCommand) -> Void
+    var keyboard: (Bool) -> Void = { _ in }
 
     @Environment(\.isSnapshot) private var snapshot
     @State private var armed = false
@@ -69,6 +70,9 @@ struct ApprovalView: View {
                 }
             }
 
+            if p.isQuestion {
+                QuestionForm(request: request, armed: armed, send: send, keyboard: keyboard)
+            } else {
             NotchScroll {
                 VText(p.detail)
                     .font(.system(size: NType.body.size, design: .monospaced))
@@ -94,6 +98,7 @@ struct ApprovalView: View {
                 ForEach(p.offeredDecisions, id: \.self) { d in
                     decisionButton(d)
                 }
+            }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

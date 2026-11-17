@@ -351,12 +351,21 @@
       "count": 1
     }
   ],
+  "update": {
+    "current": "0.2.3-beta",
+    "status": "idle",
+    "latest": null,
+    "url": null,
+    "checked_ms": null,
+    "command": "brew update && brew upgrade --cask litenotch"
+  },
   "settings": {
     "general": {
       "persist_clipboard": false,
       "hover_to_expand": true,
       "usage_alerts": true,
-      "all_screens": false
+      "all_screens": false,
+      "check_updates": false
     },
     "appearance": {
       "theme": "system",
@@ -397,8 +406,7 @@
     "caffeine": {
       "default_mode": "display",
       "battery_floor_pct": 10,
-      "lid_battery_floor_pct": 25,
-      "lid_requires_ac": false
+      "lid_closed": false
     },
     "agent": {
       "enabled": true,
@@ -440,7 +448,6 @@
       "time_warning_secs": 300,
       "eye_break_mins": 0,
       "move_mins": 20,
-      "move_counts": "focus",
       "break_quote": true,
       "still_working": true
     },

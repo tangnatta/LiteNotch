@@ -35,18 +35,18 @@ public enum SnapshotRenderer {
                 try add("notchless-\(name)-closed", vm, expanded: false, notchless: true)
             }
             if ["idle", "pomodoro", "media", "banner", "pair"].contains(name) {
-                // The floating style, with a notch and on a 24 pt menu bar without one.
-                var floating = vm
-                floating.settings.appearance.notchStyle = .floating
-                try add("floating-\(name)-closed", floating, expanded: false)
-                try add("floating-notchless-\(name)-closed", floating, expanded: false, notchless: true)
+                // The island style, with a notch and on a 24 pt menu bar without one.
+                var island = vm
+                island.settings.appearance.notchStyle = .island
+                try add("island-\(name)-closed", island, expanded: false)
+                try add("island-notchless-\(name)-closed", island, expanded: false, notchless: true)
                 if name == "idle" {
                     // Shrink when empty, without a notch: the strip, in both styles.
                     var shrunk = vm
                     shrunk.settings.appearance.shrink = .whenEmpty
                     try add("notchless-idle-shrunk-closed", shrunk, expanded: false, notchless: true)
-                    shrunk.settings.appearance.notchStyle = .floating
-                    try add("floating-notchless-idle-shrunk-closed", shrunk, expanded: false, notchless: true)
+                    shrunk.settings.appearance.notchStyle = .island
+                    try add("island-notchless-idle-shrunk-closed", shrunk, expanded: false, notchless: true)
                 }
                 if name == "pomodoro" {
                     // Shrink always: the strip even with a timer running.
@@ -55,8 +55,8 @@ public enum SnapshotRenderer {
                     try add("notchless-pomodoro-shrunk-closed", shrunk, expanded: false, notchless: true)
                 }
                 if name == "pomodoro" {
-                    try add("floating-pomodoro-expanded-home", floating)
-                    try add("floating-notchless-pomodoro-expanded-home", floating, notchless: true)
+                    try add("island-pomodoro-expanded-home", island)
+                    try add("island-notchless-pomodoro-expanded-home", island, notchless: true)
                 }
             }
             if name == "pair" {
@@ -73,13 +73,13 @@ public enum SnapshotRenderer {
                 dot.compact = CompactView(kind: .idle, title: "", value: "", endsAtMs: nil, totalSecs: nil, count: 0)
                 dot.compactSecondary = nil
                 try add("waiting-dot-closed", dot, expanded: false)
-                var floating = vm
-                floating.settings.appearance.notchStyle = .floating
-                try add("floating-pair-closed", floating, expanded: false)
-                try add("floating-notchless-pair-closed", floating, expanded: false, notchless: true)
-                try add("floating-pair-expanded-settings-notch", floating, tab: .settings, section: .notch)
+                var island = vm
+                island.settings.appearance.notchStyle = .island
+                try add("island-pair-closed", island, expanded: false)
+                try add("island-notchless-pair-closed", island, expanded: false, notchless: true)
+                try add("island-pair-expanded-settings-notch", island, tab: .settings, section: .notch)
                 // The same pane on a display without a camera housing: one row.
-                try add("floating-notchless-pair-expanded-settings-notch", floating, tab: .settings, section: .notch, notchless: true)
+                try add("island-notchless-pair-expanded-settings-notch", island, tab: .settings, section: .notch, notchless: true)
                 try add("notchless-pair-expanded-settings-notch", vm, tab: .settings, section: .notch, notchless: true)
             }
             if name == "calendar" {
@@ -112,6 +112,25 @@ public enum SnapshotRenderer {
                 long.agents.pending.append(long.agents.pending[0])
                 long.agents.pending[1].id = "req-2"
                 try add("approval-truncated-expanded", long)
+                func asking(_ qs: [AgentQuestion]) -> ViewModel {
+                    var v = vm
+                    v.agents.pending[0].toolName = "AskUserQuestion"
+                    v.agents.pending[0].questions = qs
+                    return v
+                }
+                let pg = QuestionOption(label: "Postgres", description: "Relational, what the team already runs")
+                let lite = QuestionOption(label: "SQLite", description: "Embedded, one file")
+                let single = AgentQuestion(header: "Database", question: "Which database should the service use?",
+                                           options: [pg, lite, QuestionOption(label: "DynamoDB", description: "Managed key-value")])
+                let multi = AgentQuestion(header: "Checks", question: "Which checks should run before merging?", multiSelect: true,
+                                          options: [QuestionOption(label: "Unit tests", description: "cargo test"),
+                                                    QuestionOption(label: "Clippy", description: "-D warnings"),
+                                                    QuestionOption(label: "Benchmarks", description: "scripts/bench.sh")])
+                let open = AgentQuestion(header: "Name", question: "What should the new command be called?", options: [])
+                try add("question-single-expanded", asking([single]))
+                try add("question-multi-expanded", asking([multi]))
+                try add("question-open-expanded", asking([open]))
+                try add("question-steps-expanded", asking([single, multi, open]))
             }
             for tab in Tab.allCases {
                 try add("\(name)-expanded-\(tab.rawValue)", vm, tab: tab)

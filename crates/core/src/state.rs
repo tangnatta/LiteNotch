@@ -26,13 +26,12 @@ use crate::notify::{
     OpenTarget, Priority,
 };
 use crate::pomodoro::{Phase, Pomodoro, PomodoroConfig, PomodoroEvent, PomodoroStats, RunState};
+use crate::update::{Release, Update, UpdateView};
 use crate::usage::{local_day_start_ms, Usage, UsageRecord, UsageSnapshot};
 
 mod presentation;
 use presentation::Peek;
-pub use presentation::{
-    CountTime, PeekConfig, PeekKind, BREAK_LINES, EYE_MS, MOVE_LINES, NUDGE_MS, PEEK_MS,
-};
+pub use presentation::{PeekConfig, PeekKind, BREAK_LINES, EYE_MS, MOVE_LINES, NUDGE_MS, PEEK_MS};
 
 /// Version of the persisted file layout.
 pub const PERSIST_VERSION: u32 = 1;
@@ -63,6 +62,7 @@ const RESERVED_SOURCES: &[&str] = &[
     "caffeine",
     "color",
     "calendar",
+    "update",
 ];
 /// How the "starting now" notice of a calendar event begins; the banner
 /// with this body offers to pause a running focus session.
@@ -82,6 +82,10 @@ pub struct General {
     pub usage_alerts: bool,
     /// Show the notch on every display instead of only the built-in one.
     pub all_screens: bool,
+    /// Look for a newer LiteNotch at start and once a day, which contacts
+    /// GitHub. Off by default: the "Check for updates" button is the way
+    /// to ask without it.
+    pub check_updates: bool,
 }
 
 impl Default for General {
@@ -91,6 +95,7 @@ impl Default for General {
             hover_to_expand: true,
             usage_alerts: true,
             all_screens: false,
+            check_updates: false,
         }
     }
 }
@@ -119,14 +124,16 @@ pub enum ThemeChoice {
 }
 
 /// How the notch is drawn. `Attached` hangs from the top edge in the
-/// notch's own silhouette; `Floating` is a capsule inside the menu bar, and
-/// the toast and the open panel float just below it.
+/// notch's own silhouette; `Island` is a capsule inside the menu bar, and
+/// the toast and the open panel hang just below it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum NotchStyle {
     #[default]
     Attached,
-    Floating,
+    /// Saved as `floating` by earlier versions, which are still read.
+    #[serde(alias = "floating")]
+    Island,
 }
 
 /// How the closed notch and the toast are drawn.
@@ -469,6 +476,13 @@ pub enum Command {
     AgentSeen {
         session_id: String,
     },
+    /// The user asked whether a newer LiteNotch exists.
+    UpdateCheck,
+    /// The user answered the questions of a pending `AskUserQuestion`.
+    AgentAnswer {
+        request_id: String,
+        answers: Vec<Vec<String>>,
+    },
     CaffeineToggle,
     CaffeineActivate {
         mode: AwakeMode,
@@ -546,6 +560,8 @@ pub enum Input {
     StatuslineInstalled(Option<bool>),
     /// A notification from the runtime itself (not from the socket).
     OwnNotify(NotificationInput),
+    /// The newest release GitHub named (or why it could not be asked).
+    UpdateChecked(Result<Release, String>),
     /// Seconds since the keyboard or mouse was last used, read because
     /// `Core::wants_idle` asked.
     InputIdle {
@@ -560,6 +576,8 @@ pub enum Effect {
     SetAssertion(AwakeMode),
     EnableLid,
     DisableLid,
+    /// Ask GitHub for the newest release; answer with `Input::UpdateChecked`.
+    CheckUpdate,
     WriteClipboard(String),
     /// Turn the displays off (the lid was just closed in closed-lid mode).
     SleepDisplay,
@@ -728,6 +746,7 @@ pub struct ViewModel {
     /// Colours picked from the screen, newest first.
     pub colors: Vec<String>,
     pub analytics: Vec<FeatureCount>,
+    pub update: UpdateView,
     pub settings: Settings,
 }
 
@@ -785,6 +804,7 @@ pub struct Core {
     /// The next local midnight while day progress is on, when today's
     /// office hours change.
     day_wake: Option<u64>,
+    update: Update,
     /// A still-working check is due: the runtime reads the idle time.
     idle_wanted: bool,
     /// Still-working reminders given in the current break.
@@ -887,6 +907,7 @@ impl Core {
             move_last: None,
             quote_due: None,
             day_wake: None,
+            update: Update::default(),
             idle_wanted: false,
             break_nags: 0,
         }
@@ -947,6 +968,8 @@ impl Core {
             self.calendar.next_deadline(),
             self.peek_deadline(),
             self.day_wake,
+            self.update
+                .next_deadline(self.settings.general.check_updates),
         ]
         .into_iter()
         .flatten()
@@ -1025,6 +1048,7 @@ impl Core {
             }
             Input::StatuslineInstalled(state) => self.statusline_installed = state,
             Input::OwnNotify(input) => self.post(input, now),
+            Input::UpdateChecked(answer) => self.update_checked(answer, now),
             Input::InputIdle { secs } => self.input_idle(secs, now),
             Input::Tick => {}
         }
@@ -1284,6 +1308,20 @@ impl Core {
                     fx.push(Effect::Resolve(resolved));
                 }
             }
+            Command::AgentAnswer {
+                request_id,
+                answers,
+            } => {
+                if let Some(resolved) = self.agents.answer(&request_id, &answers, now) {
+                    self.count(Feature::AgentAllow, now);
+                    fx.push(Effect::Resolve(resolved));
+                }
+            }
+            Command::UpdateCheck => {
+                if self.update.start(false) {
+                    fx.push(Effect::CheckUpdate);
+                }
+            }
             Command::AgentSeen { session_id } => {
                 if self.agents.sessions().iter().any(|s| s.id == session_id) {
                     self.notify
@@ -1316,10 +1354,13 @@ impl Core {
                 if on {
                     self.count(Feature::LidModeOn, now);
                 }
-                let effects = self.caffeine.set_lid(on, now);
-                self.caffeine_effects(effects, now, fx);
+                // A saved choice, not an action: it applies now if keep awake
+                // is on, and every time it is turned on after.
+                let mut settings = self.settings.clone();
+                settings.caffeine.lid_closed = on;
+                self.set_settings(settings, now, fx);
             }
-            Command::SetSettings { settings } => self.set_settings(*settings, now),
+            Command::SetSettings { settings } => self.set_settings(*settings, now, fx),
             Command::ScreenAway { away } => self.away = away,
             Command::PanelOpened => self.count(Feature::PanelOpen, now),
             Command::TabOpened { tab } => self.count(
@@ -1351,14 +1392,15 @@ impl Core {
         self.pomodoro.set_config(self.settings.pomodoro.clone());
     }
 
-    fn set_settings(&mut self, mut settings: Settings, now: u64) {
+    fn set_settings(&mut self, mut settings: Settings, now: u64, fx: &mut Vec<Effect>) {
         settings.appearance.accent = normalize_accent(&settings.appearance.accent);
         // The offset comes from the system, not from the settings form.
         settings.pomodoro.utc_offset_secs = self.utc_offset_secs;
         self.pomodoro.set_config(settings.pomodoro.clone());
         self.clipboard.set_config(settings.clipboard.clone());
         self.notify.set_config(settings.notify.clone());
-        self.caffeine.set_config(settings.caffeine.clone());
+        let lid_effects = self.caffeine.set_config(settings.caffeine.clone());
+        self.caffeine_effects(lid_effects, now, fx);
         self.agents.set_config(settings.agent.clone());
         self.calendar.set_config(settings.calendar.clone());
         settings.notch = settings.notch.normalized();
@@ -1371,6 +1413,7 @@ impl Core {
         // Store what the modules accepted after clamping.
         settings.pomodoro = self.pomodoro.config().clone();
         settings.clipboard = self.clipboard.config().clone();
+        settings.notify = self.notify.config().clone();
         settings.caffeine = self.caffeine.config().clone();
         settings.agent = self.agents.config().clone();
         settings.calendar = self.calendar.config().clone();
@@ -1416,6 +1459,32 @@ impl Core {
         let events = self.notify.tick(now);
         self.notify_events(events, now);
         self.settle_peeks(now);
+        if self
+            .update
+            .auto_due(self.settings.general.check_updates, now)
+            && self.update.start(true)
+        {
+            fx.push(Effect::CheckUpdate);
+        }
+    }
+
+    /// The answer to a check. A newer version the daily check finds for the
+    /// first time is announced once.
+    fn update_checked(&mut self, answer: Result<Release, String>, now: u64) {
+        let on = self.settings.general.check_updates;
+        if let Some(release) = self.update.finish(answer, on, now) {
+            self.post(
+                NotificationInput {
+                    source: "update".into(),
+                    title: format!("LiteNotch {} is available", release.version),
+                    body: "Settings › General has how to update.".into(),
+                    priority: Priority::Normal,
+                    group: Some("update".into()),
+                    ttl_secs: None,
+                },
+                now,
+            );
+        }
     }
 
     /// A reminder or a start. High priority: a meeting is worth breaking
@@ -1701,6 +1770,7 @@ impl Core {
             "caffeine" => tab("settings", Some("keep_awake")),
             "color" => tab("clipboard", None),
             "calendar" => tab("home", None),
+            "update" => tab("settings", Some("general")),
             _ => None,
         }
     }
@@ -1897,6 +1967,7 @@ impl Core {
             analytics: self
                 .analytics
                 .totals(today.saturating_sub(ANALYTICS_VIEW_DAYS - 1)),
+            update: self.update.view(),
             settings: self.settings.clone(),
         }
     }
@@ -2066,6 +2137,13 @@ mod tests {
 
     fn cmd(core: &mut Core, command: Command, now: u64) -> Vec<Effect> {
         core.apply(Input::Command(command), now)
+    }
+
+    /// The lid choice saved, then keep awake turned on: how closed-lid mode
+    /// is started.
+    fn start_lid(core: &mut Core, now: u64) -> Vec<Effect> {
+        cmd(core, Command::CaffeineLid { on: true }, now);
+        cmd(core, Command::CaffeineToggle, now)
     }
 
     fn hook(core: &mut Core, value: serde_json::Value, now: u64) -> (HookOutcome, Vec<Effect>) {
@@ -3289,7 +3367,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: id.clone(),
-                decision: Decision::Allow
+                decision: Decision::Allow,
+                updated_input: None
             })]
         );
         let v = c.view(T0 + 2);
@@ -3332,7 +3411,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: a,
-                decision: Decision::Deny
+                decision: Decision::Deny,
+                updated_input: None
             })]
         );
         let b = permission(&mut c, "s1", "ls", T0 + 2);
@@ -3342,7 +3422,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: b,
-                decision: Decision::Pass
+                decision: Decision::Pass,
+                updated_input: None
             })]
         );
         assert_eq!(
@@ -3369,7 +3450,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: id,
-                decision: Decision::Pass
+                decision: Decision::Pass,
+                updated_input: None
             })]
         );
         assert_eq!(uses(&c, Feature::AgentAllow), 0);
@@ -3387,7 +3469,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: id,
-                decision: Decision::Deny
+                decision: Decision::Deny,
+                updated_input: None
             })]
         );
     }
@@ -3405,7 +3488,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: id,
-                decision: Decision::Pass
+                decision: Decision::Pass,
+                updated_input: None
             })]
         );
         assert!(c.view(T0 + 1).agents.sessions.is_empty());
@@ -3563,7 +3647,7 @@ mod tests {
     #[test]
     fn lid_mode_asks_the_platform_and_low_battery_turns_it_off() {
         let mut c = core();
-        let fx = cmd(&mut c, Command::CaffeineLid { on: true }, T0);
+        let fx = start_lid(&mut c, T0);
         assert_eq!(
             fx,
             vec![Effect::SetAssertion(AwakeMode::Display), Effect::EnableLid]
@@ -3576,6 +3660,7 @@ mod tests {
             (LidState::On, "lid")
         );
 
+        // One limit for every mode: 20 % is above it, so nothing changes.
         let fx = c.apply(
             Input::Power(PowerStatus {
                 on_ac: false,
@@ -3583,12 +3668,10 @@ mod tests {
             }),
             T0 + 2,
         );
-        assert_eq!(fx, vec![Effect::DisableLid]);
-        let v = c.view(T0 + 2);
-        assert_eq!(v.caffeine.lid, LidState::Off);
-        assert!(v.caffeine.guard.is_some());
-        assert_eq!(v.inbox.banner.unwrap().source, "caffeine");
+        assert_eq!(fx, vec![]);
+        assert_eq!(c.view(T0 + 2).caffeine.lid, LidState::On);
 
+        // Below it everything goes off together, with one notice.
         let fx = c.apply(
             Input::Power(PowerStatus {
                 on_ac: false,
@@ -3596,14 +3679,21 @@ mod tests {
             }),
             T0 + 3,
         );
-        assert_eq!(fx, vec![Effect::SetAssertion(AwakeMode::Off)]);
+        assert_eq!(
+            fx,
+            vec![Effect::DisableLid, Effect::SetAssertion(AwakeMode::Off)]
+        );
+        let v = c.view(T0 + 3);
+        assert_eq!(v.caffeine.lid, LidState::Off);
+        assert!(v.caffeine.guard.is_some());
+        assert_eq!(v.inbox.banner.unwrap().source, "caffeine");
         assert_eq!(uses(&c, Feature::LidModeOn), 1);
     }
 
     #[test]
     fn a_failed_or_late_lid_result_is_handled() {
         let mut c = core();
-        cmd(&mut c, Command::CaffeineLid { on: true }, T0);
+        start_lid(&mut c, T0);
         c.apply(Input::LidResult { ok: false }, T0 + 1);
         assert_eq!(c.view(T0 + 1).caffeine.lid, LidState::Off);
         assert_eq!(
@@ -3611,6 +3701,7 @@ mod tests {
             "Lid mode failed"
         );
         // The password prompt was answered after lid mode was cancelled.
+        cmd(&mut c, Command::CaffeineLid { on: false }, T0 + 1);
         cmd(&mut c, Command::CaffeineLid { on: true }, T0 + 2);
         assert_eq!(
             cmd(&mut c, Command::CaffeineLid { on: false }, T0 + 3),
@@ -3920,7 +4011,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: id,
-                decision: Decision::Pass
+                decision: Decision::Pass,
+                updated_input: None
             })]
         );
         assert_eq!(uses(&c, Feature::AgentAllow), 0);
@@ -4057,7 +4149,7 @@ mod tests {
         assert!(!s.general.all_screens);
         s.appearance.theme = ThemeChoice::Light;
         s.appearance.accent = "3366ff".into();
-        s.appearance.notch_style = NotchStyle::Floating;
+        s.appearance.notch_style = NotchStyle::Island;
         s.general.all_screens = true;
         cmd(
             &mut c,
@@ -4069,7 +4161,7 @@ mod tests {
         let v = c.view(T0).settings;
         assert_eq!(v.appearance.theme, ThemeChoice::Light);
         assert_eq!(v.appearance.accent, "#3366FF");
-        assert_eq!(v.appearance.notch_style, NotchStyle::Floating);
+        assert_eq!(v.appearance.notch_style, NotchStyle::Island);
         assert!(v.general.all_screens);
         s.appearance.accent = "not a colour".into();
         cmd(
@@ -4109,7 +4201,7 @@ mod tests {
         let json = serde_json::to_value(c.view(T0).settings.appearance).unwrap();
         assert_eq!(
             json,
-            json!({"theme":"light","accent":DEFAULT_ACCENT,"notch_style":"floating","closed_notch":"dark","material":"solid","shrink":"off"})
+            json!({"theme":"light","accent":DEFAULT_ACCENT,"notch_style":"island","closed_notch":"dark","material":"solid","shrink":"off"})
         );
         // Settings saved before the field existed load as the original look.
         let old: Appearance =
@@ -4147,7 +4239,7 @@ mod tests {
     fn the_appearance_options_persist_together_and_a_partial_file_loads() {
         let mut c = core();
         let mut s = c.view(T0).settings;
-        s.appearance.notch_style = NotchStyle::Floating;
+        s.appearance.notch_style = NotchStyle::Island;
         s.appearance.closed_notch = ClosedNotch::Theme;
         s.appearance.material = Material::Glass;
         cmd(
@@ -4158,17 +4250,26 @@ mod tests {
             T0,
         );
         let again = Core::new(c.persisted()).view(T0).settings.appearance;
-        assert_eq!(again.notch_style, NotchStyle::Floating);
+        assert_eq!(again.notch_style, NotchStyle::Island);
         assert_eq!(again.closed_notch, ClosedNotch::Theme);
         assert_eq!(again.material, Material::Glass);
         // A settings file that names one option leaves the rest at the old look.
         let partial: Settings =
-            serde_json::from_value(json!({"appearance":{"notch_style":"floating"}})).unwrap();
-        assert_eq!(partial.appearance.notch_style, NotchStyle::Floating);
+            serde_json::from_value(json!({"appearance":{"notch_style":"island"}})).unwrap();
+        assert_eq!(partial.appearance.notch_style, NotchStyle::Island);
         assert_eq!(partial.appearance.closed_notch, ClosedNotch::Dark);
         assert_eq!(partial.appearance.material, Material::Solid);
         assert_eq!(partial.appearance.theme, ThemeChoice::System);
         assert_eq!(partial.appearance.accent, DEFAULT_ACCENT);
+    }
+
+    #[test]
+    fn a_style_saved_as_floating_by_an_earlier_version_still_loads_as_island() {
+        let old: Settings =
+            serde_json::from_value(json!({"appearance":{"notch_style":"floating"}})).unwrap();
+        assert_eq!(old.appearance.notch_style, NotchStyle::Island);
+        let saved = serde_json::to_value(&old).unwrap();
+        assert_eq!(saved["appearance"]["notch_style"], "island");
     }
 
     #[test]
@@ -4305,7 +4406,7 @@ mod tests {
     #[test]
     fn sleeping_with_the_lid_shut_ends_lid_mode_and_releases_the_assertion() {
         let mut c = core();
-        cmd(&mut c, Command::CaffeineLid { on: true }, T0);
+        start_lid(&mut c, T0);
         c.apply(Input::LidResult { ok: true }, T0);
         c.apply(
             Input::Clamshell {
@@ -4332,7 +4433,7 @@ mod tests {
     fn sleeping_with_the_lid_open_or_no_lid_mode_changes_nothing() {
         let mut c = core();
         assert!(c.apply(Input::Slept { gap_ms: 3_600_000 }, T0).is_empty());
-        cmd(&mut c, Command::CaffeineLid { on: true }, T0);
+        start_lid(&mut c, T0);
         c.apply(Input::LidResult { ok: true }, T0);
         c.apply(
             Input::Clamshell {
@@ -4669,5 +4770,136 @@ mod tests {
         assert_eq!(c.view(T0).agents.statusline_installed, None);
         c.apply(Input::StatuslineInstalled(Some(true)), T0);
         assert_eq!(c.view(T0).agents.statusline_installed, Some(true));
+    }
+
+    fn newer() -> Release {
+        Release {
+            version: "999.0.0".into(),
+            url: format!("{}/tag/v999.0.0", crate::update::RELEASES_PAGE),
+        }
+    }
+
+    fn auto_updates(c: &mut Core, on: bool, now: u64) -> Vec<Effect> {
+        let mut s = c.settings().clone();
+        s.general.check_updates = on;
+        cmd(
+            c,
+            Command::SetSettings {
+                settings: Box::new(s),
+            },
+            now,
+        )
+    }
+
+    #[test]
+    fn the_button_asks_once_and_the_answer_shows_in_the_view() {
+        let mut c = core();
+        let v = c.view(T0).update;
+        assert_eq!(v.current, crate::update::VERSION);
+        assert_eq!(v.status, crate::update::UpdateStatus::Idle);
+        assert_eq!(
+            cmd(&mut c, Command::UpdateCheck, T0),
+            vec![Effect::CheckUpdate]
+        );
+        assert_eq!(
+            c.view(T0).update.status,
+            crate::update::UpdateStatus::Checking
+        );
+        assert_eq!(
+            cmd(&mut c, Command::UpdateCheck, T0 + 1),
+            vec![],
+            "one at a time"
+        );
+        c.apply(Input::UpdateChecked(Ok(newer())), T0 + 2);
+        let v = c.view(T0 + 2).update;
+        assert_eq!(v.status, crate::update::UpdateStatus::Available);
+        assert_eq!(v.latest.as_deref(), Some("999.0.0"));
+        assert!(
+            c.view(T0 + 2).inbox.banner.is_none(),
+            "the user is looking: no banner"
+        );
+        // Nothing is asked without the button or the setting.
+        assert_eq!(c.next_deadline(), None);
+    }
+
+    #[test]
+    fn the_command_has_the_name_the_shell_sends() {
+        let cmd: Command = serde_json::from_str(r#"{"cmd":"update_check"}"#).unwrap();
+        assert_eq!(cmd, Command::UpdateCheck);
+    }
+
+    #[test]
+    fn the_daily_check_is_opt_in_asks_at_once_and_announces_a_new_version_once() {
+        let mut c = core();
+        assert!(!c.settings().general.check_updates, "off by default");
+        c.apply(Input::Tick, T0);
+        assert_eq!(c.next_deadline(), None);
+
+        let mut c = core();
+        // Turning it on asks at once, and only once while it runs.
+        assert_eq!(auto_updates(&mut c, true, T0), vec![Effect::CheckUpdate]);
+        assert_eq!(
+            c.apply(Input::Tick, T0 + 2),
+            vec![],
+            "not again while it runs"
+        );
+        c.apply(Input::UpdateChecked(Ok(newer())), T0 + 3);
+        let banner = c.view(T0 + 3).inbox.banner.expect("announced");
+        assert_eq!(banner.title, "LiteNotch 999.0.0 is available");
+        assert_eq!(banner.source, "update");
+        assert_eq!(
+            banner.open,
+            Some(OpenTarget::Tab {
+                tab: "settings".into(),
+                pane: Some("general".into())
+            })
+        );
+        // Next in a day, and the same version is not announced again.
+        c.apply(Input::Tick, T0 + 5_003); // the banner has gone
+        assert_eq!(c.next_deadline(), Some(T0 + 3 + 24 * 3_600_000));
+        let at = T0 + 3 + 24 * 3_600_000;
+        assert_eq!(c.apply(Input::Tick, at), vec![Effect::CheckUpdate]);
+        c.apply(Input::UpdateChecked(Ok(newer())), at + 1);
+        assert_eq!(
+            c.view(at + 1).inbox.history.len(),
+            1,
+            "one notice for one version"
+        );
+        // Turning it off stops the schedule.
+        auto_updates(&mut c, false, at + 2);
+        assert_eq!(c.next_deadline(), None);
+    }
+
+    #[test]
+    fn a_failed_check_shows_failed_and_is_retried_within_the_hour_when_on() {
+        let mut c = core();
+        auto_updates(&mut c, true, T0);
+        c.apply(Input::Tick, T0 + 1);
+        c.apply(Input::UpdateChecked(Err("offline".into())), T0 + 2);
+        assert_eq!(
+            c.view(T0 + 2).update.status,
+            crate::update::UpdateStatus::Failed
+        );
+        assert_eq!(c.next_deadline(), Some(T0 + 2 + 3_600_000));
+    }
+
+    #[test]
+    fn the_update_source_belongs_to_the_core_so_a_script_cannot_use_it() {
+        let mut c = core();
+        c.apply(
+            Input::ExternalNotify(NotificationInput {
+                source: "update".into(),
+                title: "LiteNotch 9 is available".into(),
+                body: "Run this".into(),
+                priority: Priority::High,
+                group: None,
+                ttl_secs: None,
+            }),
+            T0,
+        );
+        assert_eq!(
+            c.view(T0).inbox.banner.expect("shown").source,
+            "update (script)"
+        );
     }
 }

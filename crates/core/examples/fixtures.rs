@@ -203,6 +203,7 @@ fn main() {
 
     let mut c = populated();
     c.apply(Input::Command(Command::CaffeineLid { on: true }), T0);
+    c.apply(Input::Command(Command::CaffeineToggle), T0);
     c.apply(Input::LidResult { ok: true }, T0 + 1);
     out.push(("caffeine", c));
 
@@ -354,6 +355,28 @@ fn main() {
     nag(&mut w, first + 90_000);
     nag(&mut w, first + 180_000);
     views.push(("banner-skip-break", w.view(first + 180_020)));
+
+    let schema = serde_json::to_string_pretty(&litenotch_core::schema::schema()).expect("schema");
+    std::fs::write(format!("{dir}/schema.json"), schema).expect("schema written");
+    println!("{dir}/schema.json");
+
+    // The check for a newer version: asking, one found, and none.
+    let release = |version: &str| litenotch_core::update::Release {
+        version: version.into(),
+        url: format!("{}/tag/v{version}", litenotch_core::update::RELEASES_PAGE),
+    };
+    let mut c = populated();
+    c.apply(Input::Command(Command::UpdateCheck), T0);
+    views.push(("update-checking", c.view(T0 + 1)));
+    c.apply(Input::UpdateChecked(Ok(release("0.3.0-beta"))), T0 + 2);
+    views.push(("update-available", c.view(T0 + 3)));
+    let mut c = populated();
+    c.apply(Input::Command(Command::UpdateCheck), T0);
+    c.apply(
+        Input::UpdateChecked(Ok(release(litenotch_core::update::VERSION))),
+        T0 + 2,
+    );
+    views.push(("update-current", c.view(T0 + 3)));
 
     for (name, view) in views {
         let json = serde_json::to_string_pretty(&view).expect("view model serializes");

@@ -14,6 +14,7 @@ use litenotch_core::ipc::{Request, Response};
 use litenotch_core::media::parse_helper_line;
 use litenotch_core::notify::{NotificationInput, Priority};
 use litenotch_core::state::{Command, Core, Effect, Input};
+use litenotch_core::update::Release;
 use litenotch_core::usage::{statusline_text, UsageRecord};
 use serde::Deserialize;
 
@@ -81,6 +82,7 @@ enum Msg {
     Shell(ShellCommand),
     Server(ServerEvent),
     LidResult(bool),
+    UpdateResult(Result<Release, String>),
     Transcripts {
         reset: bool,
         records: Vec<UsageRecord>,
@@ -398,6 +400,7 @@ impl Loop {
                 }
             }
             Msg::LidResult(ok) => self.apply(Input::LidResult { ok }, now),
+            Msg::UpdateResult(answer) => self.apply(Input::UpdateChecked(answer), now),
             Msg::Transcripts { reset, records } => {
                 if reset {
                     self.apply(Input::UsageResetToday, now);
@@ -648,6 +651,12 @@ impl Loop {
                     }));
                 }
                 Effect::DisableLid => self.ports.disable_lid(),
+                Effect::CheckUpdate => {
+                    let tx = self.tx.clone();
+                    self.ports.check_update(Box::new(move |answer| {
+                        let _ = tx.send(Msg::UpdateResult(answer));
+                    }));
+                }
                 Effect::WriteClipboard(text) => self.ports.write_clipboard(&text),
                 Effect::WriteClipboardImage(path) => self.ports.write_clipboard_image(&path),
                 Effect::WriteClipboardRich { text, path } => {
@@ -658,8 +667,13 @@ impl Loop {
                 Effect::MediaCommand(command) => self.ports.media_command(command.code()),
                 Effect::Resolve(resolved) => {
                     if let Some((_, reply)) = self.waiters.remove(&resolved.request_id) {
-                        let _ = reply.send(Response::Decision {
-                            decision: resolved.decision,
+                        let _ = reply.send(match resolved.updated_input {
+                            Some(updated_input) if resolved.decision == Decision::Allow => {
+                                Response::Answer { updated_input }
+                            }
+                            _ => Response::Decision {
+                                decision: resolved.decision,
+                            },
                         });
                     }
                 }
@@ -714,6 +728,9 @@ pub(crate) mod testing {
         /// `Some(ok)` answers lid requests immediately; `None` leaves them open.
         pub lid_answer: Option<bool>,
         pub lid_done: Option<Box<dyn FnOnce(bool) + Send>>,
+        /// What a check for updates answers; `None` leaves it open.
+        pub update_answer: Option<Result<Release, String>>,
+        pub update_done: Option<crate::ports::UpdateDone>,
         /// Call this to play the part of the now-playing helper.
         pub now_playing: Option<Box<dyn Fn(String) + Send>>,
         pub now_playing_switches: Vec<bool>,
@@ -796,6 +813,17 @@ pub(crate) mod testing {
         }
         fn sleep_display(&mut self) {
             self.0.lock().unwrap().calls.push("display:sleep".into());
+        }
+        fn check_update(&mut self, done: crate::ports::UpdateDone) {
+            let mut os = self.0.lock().unwrap();
+            os.calls.push("update:check".into());
+            match os.update_answer.clone() {
+                Some(answer) => {
+                    drop(os);
+                    done(answer);
+                }
+                None => os.update_done = Some(done),
+            }
         }
         fn play_sound(&mut self, name: &str) {
             self.0.lock().unwrap().calls.push(format!("sound:{name}"));
@@ -1153,6 +1181,35 @@ mod tests {
     }
 
     #[test]
+    fn an_answered_question_reaches_the_waiting_hook_as_updated_input() {
+        let h = Harness::start("rt-answer");
+        let input = json!({"questions":[{"question":"Which DB?","header":"DB","multiSelect":false,
+            "options":[{"label":"Postgres","description":""},{"label":"SQLite","description":""}]}]});
+        let stream = hook(
+            &h,
+            json!({"hook_event_name":"PermissionRequest","session_id":"s1","cwd":"/work/api",
+                   "tool_name":"AskUserQuestion","tool_input":input}),
+        );
+        let view = h
+            .views
+            .wait("question shown", |v| v["compact"]["kind"] == "approval");
+        let pending = &view["agents"]["pending"][0];
+        assert_eq!(pending["questions"][0]["options"][1]["label"], "SQLite");
+        assert!(
+            pending.get("input").is_none(),
+            "the raw input stays in the core"
+        );
+        let id = pending["id"].as_str().unwrap().to_string();
+        h.send(&json!({"cmd":"agent_answer","request_id":id,"answers":[["SQLite"]]}).to_string());
+        match reply(stream) {
+            Response::Answer { updated_input } => {
+                assert_eq!(updated_input["answers"]["Which DB?"], "SQLite");
+            }
+            other => panic!("expected Answer, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn a_permission_hook_waits_for_the_user_and_gets_the_decision() {
         let h = Harness::start("rt-allow");
         let stream = hook(&h, permission("s1", "cargo test"));
@@ -1415,8 +1472,79 @@ mod tests {
     }
 
     #[test]
+    fn checking_for_updates_goes_through_the_platform_and_the_answer_reaches_the_view() {
+        let os = FakeOs {
+            update_answer: Some(Ok(Release {
+                version: "999.0.0".into(),
+                url: format!("{}/tag/v999.0.0", litenotch_core::update::RELEASES_PAGE),
+            })),
+            ..FakeOs::default()
+        };
+        let h = Harness::start_in(crate::store::temp_dir("rt-update"), os);
+        assert!(
+            !h.calls().iter().any(|c| c == "update:check"),
+            "nothing is asked by itself"
+        );
+        h.send(r#"{"cmd":"update_check"}"#);
+        let v = h
+            .views
+            .wait("update found", |v| v["update"]["status"] == "available");
+        assert_eq!(v["update"]["latest"], "999.0.0");
+        assert_eq!(v["update"]["command"], litenotch_core::update::BREW_COMMAND);
+        assert_eq!(h.calls().iter().filter(|c| *c == "update:check").count(), 1);
+    }
+
+    #[test]
+    fn a_failed_update_check_is_shown_not_hidden() {
+        let os = FakeOs {
+            update_answer: Some(Err("GitHub could not be reached".into())),
+            ..FakeOs::default()
+        };
+        let h = Harness::start_in(crate::store::temp_dir("rt-update-fail"), os);
+        h.send(r#"{"cmd":"update_check"}"#);
+        h.views
+            .wait("failed", |v| v["update"]["status"] == "failed");
+    }
+
+    #[test]
+    fn the_saved_lid_choice_follows_keep_awake_off_and_on_without_asking_again() {
+        let os = FakeOs {
+            lid_answer: Some(true),
+            power: Some(PowerStatus {
+                on_ac: true,
+                battery_pct: Some(90),
+            }),
+            ..FakeOs::default()
+        };
+        let h = Harness::start_in(crate::store::temp_dir("rt-lid-choice"), os);
+        // Saving the choice while keep awake is off starts nothing.
+        h.send(r#"{"cmd":"caffeine_lid","on":true}"#);
+        h.views.wait("choice saved", |v| {
+            v["settings"]["caffeine"]["lid_closed"] == true
+        });
+        assert_eq!(h.views.last()["caffeine"]["mode"], "off");
+        assert_eq!(h.views.last()["caffeine"]["lid"], "off");
+        // Turning keep awake on brings the lid with it, then off, then on again.
+        for round in 0..2 {
+            h.send(r#"{"cmd":"caffeine_toggle"}"#);
+            h.views
+                .wait("on with lid", |v| v["caffeine"]["lid"] == "on");
+            h.send(r#"{"cmd":"caffeine_toggle"}"#);
+            h.views.wait("off", |v| {
+                v["caffeine"]["mode"] == "off" && v["caffeine"]["lid"] == "off"
+            });
+            assert_eq!(
+                h.views.last()["settings"]["caffeine"]["lid_closed"],
+                true,
+                "round {round}: the choice is still set"
+            );
+        }
+    }
+
+    #[test]
     fn lid_mode_goes_through_the_platform_and_is_reverted_on_cancel() {
         let h = Harness::start("rt-lid");
+        h.send(r#"{"cmd":"caffeine_activate","mode":"display","duration_secs":null}"#);
         h.send(r#"{"cmd":"caffeine_lid","on":true}"#);
         h.views
             .wait("pending", |v| v["caffeine"]["lid"] == "pending");

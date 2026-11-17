@@ -611,6 +611,7 @@ public final class PanelState: ObservableObject {
     public func banner(_ n: NotificationItem, perform action: BannerAction) {
         switch action {
         case .pauseFocus: send(.pomodoroPause)
+        case .skipBreak: send(.pomodoroSkip)
         case .unknown: return
         }
         send(.notifyOpened(id: n.id))

@@ -129,6 +129,16 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   polling) as `screen_away`; reminders are skipped then and screen-time
   counts start over. A mark seen over 60 s late was slept through and is
   skipped too, so it needs no word from the shell.
+  Still working on a break (`peek.still_working`, on by default, Settings ›
+  Timer): at 1:00, 2:30, 4:00 … into a running break the core sets
+  `wants_idle`; the runtime then reads the keyboard and mouse idle time
+  once (`platform::idle`, `CGEventSourceSecondsSinceLastEventType`, no
+  permission) and sends `Input::InputIdle`. Used within 30 s counts as
+  working: the first two times a `StillWorking` nudge, after that a banner
+  whose `skip_break` button sends `pomodoro_skip`. An idle user gets
+  nothing; a new break starts gently again. No polling: a 5-minute break
+  costs three readings. Reading the screen without touching the keyboard
+  or mouse counts as being on the break.
 - **Sound** (`settings.sound`, on by default, "Glass"): one of the 14
   system alert sounds when the countdown timer, a focus session or a break
   ends (not on skip, reset or pause). The core emits `Effect::PlaySound`

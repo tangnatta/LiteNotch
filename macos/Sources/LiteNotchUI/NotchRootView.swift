@@ -284,7 +284,7 @@ struct ClosedActivityView: View {
         switch compact.peek {
         case .trackChanged where compact.kind == .media:
             MarqueeText(text: compact.value.isEmpty ? compact.title : "\(compact.title) — \(compact.value)")
-        case .move, .quote:
+        case .move, .quote, .stillWorking:
             MarqueeText(text: compact.value)
         case .timeWarning where compact.endsAtMs != nil:
             EverySecond { now in
@@ -296,8 +296,10 @@ struct ClosedActivityView: View {
         }
     }
 
-    /// The Move reminder's kind is its title; a quote gets sparkles.
+    /// The Move reminder's kind is its title; a quote gets sparkles, a
+    /// break the user is working through a cup.
     static func nudgeSymbol(_ compact: CompactView) -> String {
+        if compact.peek == .stillWorking { return "cup.and.saucer.fill" }
         guard compact.peek == .move else { return "sparkles" }
         switch compact.title {
         case "Stretch": return "figure.flexibility"
@@ -712,11 +714,17 @@ struct ToastView: View {
     /// Runs the banner's own button.
     var act: (BannerAction) -> Void = { _ in }
 
+    /// The pomodoro's banners are about breaks (one starts, one is being
+    /// worked through, one is over): a cup, like the break reminders.
+    static func symbol(_ banner: NotificationItem) -> String {
+        banner.source == "pomodoro" ? "cup.and.saucer.fill" : "bell.fill"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: top)
             HStack(spacing: 10) {
-                Image(systemName: "bell.fill")
+                Image(systemName: Self.symbol(banner))
                     .glyph(NGlyph.regular)
                     .foregroundStyle(NT.accentText)
                     .frame(width: 18)
@@ -735,6 +743,11 @@ struct ToastView: View {
                         act(.pauseFocus)
                     }
                     .help("Pause the focus session while you are in the meeting")
+                } else if banner.action == .skipBreak {
+                    TextPill(title: "Skip break", tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold) {
+                        act(.skipBreak)
+                    }
+                    .help("End the break and go back to work")
                 } else if let tag = Format.sourceTag(banner.source) {
                     VText(tag).nfont(.caption).foregroundStyle(NT.text3).lineLimit(1)
                 }

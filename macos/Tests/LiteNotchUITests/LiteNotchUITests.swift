@@ -247,7 +247,8 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
         XCTAssertEqual(inner["peek"] as? NSDictionary,
                        ["track_change": true, "time_warning_secs": 300,
-                        "eye_break_mins": 0, "move_mins": 0, "move_counts": "focus", "break_quote": true])
+                        "eye_break_mins": 0, "move_mins": 0, "move_counts": "focus", "break_quote": true,
+                        "still_working": true])
         XCTAssertEqual(inner["appearance"] as? NSDictionary,
                        ["theme": "system", "accent": "#FF9E0A", "notch_style": "attached", "closed_notch": "dark",
                         "material": "solid", "shrink": "off"])
@@ -381,6 +382,16 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(ClosedActivityView.nudgeSymbol(quote), "sparkles")
         XCTAssertFalse(PeekKind.timeWarning.isNudge)
 
+        let working = try loadFixture("peek-still-working").compact
+        XCTAssertEqual(working.kind, .nudge)
+        XCTAssertEqual(working.peek, .stillWorking)
+        XCTAssertTrue(working.peek?.isNudge ?? false)
+        XCTAssertFalse(working.value.isEmpty)
+        XCTAssertEqual(NotchGeometry.wingWidth(for: working), 130)
+        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: working), 80)
+        XCTAssertEqual(ClosedActivityView.nudgeSymbol(working), "cup.and.saucer.fill")
+        XCTAssertNotNil(NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: nil))
+
         // A nudge from a newer core with a peek this shell does not know
         // still fits its line, within the usual cap.
         var future = quote
@@ -388,6 +399,21 @@ final class GeometryTests: XCTestCase {
         XCTAssertLessThanOrEqual(NotchGeometry.wingWidth(for: future), 130)
         XCTAssertGreaterThan(NotchGeometry.wingWidth(for: future), 40)
         XCTAssertLessThanOrEqual(NotchGeometry.floatingWingWidth(for: future), 80)
+    }
+
+    func testTheStillWorkingBannerOffersToSkipTheBreak() throws {
+        let vm = try loadFixture("banner-skip-break")
+        let banner = try XCTUnwrap(vm.inbox.banner)
+        XCTAssertEqual(banner.action, .skipBreak)
+        XCTAssertTrue(vm.settings.peek.stillWorking)
+        XCTAssertEqual(ToastView.symbol(banner), "cup.and.saucer.fill")
+        XCTAssertEqual(ToastView.symbol(try XCTUnwrap(try loadFixture("banner").inbox.banner)), "bell.fill")
+
+        let bridge = MockBridge()
+        let model = AppModel(bridge: bridge)
+        model.primary.banner(banner, perform: .skipBreak)
+        XCTAssertEqual(bridge.sentObjects.compactMap { $0["cmd"] as? String },
+                       ["pomodoro_skip", "notify_opened", "notify_dismiss_banner"])
     }
 
     func testTheFaceBlinksWithACoreAnimationKeyframe() {

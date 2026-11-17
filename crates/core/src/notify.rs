@@ -82,6 +82,8 @@ pub struct Notification {
 pub enum BannerAction {
     /// Pause the running focus session (a meeting is starting).
     PauseFocus,
+    /// End the running break (the user kept working through it).
+    SkipBreak,
 }
 
 /// Where a click on a notification or session takes the user.

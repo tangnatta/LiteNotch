@@ -254,6 +254,12 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    /// Monotonic seconds; replaced in tests. Panels read the same clock.
+    var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    /// The newest banner and when it first showed; a panel opened soon
+    /// after lands on its page (`PanelState.landing`).
+    private(set) var latestBanner: (item: NotificationItem, at: TimeInterval)?
+
     private let bridge: CoreBridge
     private let sampler: ColorSampling
     private var openPanels: Set<ObjectIdentifier> = []
@@ -350,6 +356,9 @@ public final class AppModel: ObservableObject {
         let before = panels.map(\.mode)
         let after = panels.map { NotchPresentation.mode(expanded: $0.expanded, view: vm) }
         NT.setAccent(vm.settings.appearance.accent)
+        if let b = vm.inbox.banner, b.id != latestBanner?.item.id {
+            latestBanner = (b, uptime())
+        }
         if before != after {
             withAnimation(NotchPresentation.spring) { view = vm }
         } else {
@@ -441,10 +450,14 @@ public final class PanelState: ObservableObject {
     @Published public var menuBarHeight: CGFloat = 0
 
     public private(set) weak var app: AppModel?
-    /// Monotonic seconds; replaced in tests.
-    var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    /// Monotonic seconds; the app's clock unless a test replaces it.
+    var uptime: () -> TimeInterval
 
     private var forward: AnyCancellable?
+    /// When the panel last closed; decides whether the last tab is kept.
+    private var closedAt: TimeInterval?
+    /// Banners that showed before this have been seen or followed.
+    private var bannersSeenUntil: TimeInterval = -.infinity
     private var pointerInside = false
     private var hoverWork: DispatchWorkItem?
     private var wasOpen = false
@@ -456,6 +469,7 @@ public final class PanelState: ObservableObject {
 
     init(app: AppModel) {
         self.app = app
+        uptime = { [weak app] in app?.uptime() ?? ProcessInfo.processInfo.systemUptime }
         forward = app.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
@@ -521,24 +535,65 @@ public final class PanelState: ObservableObject {
     /// Follows a notification's (or session's) target: another app is
     /// brought forward and the panel closes; a tab opens in this panel.
     public func follow(_ target: OpenTarget?) {
+        // Whatever banner is showing has been answered by this click.
+        bannersSeenUntil = uptime()
         switch target {
         case .app, .appNamed:
             if let target { app?.activateApp(target) }
             requestKeyboard(false)
             close()
         case .tab(let t, let pane):
-            switch (t, pane) {
-            case (.timer, let p?): timerPane = TimerPane(rawValue: p) ?? timerPane
-            case (.agents, let p?): agentsPane = AgentsPane(rawValue: p) ?? agentsPane
-            case (.settings, "keep_awake"): settingsSection = .keepAwake
-            case (.settings, let p?): settingsSection = SettingsSection(rawValue: p) ?? settingsSection
-            default: break
-            }
+            showPane(t, pane)
             selectTab(t)
-            open()
+            open(landing: false)
         case nil:
             selectTab(.inbox)
-            open()
+            open(landing: false)
+        }
+    }
+
+    /// Sets the sub-page a `.tab` target names.
+    private func showPane(_ t: Tab, _ pane: String?) {
+        switch (t, pane) {
+        case (.timer, let p?): timerPane = TimerPane(rawValue: p) ?? timerPane
+        case (.agents, let p?): agentsPane = AgentsPane(rawValue: p) ?? agentsPane
+        case (.settings, "keep_awake"): settingsSection = .keepAwake
+        case (.settings, let p?): settingsSection = SettingsSection(rawValue: p) ?? settingsSection
+        default: break
+        }
+    }
+
+    /// How long the last tab is kept once the panel closes, and how long a
+    /// banner still decides where the panel opens.
+    static let rememberTab: TimeInterval = 300
+
+    /// Where a panel opened by hover or click starts: the page of a banner
+    /// that showed since it last closed (within `rememberTab`), else Home
+    /// once it has been closed that long, else the tab it was left on.
+    /// These are not the user's own picks, so no `tab_opened` is sent.
+    private func landing() {
+        let now = uptime()
+        var target: Tab?
+        if let b = app?.latestBanner, b.at > bannersSeenUntil, now - b.at < Self.rememberTab {
+            bannersSeenUntil = now
+            switch b.item.open {
+            case .tab(let t, let pane):
+                showPane(t, pane)
+                target = t
+            default:
+                if AgentAttention.session(of: b.item) != nil {
+                    agentsPane = .sessions
+                    target = .agents
+                } else {
+                    target = .inbox
+                }
+            }
+        } else if let closedAt, now - closedAt >= Self.rememberTab {
+            target = .home
+        }
+        if let target, target != tab {
+            tab = target
+            clipPreview = nil
         }
     }
 
@@ -627,11 +682,13 @@ public final class PanelState: ObservableObject {
 
     /// Click on the closed shape (or a toast): opens immediately, whether or
     /// not a hover is pending.
-    public func open() {
+    public func open() { open(landing: true) }
+
+    private func open(landing: Bool) {
         hoverWork?.cancel()
         hoverWork = nil
         hoverOpenedAt = nil
-        setExpanded(true)
+        setExpanded(true, landing: landing)
     }
 
     public func close() {
@@ -658,10 +715,17 @@ public final class PanelState: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    private func setExpanded(_ value: Bool) {
+    private func setExpanded(_ value: Bool, landing land: Bool = true) {
         guard expanded != value else { return }
+        if value && land { landing() }
         withAnimation(NotchPresentation.spring) { expanded = value }
-        if !value { keyboardRequested = false; hoverOpenedAt = nil }
+        if !value {
+            keyboardRequested = false
+            hoverOpenedAt = nil
+            closedAt = uptime()
+            // A banner that came while the panel was open has been seen.
+            bannersSeenUntil = closedAt ?? bannersSeenUntil
+        }
         syncOpenState()
     }
 

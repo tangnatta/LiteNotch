@@ -142,7 +142,28 @@
     "dnd": false
   },
   "agents": {
-    "sessions": [],
+    "sessions": [
+      {
+        "id": "s1",
+        "project": "LiteNotch",
+        "cwd": "/Users/me/Github/LiteNotch",
+        "status": "idle",
+        "last_event_ms": 1794400000000,
+        "last_message": "add tests",
+        "app": null,
+        "tty": null
+      },
+      {
+        "id": "s2",
+        "project": "api-server",
+        "cwd": "/Users/me/Github/api-server",
+        "status": "idle",
+        "last_event_ms": 1794400000001,
+        "last_message": "All 42 tests pass.",
+        "app": null,
+        "tty": null
+      }
+    ],
     "pending": [],
     "hooks_installed": true,
     "statusline_installed": null,
@@ -400,6 +421,7 @@
       "enabled": true,
       "approval_timeout_secs": 120,
       "session_ttl_secs": 1800,
+      "session_keep_secs": 43200,
       "auto_allow_tools": []
     },
     "analytics": {

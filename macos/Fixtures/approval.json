@@ -431,6 +431,7 @@
       "enabled": true,
       "approval_timeout_secs": 120,
       "session_ttl_secs": 1800,
+      "session_keep_secs": 43200,
       "auto_allow_tools": []
     },
     "analytics": {

@@ -3112,7 +3112,8 @@ mod tests {
         let mut c = core();
         c.apply(text(&"word ".repeat(10_000)), T0);
         let json = serde_json::to_string(&c.view(T0)).unwrap();
-        assert!(json.len() < 4_000, "view model was {} bytes", json.len());
+        // The text is 50 000 bytes; the rest is settings, which grow a little.
+        assert!(json.len() < 4_500, "view model was {} bytes", json.len());
     }
 
     #[test]

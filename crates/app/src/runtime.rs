@@ -216,23 +216,32 @@ struct Loop {
 }
 
 impl Loop {
-    fn run(&mut self, rx: Receiver<Msg>) {
+    /// The time, after telling the core if the Mac slept since the last look.
+    fn now(&mut self) -> u64 {
         let now = self.clock.now_ms();
+        if let Some(gap_ms) = self.clock.take_slept_ms() {
+            self.apply(Input::Slept { gap_ms }, now);
+        }
+        now
+    }
+
+    fn run(&mut self, rx: Receiver<Msg>) {
+        let now = self.now();
         self.refresh_hooks_installed(now);
         self.warn_about_other_copies(now);
         self.after_event(now);
         loop {
-            let now = self.clock.now_ms();
+            let now = self.now();
             let timeout = self.sleep_ms(now);
             match rx.recv_timeout(Duration::from_millis(timeout)) {
                 Ok(Msg::Stop) | Err(RecvTimeoutError::Disconnected) => break,
                 Ok(msg) => {
-                    let now = self.clock.now_ms();
+                    let now = self.now();
                     self.handle(msg, now);
                 }
                 Err(RecvTimeoutError::Timeout) => {}
             }
-            let now = self.clock.now_ms();
+            let now = self.now();
             self.poll(now);
             self.after_event(now);
         }

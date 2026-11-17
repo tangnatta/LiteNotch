@@ -498,6 +498,10 @@ pub enum Command {
     },
 }
 
+/// A clock jump this long, with the lid shut and closed-lid mode on, means
+/// the Mac slept. Shorter ones are clock adjustments.
+const LID_SLEEP_MIN_MS: u64 = 60_000;
+
 /// Everything that can happen to the core.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Input {
@@ -525,6 +529,12 @@ pub enum Input {
     },
     /// Closed-lid mode is on but the Mac is no longer kept awake for it.
     LidLost,
+    /// The clock jumped ahead by `gap_ms` while the app was not running: the
+    /// Mac was asleep. With closed-lid mode on and the lid shut that means
+    /// the mode did not hold.
+    Slept {
+        gap_ms: u64,
+    },
     UtcOffset(i32),
     HooksInstalled(Option<bool>),
     /// Other copies of LiteNotch found in Claude Code's settings, and how
@@ -975,6 +985,14 @@ impl Core {
             Input::LidLost => {
                 let effects = self.caffeine.lid_lost();
                 self.caffeine_effects(effects, now, &mut fx);
+            }
+            Input::Slept { gap_ms } => {
+                if gap_ms >= LID_SLEEP_MIN_MS && self.lid_shut {
+                    let effects = self.caffeine.lid_slept();
+                    self.caffeine_effects(effects, now, &mut fx);
+                    // The mode is off now: stop counting the lid as shut.
+                    self.clamshell(true, false, &mut fx);
+                }
             }
             Input::Statusline(json) => {
                 if self.usage.on_statusline(&json, now).is_ok() {
@@ -4281,6 +4299,50 @@ mod tests {
         );
         // With a monitor attached the display stays on (clamshell mode).
         assert!(shut(&mut c, true, true).is_empty());
+    }
+
+    #[test]
+    fn sleeping_with_the_lid_shut_ends_lid_mode_and_releases_the_assertion() {
+        let mut c = core();
+        cmd(&mut c, Command::CaffeineLid { on: true }, T0);
+        c.apply(Input::LidResult { ok: true }, T0);
+        c.apply(
+            Input::Clamshell {
+                closed: true,
+                external_display: false,
+            },
+            T0 + 1,
+        );
+        // A short jump is a clock adjustment, not sleep.
+        assert!(c.apply(Input::Slept { gap_ms: 5_000 }, T0 + 2).is_empty());
+        assert!(c.wants_clamshell_updates());
+        let fx = c.apply(Input::Slept { gap_ms: 3_600_000 }, T0 + 3_600_000);
+        assert!(fx.contains(&Effect::DisableLid), "{fx:?}");
+        assert!(
+            !c.wants_clamshell_updates(),
+            "mode is off, lid no longer shut"
+        );
+        assert!(c
+            .apply(Input::Slept { gap_ms: 3_600_000 }, T0 + 7_200_000)
+            .is_empty());
+    }
+
+    #[test]
+    fn sleeping_with_the_lid_open_or_no_lid_mode_changes_nothing() {
+        let mut c = core();
+        assert!(c.apply(Input::Slept { gap_ms: 3_600_000 }, T0).is_empty());
+        cmd(&mut c, Command::CaffeineLid { on: true }, T0);
+        c.apply(Input::LidResult { ok: true }, T0);
+        c.apply(
+            Input::Clamshell {
+                closed: false,
+                external_display: false,
+            },
+            T0 + 1,
+        );
+        let fx = c.apply(Input::Slept { gap_ms: 3_600_000 }, T0 + 2);
+        assert!(!fx.contains(&Effect::DisableLid), "{fx:?}");
+        assert!(c.wants_clamshell_updates());
     }
 
     #[test]

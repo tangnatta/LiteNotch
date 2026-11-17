@@ -21,6 +21,9 @@ pub struct SteadyClock {
     base_ms: u64,
     base: Instant,
     last: u64,
+    /// Wall time that passed while the steady clock stood still (the Mac
+    /// slept) since the last `take_slept_ms`.
+    slept_ms: u64,
 }
 
 impl Default for SteadyClock {
@@ -36,7 +39,15 @@ impl SteadyClock {
             base_ms: now,
             base: Instant::now(),
             last: now,
+            slept_ms: 0,
         }
+    }
+
+    /// How far the wall clock jumped ahead of this one since the last call,
+    /// which is how long the Mac slept; `None` if it did not.
+    pub fn take_slept_ms(&mut self) -> Option<u64> {
+        let gap = std::mem::take(&mut self.slept_ms);
+        (gap > 0).then_some(gap)
     }
 
     pub fn now_ms(&mut self) -> u64 {
@@ -45,6 +56,9 @@ impl SteadyClock {
             .saturating_add(self.base.elapsed().as_millis() as u64);
         let (now, resync) = reconcile(steady, wall_ms(), self.last);
         if resync {
+            self.slept_ms = self
+                .slept_ms
+                .saturating_add(wall_ms().saturating_sub(steady));
             self.base_ms = now;
             self.base = Instant::now();
         }
@@ -91,6 +105,19 @@ mod tests {
     fn never_reports_an_earlier_time_than_before() {
         assert_eq!(reconcile(10_000, 10_000, 12_000), (12_000, false));
         assert_eq!(reconcile(u64::MAX, u64::MAX, 0), (u64::MAX, false));
+    }
+
+    #[test]
+    fn reports_how_long_the_mac_slept_once() {
+        let mut clock = SteadyClock::new();
+        assert_eq!(clock.take_slept_ms(), None);
+        // The steady clock stood still for an hour while the wall clock ran.
+        clock.base_ms = clock.base_ms.saturating_sub(3_600_000);
+        clock.last = clock.base_ms;
+        clock.now_ms();
+        let gap = clock.take_slept_ms().expect("a jump was seen");
+        assert!((3_599_000..=3_601_000).contains(&gap), "{gap}");
+        assert_eq!(clock.take_slept_ms(), None, "reported once");
     }
 
     #[test]

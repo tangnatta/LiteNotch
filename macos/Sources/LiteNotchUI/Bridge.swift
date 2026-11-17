@@ -175,7 +175,7 @@ public enum ShellCommand: Equatable {
 
 /// Categories of the Settings tab.
 public enum SettingsSection: String, CaseIterable, Equatable {
-    case general, notch, timer, music, notifications, calendar, clipboard, agents, keepAwake, privacy
+    case general, notch, home, timer, music, notifications, calendar, clipboard, agents, keepAwake, privacy
 }
 
 /// The two halves of the Agents tab.

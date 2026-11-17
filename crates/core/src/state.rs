@@ -18,6 +18,7 @@ use crate::clipboard::{
     ClipCapture, ClipKind, ClipboardConfig, ClipboardHistory, PersistedClipboard,
 };
 use crate::countdown::{Countdown, TimerRun, TimerView};
+use crate::day::{self, DayConfig, DayView};
 use crate::media::{Media, MediaCommand, NowPlaying};
 use crate::meeting::{AgendaInput, Meeting, MeetingEvent, MeetingRun, MeetingView, SavedAgenda};
 use crate::notify::{
@@ -232,6 +233,7 @@ pub struct Settings {
     pub notch: NotchConfig,
     pub sound: SoundConfig,
     pub peek: PeekConfig,
+    pub day: DayConfig,
 }
 
 /// The system alert sounds a timer can end with.
@@ -288,7 +290,7 @@ impl SoundConfig {
 /// The running activities the closed notch can show, in the default order:
 /// what other people are waiting on, then what the user timed, then what
 /// merely is on.
-pub const LIVE_ORDER: [ActivityKind; 7] = [
+pub const LIVE_ORDER: [ActivityKind; 8] = [
     ActivityKind::Meeting,
     ActivityKind::Calendar,
     ActivityKind::Timer,
@@ -296,6 +298,7 @@ pub const LIVE_ORDER: [ActivityKind; 7] = [
     ActivityKind::Media,
     ActivityKind::Caffeine,
     ActivityKind::Agent,
+    ActivityKind::Day,
 ];
 
 /// What the closed notch shows when several things are running.
@@ -583,6 +586,9 @@ pub enum ActivityKind {
     /// Move reminder, a line after a break); `value` is the line. Never
     /// ranked: it shows only as a peek.
     Nudge,
+    /// Where the user is in their office hours: `ends_at_ms` is the end
+    /// and `total_secs` the length, so the shell can draw the percentage.
+    Day,
     /// Not one this version knows (settings written by a newer one).
     #[serde(other)]
     Unknown,
@@ -707,6 +713,8 @@ pub struct ViewModel {
     pub meeting: MeetingView,
     pub timer: TimerView,
     pub calendar: CalendarView,
+    /// Today's office hours, on a working day with the feature on.
+    pub day: Option<DayView>,
     /// Colours picked from the screen, newest first.
     pub colors: Vec<String>,
     pub analytics: Vec<FeatureCount>,
@@ -764,6 +772,9 @@ pub struct Core {
     move_last: Option<usize>,
     /// When a break completed, while its line waits for the banner to go.
     quote_due: Option<u64>,
+    /// The next local midnight while day progress is on, when today's
+    /// office hours change.
+    day_wake: Option<u64>,
     /// A still-working check is due: the runtime reads the idle time.
     idle_wanted: bool,
     /// Still-working reminders given in the current break.
@@ -817,6 +828,7 @@ impl Core {
         let settings = Settings {
             notch: settings.notch.clone().normalized(),
             sound: settings.sound.clone().normalized(),
+            day: settings.day.clone().normalized(),
             ..settings
         };
         let mut pomodoro = Pomodoro::new(settings.pomodoro.clone());
@@ -864,6 +876,7 @@ impl Core {
             move_since: None,
             move_last: None,
             quote_due: None,
+            day_wake: None,
             idle_wanted: false,
             break_nags: 0,
         }
@@ -923,6 +936,7 @@ impl Core {
             self.timer.next_deadline(),
             self.calendar.next_deadline(),
             self.peek_deadline(),
+            self.day_wake,
         ]
         .into_iter()
         .flatten()
@@ -1331,6 +1345,7 @@ impl Core {
         self.calendar.set_config(settings.calendar.clone());
         settings.notch = settings.notch.normalized();
         settings.sound = settings.sound.normalized();
+        settings.day = settings.day.normalized();
         if !settings.media.enabled {
             self.media.set(None);
         }
@@ -1349,6 +1364,7 @@ impl Core {
 
     /// Runs every timer and derived rule until nothing more changes at `now`.
     fn settle(&mut self, now: u64, fx: &mut Vec<Effect>) {
+        self.day_wake = day::next_deadline(&self.settings.day, now, self.utc_offset_secs);
         let events = self.pomodoro.tick(now);
         self.pomodoro_events(events, now);
         let effects = self.caffeine.tick(now);
@@ -1858,6 +1874,7 @@ impl Core {
             meeting: self.meeting.view(),
             timer: self.timer.view(),
             calendar: self.calendar.view(now),
+            day: day::today(&self.settings.day, now, self.utc_offset_secs),
             colors: self.colors.clone(),
             analytics: self
                 .analytics
@@ -1991,6 +2008,13 @@ impl Core {
             live.push(CompactView {
                 count: working.len() as u32,
                 ..view(ActivityKind::Agent, &session.project, "working")
+            });
+        }
+        if let Some(d) = day::today(&self.settings.day, now, self.utc_offset_secs) {
+            live.push(CompactView {
+                ends_at_ms: Some(d.end_ms),
+                total_secs: Some(((d.end_ms - d.start_ms) / 1000) as u32),
+                ..view(ActivityKind::Day, "Day", "")
             });
         }
         let notch = &self.settings.notch;
@@ -2406,6 +2430,30 @@ mod tests {
     }
 
     #[test]
+    fn day_progress_fills_an_empty_notch_last_and_wakes_at_midnight() {
+        // Monday 2026-11-16 13:00 UTC.
+        let monday_1pm = 1_794_787_200_000 + 13 * 3_600_000;
+        let mut c = Core::default();
+        assert_eq!(c.view(monday_1pm).day, None);
+        set(&mut c, |s| s.day.enabled = true);
+        c.apply(Input::Tick, monday_1pm);
+        let v = c.view(monday_1pm);
+        let day = v.day.clone().unwrap();
+        assert_eq!(v.compact.kind, ActivityKind::Day);
+        assert_eq!(v.compact.ends_at_ms, Some(day.end_ms));
+        assert_eq!(v.compact.total_secs, Some(8 * 3600));
+        assert_eq!(c.next_deadline(), Some(1_794_787_200_000 + 86_400_000));
+        // Anything running comes first.
+        c.apply(Input::Command(Command::PomodoroToggle), monday_1pm);
+        let v = c.view(monday_1pm);
+        assert_eq!(v.compact.kind, ActivityKind::Pomodoro);
+        assert_eq!(v.compact_secondary.map(|s| s.kind), Some(ActivityKind::Day));
+        // Saturday: nothing.
+        let saturday = monday_1pm + 5 * 86_400_000;
+        assert_eq!(Core::default().view(saturday).day, None);
+    }
+
+    #[test]
     fn notch_settings_are_cleaned_up_and_old_settings_get_the_defaults() {
         let messy = NotchConfig {
             order: vec![
@@ -2434,6 +2482,7 @@ mod tests {
                 ActivityKind::Timer,
                 ActivityKind::Pomodoro,
                 ActivityKind::Caffeine,
+                ActivityKind::Day,
             ]
         );
         assert_eq!(messy.hidden, [ActivityKind::Media]);
@@ -2455,7 +2504,7 @@ mod tests {
         assert!(c.settings().notch.hidden.is_empty());
         assert_eq!(
             serde_json::to_value(NotchConfig::default()).expect("serializes"),
-            json!({"order": ["meeting", "calendar", "timer", "pomodoro", "media", "caffeine", "agent"],
+            json!({"order": ["meeting", "calendar", "timer", "pomodoro", "media", "caffeine", "agent", "day"],
                    "hidden": [], "two_places": true, "waiting_dot": true})
         );
     }

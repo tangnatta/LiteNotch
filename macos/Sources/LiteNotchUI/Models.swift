@@ -17,7 +17,7 @@ private func decodeLenient<E: LenientEnum>(_ decoder: Decoder) throws -> E {
 }
 
 public enum ActivityKind: String, LenientEnum {
-    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, calendar, nudge, unknown
+    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, calendar, nudge, day, unknown
     static var unknownCase: ActivityKind { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
@@ -410,7 +410,7 @@ public struct NotchConfig: Codable, Equatable {
     public var waitingDot: Bool
 
     /// The default order; mirrors `state::LIVE_ORDER`.
-    public static let liveOrder: [ActivityKind] = [.meeting, .calendar, .timer, .pomodoro, .media, .caffeine, .agent]
+    public static let liveOrder: [ActivityKind] = [.meeting, .calendar, .timer, .pomodoro, .media, .caffeine, .agent, .day]
     public static let `default` = NotchConfig(order: liveOrder, hidden: [], twoPlaces: true, waitingDot: true)
 
     public init(order: [ActivityKind], hidden: [ActivityKind], twoPlaces: Bool, waitingDot: Bool) {
@@ -428,6 +428,60 @@ public struct CalendarConfig: Codable, Equatable {
     public static let `default` = CalendarConfig(enabled: false, alertMinutes: 5, alertAtStart: true)
 }
 
+/// What the big card on the left of Home shows (`day::HomeCard`).
+public enum HomeCard: String, Codable, Equatable {
+    case media, day, auto
+    public init(from decoder: Decoder) throws {
+        self = HomeCard(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .auto
+    }
+}
+
+/// Mirrors `day::DayConfig`: fixed office hours.
+public struct DayConfig: Codable, Equatable {
+    public var enabled: Bool
+    /// Minutes after local midnight.
+    public var startMin: Int
+    public var endMin: Int
+    /// Working days, bit 0 = Monday … bit 6 = Sunday.
+    public var days: Int
+    public var homeCard: HomeCard = .auto
+
+    public static let `default` = DayConfig(enabled: false, startMin: 600, endMin: 1080, days: 0b001_1111)
+
+    /// Whether Home's left card shows the day instead of now playing.
+    public static func showsDayCard(_ vm: ViewModel) -> Bool {
+        guard vm.day != nil else { return false }
+        switch vm.settings.day.homeCard {
+        case .media: return false
+        case .day: return true
+        case .auto: return !(vm.media?.playing ?? false)
+        }
+    }
+}
+
+extension DayConfig {
+    // `home_card` is newer than the rest.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decode(Bool.self, forKey: .enabled)
+        startMin = try c.decode(Int.self, forKey: .startMin)
+        endMin = try c.decode(Int.self, forKey: .endMin)
+        days = try c.decode(Int.self, forKey: .days)
+        homeCard = (try? c.decodeIfPresent(HomeCard.self, forKey: .homeCard)) ?? .auto
+    }
+}
+
+/// Today's office hours (`day::DayView`).
+public struct DayView: Codable, Equatable {
+    public var startMs: Int
+    public var endMs: Int
+    public var line: String
+
+    public init(startMs: Int, endMs: Int, line: String) {
+        self.startMs = startMs; self.endMs = endMs; self.line = line
+    }
+}
+
 public struct Settings: Codable, Equatable {
     public var general: GeneralSettings
     public var appearance: AppearanceConfig
@@ -442,6 +496,7 @@ public struct Settings: Codable, Equatable {
     public var notch: NotchConfig
     public var peek: PeekConfig = .default
     public var sound: SoundConfig = .default
+    public var day: DayConfig = .default
 }
 
 extension Settings {
@@ -460,6 +515,7 @@ extension Settings {
         notch = (try? c.decodeIfPresent(NotchConfig.self, forKey: .notch)) ?? .default
         peek = (try? c.decodeIfPresent(PeekConfig.self, forKey: .peek)) ?? .default
         sound = (try? c.decodeIfPresent(SoundConfig.self, forKey: .sound)) ?? .default
+        day = (try? c.decodeIfPresent(DayConfig.self, forKey: .day)) ?? .default
     }
 }
 
@@ -941,6 +997,8 @@ public struct ViewModel: Codable, Equatable {
     public var meeting: MeetingView
     public var timer: CountdownView
     public var calendar: CalendarView
+    /// Today's office hours, on a working day with day progress on.
+    public var day: DayView? = nil
     /// Colours picked from the screen, newest first.
     public var colors: [String]
     public var analytics: [FeatureCount]
@@ -965,6 +1023,7 @@ extension ViewModel {
         meeting = (try? c.decodeIfPresent(MeetingView.self, forKey: .meeting)) ?? .empty
         timer = (try? c.decodeIfPresent(CountdownView.self, forKey: .timer)) ?? .empty
         calendar = (try? c.decodeIfPresent(CalendarView.self, forKey: .calendar)) ?? .empty
+        day = try? c.decodeIfPresent(DayView.self, forKey: .day)
         colors = (try? c.decodeIfPresent([String].self, forKey: .colors)) ?? []
         analytics = try c.decode([FeatureCount].self, forKey: .analytics)
         settings = try c.decode(Settings.self, forKey: .settings)

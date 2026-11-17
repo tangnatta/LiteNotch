@@ -139,6 +139,22 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   nothing; a new break starts gently again. No polling: a 5-minute break
   costs three readings. Reading the screen without touching the keyboard
   or mouse counts as being on the break.
+- **Day progress** (`settings.day`, off by default, `core::day`): fixed
+  office hours (default 10:00–18:00, Mon–Fri). On a working day the view
+  model carries today's `day: {start_ms, end_ms, line}` and the closed
+  notch can rank `ActivityKind::Day` last in `LIVE_ORDER` (`ends_at_ms` =
+  end, `total_secs` = length). The shell works out the percentage:
+  `−12%` before the start, `37%`, `+19%` past the end
+  (`Format.dayProgress`), and redraws only when the whole percent changes
+  (`DaySchedule`). The core wakes once at local midnight. The icon follows
+  the time of day (`Format.daySymbol`): horizon before the start, sun
+  until 3 h before the end, horizon, then moon. Home's big left card (Settings › Home,
+  `day.home_card`: Auto, Day, Music) shows the day instead of now
+  playing; Auto gives way to music while it plays. The line under the
+  number is one of `DAY_LINES`, one per day.
+  The principle: people have a life before and after work, so nothing
+  here limits or judges their time. No bar, no colour, no overtime
+  warning, no line that says to finish or stop.
 - **Sound** (`settings.sound`, on by default, "Glass"): one of the 14
   system alert sounds when the countdown timer, a focus session or a break
   ends (not on skip, reset or pause). The core emits `Effect::PlaySound`

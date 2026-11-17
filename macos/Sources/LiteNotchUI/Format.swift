@@ -139,6 +139,56 @@ public enum Format {
         }
     }
 
+    /// Hundredths of the working day gone, rounded down: negative before
+    /// it starts, over 100 after it ends.
+    public static func dayPercent(startMs: Int, endMs: Int, nowMs: Int) -> Int {
+        let span = Double(max(1, endMs - startMs))
+        return Int((Double(nowMs - startMs) * 100 / span).rounded(.down))
+    }
+
+    /// `37%` during the day, `−12%` before it, `+19%` past its end.
+    public static func dayProgress(_ p: Int) -> String {
+        if p < 0 { return "\u{2212}\(-p)%" }
+        if p > 100 { return "+\(p - 100)%" }
+        return "\(p)%"
+    }
+
+    /// The afternoon: this long before the end the sun sinks to the horizon.
+    public static let dayAfternoonMs = 3 * 3_600_000
+
+    /// When the afternoon starts (15:00 for 10:00–18:00), never before the start.
+    public static func dayAfternoonMs(startMs: Int, endMs: Int) -> Int {
+        max(startMs, endMs - dayAfternoonMs)
+    }
+
+    /// The day's icon: the sun on the horizon before office hours, the full
+    /// sun until the afternoon, the horizon again until the end, then the moon.
+    public static func daySymbol(startMs: Int, endMs: Int, nowMs: Int) -> String {
+        if nowMs < startMs { return "sun.horizon.fill" }
+        if nowMs < dayAfternoonMs(startMs: startMs, endMs: endMs) { return "sun.max.fill" }
+        if nowMs < endMs { return "sun.horizon.fill" }
+        return "moon.fill"
+    }
+
+    /// The times `daySymbol` changes.
+    public static func daySymbolChanges(startMs: Int, endMs: Int) -> [Int] {
+        [startMs, dayAfternoonMs(startMs: startMs, endMs: endMs), endMs]
+    }
+
+    /// When `dayPercent` next changes after `nowMs`.
+    public static func nextDayPercentMs(startMs: Int, endMs: Int, nowMs: Int) -> Int {
+        let span = max(1, endMs - startMs)
+        let p = dayPercent(startMs: startMs, endMs: endMs, nowMs: nowMs)
+        // Ceiling of the boundary, so the next reading is the next whole percent.
+        let next = startMs + Int((Double(p + 1) * Double(span) / 100).rounded(.up))
+        return max(next, nowMs + 1)
+    }
+
+    /// `10:00` for minutes after midnight.
+    public static func minutesOfDay(_ m: Int) -> String {
+        String(format: "%d:%02d", m / 60, m % 60)
+    }
+
     public static func percent(_ v: Double) -> String {
         "\(Int(max(0, v).rounded()))%"
     }

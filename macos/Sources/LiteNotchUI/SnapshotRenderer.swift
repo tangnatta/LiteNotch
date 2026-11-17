@@ -85,6 +85,26 @@ public enum SnapshotRenderer {
             if name == "calendar" {
                 try add("calendar-expanded-settings-calendar", vm, tab: .settings, section: .calendar)
             }
+            if name == "day" {
+                // An 8-hour day seen at four times: morning, midday,
+                // afternoon and evening (each icon and sign once).
+                let hour = 3_600_000
+                for (label, hoursIn) in [("morning", -1.5), ("midday", 3.0), ("afternoon", 6.0), ("evening", 10.5)] {
+                    var at = vm
+                    let start = snapshotNowMs - Int(hoursIn * Double(hour))
+                    at.day?.startMs = start
+                    at.day?.endMs = start + 8 * hour
+                    at.compact.endsAtMs = start + 8 * hour
+                    at.compact.totalSecs = 8 * 3600
+                    try add("day-\(label)-closed", at, expanded: false)
+                    try add("notchless-day-\(label)-closed", at, expanded: false, notchless: true)
+                    try add("day-\(label)-expanded-home", at)
+                }
+                try add("day-expanded-settings-home", vm, tab: .settings, section: .home)
+                var music = vm
+                music.settings.day.homeCard = .media
+                try add("day-music-card-expanded-home", music)
+            }
             if name == "approval" {
                 var long = vm
                 long.agents.pending[0].truncated = true

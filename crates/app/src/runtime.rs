@@ -1449,8 +1449,44 @@ mod tests {
     }
 
     #[test]
+    fn the_saved_lid_choice_follows_keep_awake_off_and_on_without_asking_again() {
+        let os = FakeOs {
+            lid_answer: Some(true),
+            power: Some(PowerStatus {
+                on_ac: true,
+                battery_pct: Some(90),
+            }),
+            ..FakeOs::default()
+        };
+        let h = Harness::start_in(crate::store::temp_dir("rt-lid-choice"), os);
+        // Saving the choice while keep awake is off starts nothing.
+        h.send(r#"{"cmd":"caffeine_lid","on":true}"#);
+        h.views.wait("choice saved", |v| {
+            v["settings"]["caffeine"]["lid_closed"] == true
+        });
+        assert_eq!(h.views.last()["caffeine"]["mode"], "off");
+        assert_eq!(h.views.last()["caffeine"]["lid"], "off");
+        // Turning keep awake on brings the lid with it, then off, then on again.
+        for round in 0..2 {
+            h.send(r#"{"cmd":"caffeine_toggle"}"#);
+            h.views
+                .wait("on with lid", |v| v["caffeine"]["lid"] == "on");
+            h.send(r#"{"cmd":"caffeine_toggle"}"#);
+            h.views.wait("off", |v| {
+                v["caffeine"]["mode"] == "off" && v["caffeine"]["lid"] == "off"
+            });
+            assert_eq!(
+                h.views.last()["settings"]["caffeine"]["lid_closed"],
+                true,
+                "round {round}: the choice is still set"
+            );
+        }
+    }
+
+    #[test]
     fn lid_mode_goes_through_the_platform_and_is_reverted_on_cancel() {
         let h = Harness::start("rt-lid");
+        h.send(r#"{"cmd":"caffeine_activate","mode":"display","duration_secs":null}"#);
         h.send(r#"{"cmd":"caffeine_lid","on":true}"#);
         h.views
             .wait("pending", |v| v["caffeine"]["lid"] == "pending");

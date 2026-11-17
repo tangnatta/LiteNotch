@@ -203,6 +203,7 @@ fn main() {
 
     let mut c = populated();
     c.apply(Input::Command(Command::CaffeineLid { on: true }), T0);
+    c.apply(Input::Command(Command::CaffeineToggle), T0);
     c.apply(Input::LidResult { ok: true }, T0 + 1);
     out.push(("caffeine", c));
 

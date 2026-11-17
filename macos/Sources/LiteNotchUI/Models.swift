@@ -357,15 +357,14 @@ extension NotifyConfig {
 public struct CaffeineConfig: Codable, Equatable {
     public var defaultMode: AwakeMode
     public var batteryFloorPct: Int
-    public var lidBatteryFloorPct: Int
-    public var lidRequiresAc: Bool
+    /// Keep awake with the lid closed: saved, and applied whenever keep awake is turned on.
+    public var lidClosed: Bool
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         if defaultMode != .unknown { try c.encode(defaultMode, forKey: .defaultMode) }
         try c.encode(batteryFloorPct, forKey: .batteryFloorPct)
-        try c.encode(lidBatteryFloorPct, forKey: .lidBatteryFloorPct)
-        try c.encode(lidRequiresAc, forKey: .lidRequiresAc)
+        try c.encode(lidClosed, forKey: .lidClosed)
     }
 }
 

@@ -414,8 +414,7 @@
     "caffeine": {
       "default_mode": "display",
       "battery_floor_pct": 10,
-      "lid_battery_floor_pct": 25,
-      "lid_requires_ac": false
+      "lid_closed": false
     },
     "agent": {
       "enabled": true,

@@ -339,6 +339,10 @@
       "count": 2
     },
     {
+      "feature": "caffeine_on",
+      "count": 1
+    },
+    {
       "feature": "clipboard_pin",
       "count": 1
     },
@@ -352,6 +356,10 @@
     },
     {
       "feature": "panel_open",
+      "count": 1
+    },
+    {
+      "feature": "settings_change",
       "count": 1
     }
   ],
@@ -401,8 +409,7 @@
     "caffeine": {
       "default_mode": "display",
       "battery_floor_pct": 10,
-      "lid_battery_floor_pct": 25,
-      "lid_requires_ac": false
+      "lid_closed": true
     },
     "agent": {
       "enabled": true,

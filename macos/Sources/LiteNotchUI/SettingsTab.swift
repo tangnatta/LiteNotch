@@ -492,9 +492,7 @@ struct SettingsTab: View {
                           label: "Default keep-awake mode", height: 22)
         }
         row("With the lid closed", caption: c.lid == .pending ? "" : lidCaption(c)) {
-            NotchToggle(isOn: Binding(get: { c.lid != .off && c.lid != .unknown },
-                                      set: { send(.caffeineLid(on: $0)) }),
-                        label: "Keep awake with lid closed")
+            NotchToggle(isOn: $draft.caffeine.lidClosed, label: "Keep awake with lid closed")
         }
         if c.lid == .pending {
             WarningText(text: lidCaption(c)).nfont(.caption)
@@ -503,13 +501,10 @@ struct SettingsTab: View {
             VText(g).nfont(.caption).foregroundStyle(NT.text2).lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        stepper("Keep awake stops below", $draft.caffeine.batteryFloorPct, 0...50, step: 5, unit: "%")
-        stepper("Lid-closed mode needs at least", $draft.caffeine.lidBatteryFloorPct, 0...50, step: 5, unit: "%")
-        if draft.caffeine.batteryFloorPct == 0 || draft.caffeine.lidBatteryFloorPct == 0 {
-            VText("0 % means no limit: the Mac stays awake until the battery runs out.")
-                .nfont(.caption).foregroundStyle(NT.text2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        stepper("Stop keeping awake below", $draft.caffeine.batteryFloorPct, 0...50, step: 5, unit: "%")
+        VText("One limit for every mode, with the lid open or closed. 0 % means no limit: the Mac stays awake until the battery runs out.")
+            .nfont(.caption).foregroundStyle(NT.text2)
+            .fixedSize(horizontal: false, vertical: true)
         row("Keep awake for", caption: awakeCaption(c)) {
             HStack(spacing: 4) {
                 chip("30m", 1800); chip("1h", 3600); chip("2h", 7200); chip("\u{221E}", nil)
@@ -525,11 +520,15 @@ struct SettingsTab: View {
             .replacingOccurrences(of: " Click to stop.", with: "")
     }
 
+    /// The lid choice is saved, so the caption says what it does at each moment.
     private func lidCaption(_ c: CaffeineView) -> String {
         switch c.lid {
         case .pending: return "Waiting for your password\u{2026}"
         case .on: return "The Mac stays awake with the lid closed."
-        default: return "Asks for an admin password once."
+        default:
+            return draft.caffeine.lidClosed
+                ? "Every time keep awake is on. Asks for an admin password once."
+                : "The Mac sleeps when the lid closes."
         }
     }
 

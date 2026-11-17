@@ -331,6 +331,16 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   keeps per-day totals, today's totals by model and project, and writes the
   one-sentence summary (`usage::Usage::snapshot`). "Tokens" there means
   input + output; cache tokens are tracked separately in `today`.
+- **Lid choice and battery limit** (`caffeine::CaffeineConfig`): `lid_closed`
+  is a saved setting, not an action. Turning keep awake on (`activate` from off)
+  brings the lid with it when it is set (`apply_lid`), turning it off takes
+  both away, and changing the choice while keep awake is on applies at once;
+  while it is off, changing it only saves it. Picking another duration is not
+  turning it on, so it never asks for the password again. One
+  `battery_floor_pct` covers every mode (0 = no limit); there is no lid-only
+  limit and no AC-only switch (settings saved with `lid_battery_floor_pct` or
+  `lid_requires_ac` still load, the keys are ignored). The `caffeine_lid`
+  command sets the choice.
 - **Closed-lid keep-awake** needs root (`pmset -a disablesleep 1`). One admin
   prompt per run of LiteNotch starts a root shell loop, the helper, which
   sets the flag and then sleeps in `read` on a named pipe that LiteNotch

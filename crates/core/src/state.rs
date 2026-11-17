@@ -1332,10 +1332,13 @@ impl Core {
                 if on {
                     self.count(Feature::LidModeOn, now);
                 }
-                let effects = self.caffeine.set_lid(on, now);
-                self.caffeine_effects(effects, now, fx);
+                // A saved choice, not an action: it applies now if keep awake
+                // is on, and every time it is turned on after.
+                let mut settings = self.settings.clone();
+                settings.caffeine.lid_closed = on;
+                self.set_settings(settings, now, fx);
             }
-            Command::SetSettings { settings } => self.set_settings(*settings, now),
+            Command::SetSettings { settings } => self.set_settings(*settings, now, fx),
             Command::ScreenAway { away } => self.away = away,
             Command::PanelOpened => self.count(Feature::PanelOpen, now),
             Command::TabOpened { tab } => self.count(
@@ -1367,14 +1370,15 @@ impl Core {
         self.pomodoro.set_config(self.settings.pomodoro.clone());
     }
 
-    fn set_settings(&mut self, mut settings: Settings, now: u64) {
+    fn set_settings(&mut self, mut settings: Settings, now: u64, fx: &mut Vec<Effect>) {
         settings.appearance.accent = normalize_accent(&settings.appearance.accent);
         // The offset comes from the system, not from the settings form.
         settings.pomodoro.utc_offset_secs = self.utc_offset_secs;
         self.pomodoro.set_config(settings.pomodoro.clone());
         self.clipboard.set_config(settings.clipboard.clone());
         self.notify.set_config(settings.notify.clone());
-        self.caffeine.set_config(settings.caffeine.clone());
+        let lid_effects = self.caffeine.set_config(settings.caffeine.clone());
+        self.caffeine_effects(lid_effects, now, fx);
         self.agents.set_config(settings.agent.clone());
         self.calendar.set_config(settings.calendar.clone());
         settings.notch = settings.notch.normalized();
@@ -2082,6 +2086,13 @@ mod tests {
 
     fn cmd(core: &mut Core, command: Command, now: u64) -> Vec<Effect> {
         core.apply(Input::Command(command), now)
+    }
+
+    /// The lid choice saved, then keep awake turned on: how closed-lid mode
+    /// is started.
+    fn start_lid(core: &mut Core, now: u64) -> Vec<Effect> {
+        cmd(core, Command::CaffeineLid { on: true }, now);
+        cmd(core, Command::CaffeineToggle, now)
     }
 
     fn hook(core: &mut Core, value: serde_json::Value, now: u64) -> (HookOutcome, Vec<Effect>) {
@@ -3585,7 +3596,7 @@ mod tests {
     #[test]
     fn lid_mode_asks_the_platform_and_low_battery_turns_it_off() {
         let mut c = core();
-        let fx = cmd(&mut c, Command::CaffeineLid { on: true }, T0);
+        let fx = start_lid(&mut c, T0);
         assert_eq!(
             fx,
             vec![Effect::SetAssertion(AwakeMode::Display), Effect::EnableLid]
@@ -3598,6 +3609,7 @@ mod tests {
             (LidState::On, "lid")
         );
 
+        // One limit for every mode: 20 % is above it, so nothing changes.
         let fx = c.apply(
             Input::Power(PowerStatus {
                 on_ac: false,
@@ -3605,12 +3617,10 @@ mod tests {
             }),
             T0 + 2,
         );
-        assert_eq!(fx, vec![Effect::DisableLid]);
-        let v = c.view(T0 + 2);
-        assert_eq!(v.caffeine.lid, LidState::Off);
-        assert!(v.caffeine.guard.is_some());
-        assert_eq!(v.inbox.banner.unwrap().source, "caffeine");
+        assert_eq!(fx, vec![]);
+        assert_eq!(c.view(T0 + 2).caffeine.lid, LidState::On);
 
+        // Below it everything goes off together, with one notice.
         let fx = c.apply(
             Input::Power(PowerStatus {
                 on_ac: false,
@@ -3618,14 +3628,21 @@ mod tests {
             }),
             T0 + 3,
         );
-        assert_eq!(fx, vec![Effect::SetAssertion(AwakeMode::Off)]);
+        assert_eq!(
+            fx,
+            vec![Effect::DisableLid, Effect::SetAssertion(AwakeMode::Off)]
+        );
+        let v = c.view(T0 + 3);
+        assert_eq!(v.caffeine.lid, LidState::Off);
+        assert!(v.caffeine.guard.is_some());
+        assert_eq!(v.inbox.banner.unwrap().source, "caffeine");
         assert_eq!(uses(&c, Feature::LidModeOn), 1);
     }
 
     #[test]
     fn a_failed_or_late_lid_result_is_handled() {
         let mut c = core();
-        cmd(&mut c, Command::CaffeineLid { on: true }, T0);
+        start_lid(&mut c, T0);
         c.apply(Input::LidResult { ok: false }, T0 + 1);
         assert_eq!(c.view(T0 + 1).caffeine.lid, LidState::Off);
         assert_eq!(
@@ -3633,6 +3650,7 @@ mod tests {
             "Lid mode failed"
         );
         // The password prompt was answered after lid mode was cancelled.
+        cmd(&mut c, Command::CaffeineLid { on: false }, T0 + 1);
         cmd(&mut c, Command::CaffeineLid { on: true }, T0 + 2);
         assert_eq!(
             cmd(&mut c, Command::CaffeineLid { on: false }, T0 + 3),
@@ -4337,7 +4355,7 @@ mod tests {
     #[test]
     fn sleeping_with_the_lid_shut_ends_lid_mode_and_releases_the_assertion() {
         let mut c = core();
-        cmd(&mut c, Command::CaffeineLid { on: true }, T0);
+        start_lid(&mut c, T0);
         c.apply(Input::LidResult { ok: true }, T0);
         c.apply(
             Input::Clamshell {
@@ -4364,7 +4382,7 @@ mod tests {
     fn sleeping_with_the_lid_open_or_no_lid_mode_changes_nothing() {
         let mut c = core();
         assert!(c.apply(Input::Slept { gap_ms: 3_600_000 }, T0).is_empty());
-        cmd(&mut c, Command::CaffeineLid { on: true }, T0);
+        start_lid(&mut c, T0);
         c.apply(Input::LidResult { ok: true }, T0);
         c.apply(
             Input::Clamshell {

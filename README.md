@@ -157,9 +157,15 @@ Notifications from LiteNotch, Claude Code, and, if you allow it, other apps
 
 <img src="docs/preview/keep-awake.gif" width="680" alt="The cup in the closed notch while the Mac is kept awake, then the keep-awake settings">
 
-The **cup** keeps the Mac awake. Options in **Settings › Keep awake** include
-a timer, a battery limit, and staying awake with the lid closed (asks for
-your password once; turns itself off when LiteNotch quits).
+The **cup** keeps the Mac awake. In **Settings › Keep awake**:
+
+- **With the lid closed** is a saved choice. Set it once and every time you
+  turn keep awake on, with the cup or from Settings, it stays awake with the
+  lid shut too, until you change it. It asks for your password once each time
+  LiteNotch is started, and turns itself off when LiteNotch quits.
+- **Stop keeping awake below** is one battery limit for every mode, lid open
+  or closed. Set it to 0 % for no limit at all.
+- A timer for how long.
 
 ## Claude Code
 

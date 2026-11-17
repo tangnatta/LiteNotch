@@ -258,7 +258,7 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual((inner["pomodoro"] as! NSDictionary)["focus_secs"] as? Int, 1800)
         XCTAssertEqual((inner["general"] as! NSDictionary)["persist_clipboard"] as? Bool, false)
         XCTAssertEqual((inner["notify"] as! NSDictionary)["dnd_min_priority"] as? String, "high")
-        XCTAssertEqual((inner["caffeine"] as! NSDictionary)["lid_requires_ac"] as? Bool, false)
+        XCTAssertEqual((inner["caffeine"] as! NSDictionary)["lid_closed"] as? Bool, false)
         XCTAssertEqual((inner["agent"] as! NSDictionary)["auto_allow_tools"] as? [String], [])
     }
 

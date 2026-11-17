@@ -338,6 +338,23 @@ fn main() {
     }
     views.push(("peek-quote", c.view(end + 20)));
 
+    // Still at the keyboard during the short break: the first check gives
+    // a peek, the third a banner offering to skip the break.
+    let mut w = populated();
+    w.apply(Input::Command(Command::PomodoroToggle), T0);
+    fn nag(w: &mut Core, at: u64) {
+        while let Some(t) = w.next_deadline().filter(|&t| t <= at) {
+            w.apply(Input::Tick, t);
+        }
+        w.apply(Input::InputIdle { secs: 0 }, at);
+    }
+    let first = T0 + 26 * 60_000;
+    nag(&mut w, first);
+    views.push(("peek-still-working", w.view(first + 20)));
+    nag(&mut w, first + 90_000);
+    nag(&mut w, first + 180_000);
+    views.push(("banner-skip-break", w.view(first + 180_020)));
+
     for (name, view) in views {
         let json = serde_json::to_string_pretty(&view).expect("view model serializes");
         let path = format!("{dir}/{name}.json");

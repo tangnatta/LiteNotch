@@ -661,6 +661,11 @@ impl Loop {
     /// Runs due timers, pushes the view model if it changed, and saves.
     fn after_event(&mut self, now: u64) {
         self.apply(Input::Tick, now);
+        // A still-working check during a break: one reading, only now.
+        if self.core.wants_idle() {
+            let secs = self.ports.input_idle_secs().unwrap_or(u32::MAX);
+            self.apply(Input::InputIdle { secs }, now);
+        }
         self.sync_now_playing(now);
         self.sync_lid_watch();
         let files = self.core.clip_file_paths();
@@ -711,6 +716,8 @@ pub(crate) mod testing {
         pub lid_watch: Option<Box<dyn Fn(litenotch_platform::display::Clamshell) + Send>>,
         /// True plays a root helper that has stopped.
         pub lid_helper_gone: bool,
+        /// What `input_idle_secs` answers.
+        pub idle_secs: Option<u32>,
     }
 
     #[derive(Clone, Default)]
@@ -783,6 +790,11 @@ pub(crate) mod testing {
         }
         fn play_sound(&mut self, name: &str) {
             self.0.lock().unwrap().calls.push(format!("sound:{name}"));
+        }
+        fn input_idle_secs(&mut self) -> Option<u32> {
+            let mut os = self.0.lock().unwrap();
+            os.calls.push("idle".into());
+            os.idle_secs
         }
         fn power(&mut self) -> Option<PowerStatus> {
             let mut os = self.0.lock().unwrap();

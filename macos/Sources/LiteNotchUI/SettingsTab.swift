@@ -329,6 +329,8 @@ struct SettingsTab: View {
         }
         toggle("A few words after a break", $draft.peek.breakQuote,
                caption: "The closed notch shows a short line of encouragement when a break ends.")
+        toggle("Remind me if I keep working on a break", $draft.peek.stillWorking,
+               caption: "Checks a few times during a break whether the keyboard or mouse is in use.")
         Hairline().padding(.vertical, 2)
         toggle("Day progress", $draft.day.enabled,
                caption: "How far through your office hours: \u{2212} before they start, + after they end.")

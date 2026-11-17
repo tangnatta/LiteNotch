@@ -129,6 +129,16 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   polling) as `screen_away`; reminders are skipped then and screen-time
   counts start over. A mark seen over 60 s late was slept through and is
   skipped too, so it needs no word from the shell.
+  Still working on a break (`peek.still_working`, on by default, Settings ›
+  Timer): at 1:00, 2:30, 4:00 … into a running break the core sets
+  `wants_idle`; the runtime then reads the keyboard and mouse idle time
+  once (`platform::idle`, `CGEventSourceSecondsSinceLastEventType`, no
+  permission) and sends `Input::InputIdle`. Used within 30 s counts as
+  working: the first two times a `StillWorking` nudge, after that a banner
+  whose `skip_break` button sends `pomodoro_skip`. An idle user gets
+  nothing; a new break starts gently again. No polling: a 5-minute break
+  costs three readings. Reading the screen without touching the keyboard
+  or mouse counts as being on the break.
 - **Day progress** (`settings.day`, off by default, `core::day`): fixed
   office hours (default 10:00–18:00, Mon–Fri). On a working day the view
   model carries today's `day: {start_ms, end_ms, line}` and the closed
@@ -160,6 +170,10 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   Settings is a sidebar of feature categories (`AppModel.settingsSection`,
   so other tabs can deep-link). Hover opens after a delay, a click opens at
   once, a click on the tab-bar background closes.
+  Opening (hover or click) lands on the page of a banner that showed since
+  the panel last closed (within 5 min; agent banners → Agents › Sessions,
+  others without a tab → Inbox), else on Home once the panel has been
+  closed 5 min, else on the last tab (`PanelState.landing`).
   Two notch styles (`appearance.notch_style`, Settings → General): Attached
   (default, the original geometry; keep it pixel-identical for existing
   users on a display with a notch; without one it uses the one row above) and Floating, a capsule inset 3 pt inside the menu bar or notch

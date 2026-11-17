@@ -48,6 +48,9 @@ pub trait Ports: Send {
     fn sleep_display(&mut self);
     /// Starts playing one of the system's alert sounds.
     fn play_sound(&mut self, name: &str);
+    /// Seconds since the keyboard or mouse was last used; `None` where it
+    /// cannot be read. Called only when the core asks (`Core::wants_idle`).
+    fn input_idle_secs(&mut self) -> Option<u32>;
 }
 
 pub fn capture_from(raw: RawClip) -> ClipCapture {
@@ -318,6 +321,10 @@ impl Ports for MacPorts {
 
     fn play_sound(&mut self, name: &str) {
         litenotch_platform::sound::play(name);
+    }
+
+    fn input_idle_secs(&mut self) -> Option<u32> {
+        litenotch_platform::idle::input_idle_secs()
     }
 
     fn write_clipboard_rich(&mut self, text: &str, path: &str) {

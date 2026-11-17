@@ -74,7 +74,7 @@ public enum NotchGeometry {
         case .timeWarning: return 82
         // A symbol on one side, the scrolling line on the other. The eye
         // break's short line takes the `.nudge` width below.
-        case .move, .quote: return 130
+        case .move, .quote, .stillWorking: return 130
         case .eyeBreak, .unknown, nil: break
         }
         switch compact.kind {
@@ -168,7 +168,7 @@ extension NotchGeometry {
         case .trackChanged: return 80
         // `10:00 left` with the capsule's padding.
         case .timeWarning: return 72
-        case .move, .quote: return 80
+        case .move, .quote, .stillWorking: return 80
         case .eyeBreak, .unknown, nil: break
         }
         switch compact.kind {
@@ -277,7 +277,7 @@ extension NotchGeometry {
         // `10:00 left`.
         case .timeWarning: return 66
         // A line that scrolls, like a song title.
-        case .move, .quote: return 200
+        case .move, .quote, .stillWorking: return 200
         // The eye break's short line takes the `.nudge` width below.
         case .eyeBreak, .unknown, nil: break
         }

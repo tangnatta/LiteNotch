@@ -536,6 +536,11 @@ pub enum Input {
     StatuslineInstalled(Option<bool>),
     /// A notification from the runtime itself (not from the socket).
     OwnNotify(NotificationInput),
+    /// Seconds since the keyboard or mouse was last used, read because
+    /// `Core::wants_idle` asked.
+    InputIdle {
+        secs: u32,
+    },
     Tick,
 }
 
@@ -770,6 +775,10 @@ pub struct Core {
     /// The next local midnight while day progress is on, when today's
     /// office hours change.
     day_wake: Option<u64>,
+    /// A still-working check is due: the runtime reads the idle time.
+    idle_wanted: bool,
+    /// Still-working reminders given in the current break.
+    break_nags: u8,
 }
 
 impl Default for Core {
@@ -868,6 +877,8 @@ impl Core {
             move_last: None,
             quote_due: None,
             day_wake: None,
+            idle_wanted: false,
+            break_nags: 0,
         }
     }
 
@@ -996,6 +1007,7 @@ impl Core {
             }
             Input::StatuslineInstalled(state) => self.statusline_installed = state,
             Input::OwnNotify(input) => self.post(input, now),
+            Input::InputIdle { secs } => self.input_idle(secs, now),
             Input::Tick => {}
         }
         self.settle(now, &mut fx);
@@ -1873,7 +1885,12 @@ impl Core {
 
     /// The button a banner offers, if any: the notice that an event is
     /// starting offers to pause a focus session that is running.
+    /// The reminder that the user is still working during a break offers to
+    /// skip it.
     fn banner_action(&self, n: &Notification) -> Option<BannerAction> {
+        if n.source == "pomodoro" && n.title == presentation::STILL_WORKING_BANNER {
+            return self.break_running(0).then_some(BannerAction::SkipBreak);
+        }
         (n.source == "calendar"
             && n.body.starts_with(CALENDAR_STARTING)
             && self.pomodoro.is_focus_running())

@@ -32,12 +32,14 @@ public enum PeekKind: String, LenientEnum {
     case move
     /// A short line after a pomodoro break; `compact.kind` is `.nudge`.
     case quote
+    /// Still at the keyboard during a break; `compact.kind` is `.nudge`.
+    case stillWorking = "still_working"
     case unknown
     static var unknownCase: PeekKind { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 
     /// A wellbeing peek: a face or symbol and a short line.
-    public var isNudge: Bool { self == .eyeBreak || self == .move || self == .quote }
+    public var isNudge: Bool { self == .eyeBreak || self == .move || self == .quote || self == .stillWorking }
 }
 
 /// What the Move reminder counts (`settings.peek.move_counts`).
@@ -51,6 +53,8 @@ public enum CountTime: String, LenientEnum {
 public enum BannerAction: String, LenientEnum {
     /// Pause the running focus session (a meeting is starting).
     case pauseFocus = "pause_focus"
+    /// End the running break (the user kept working through it).
+    case skipBreak = "skip_break"
     case unknown
     static var unknownCase: BannerAction { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
@@ -151,11 +155,13 @@ public struct PeekConfig: Codable, Equatable {
     public var moveCounts: CountTime = .focus
     /// A short encouraging line when a pomodoro break completes.
     public var breakQuote: Bool = true
+    /// Remind the user who keeps working during a break.
+    public var stillWorking: Bool = true
 
     public static let `default` = PeekConfig(trackChange: true, timeWarningSecs: 300)
 
     enum CodingKeys: String, CodingKey {
-        case trackChange, timeWarningSecs, eyeBreakMins, moveMins, moveCounts, breakQuote
+        case trackChange, timeWarningSecs, eyeBreakMins, moveMins, moveCounts, breakQuote, stillWorking
     }
 }
 
@@ -169,6 +175,7 @@ extension PeekConfig {
         moveMins = (try? c.decodeIfPresent(Int.self, forKey: .moveMins)) ?? 0
         moveCounts = (try? c.decodeIfPresent(CountTime.self, forKey: .moveCounts)) ?? .focus
         breakQuote = (try? c.decodeIfPresent(Bool.self, forKey: .breakQuote)) ?? true
+        stillWorking = (try? c.decodeIfPresent(Bool.self, forKey: .stillWorking)) ?? true
     }
 
     // An unknown `move_counts` is left out so the core keeps its default.
@@ -180,6 +187,7 @@ extension PeekConfig {
         try c.encode(moveMins, forKey: .moveMins)
         if moveCounts != .unknown { try c.encode(moveCounts, forKey: .moveCounts) }
         try c.encode(breakQuote, forKey: .breakQuote)
+        try c.encode(stillWorking, forKey: .stillWorking)
     }
 }
 

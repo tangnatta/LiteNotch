@@ -13,8 +13,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    mmss, phase_label, ActivityKind, CompactView, Core, MediaView, Phase, PomodoroView, RunState,
-    TimerRun,
+    mmss, phase_label, ActivityKind, CompactView, Core, MediaView, NotificationInput, Phase,
+    PomodoroView, Priority, RunState, TimerRun,
 };
 
 /// What the Move reminder counts.
@@ -48,6 +48,10 @@ pub struct PeekConfig {
     pub move_counts: CountTime,
     /// Show a short encouraging line when a pomodoro break completes.
     pub break_quote: bool,
+    /// Remind the user who keeps typing or using the mouse during a running
+    /// break (`BREAK_CHECK_*`): twice as a peek, then as a banner that offers
+    /// to skip the break.
+    pub still_working: bool,
 }
 
 impl Default for PeekConfig {
@@ -59,6 +63,7 @@ impl Default for PeekConfig {
             move_mins: 0,
             move_counts: CountTime::Focus,
             break_quote: true,
+            still_working: true,
         }
     }
 }
@@ -87,18 +92,24 @@ pub enum PeekKind {
     Move,
     /// A short line after a break (`ActivityKind::Nudge`).
     Quote,
+    /// The user is still at the keyboard during a break
+    /// (`ActivityKind::Nudge`).
+    StillWorking,
 }
 
 impl PeekKind {
     /// A wellbeing nudge rather than news about an activity.
     fn is_nudge(self) -> bool {
-        matches!(self, PeekKind::EyeBreak | PeekKind::Move | PeekKind::Quote)
+        matches!(
+            self,
+            PeekKind::EyeBreak | PeekKind::Move | PeekKind::Quote | PeekKind::StillWorking
+        )
     }
 
     fn duration_ms(self) -> u64 {
         match self {
             PeekKind::EyeBreak => EYE_MS,
-            PeekKind::Move | PeekKind::Quote => NUDGE_MS,
+            PeekKind::Move | PeekKind::Quote | PeekKind::StillWorking => NUDGE_MS,
             _ => PEEK_MS,
         }
     }
@@ -120,6 +131,32 @@ const QUOTE_WAIT_MS: u64 = 60_000;
 const EYE_BREAK_TITLE: &str = "Eye break";
 const EYE_BREAK_LINE: &str = "Look away";
 const QUOTE_TITLE: &str = "Break over";
+
+/// The first check whether the user is still working, this long into a
+/// running break, then every `BREAK_CHECK_STEP_MS`: a 5-minute break gets
+/// three (1:00, 2:30, 4:00). Each check asks the runtime for one reading of
+/// the input idle time (`Core::wants_idle`); nothing polls.
+pub const BREAK_CHECK_FIRST_MS: u64 = 60_000;
+pub const BREAK_CHECK_STEP_MS: u64 = 90_000;
+/// Keyboard or mouse used within this long counts as still working.
+pub const WORKING_IDLE_SECS: u32 = 30;
+const BREAK_TITLE: &str = "Break";
+/// What the reminders say, gentle first. After these, a banner.
+const STILL_WORKING_LINES: [&str; 2] = [
+    "Break time. Step away for a bit.",
+    "Still working? Your break is ticking away.",
+];
+/// The banner's title; `Core::banner_action` offers "Skip break" on it.
+pub(super) const STILL_WORKING_BANNER: &str = "Still working on your break?";
+
+/// Checks passed at `elapsed_ms` into a break.
+fn break_checks(elapsed_ms: u64) -> u64 {
+    if elapsed_ms < BREAK_CHECK_FIRST_MS {
+        0
+    } else {
+        (elapsed_ms - BREAK_CHECK_FIRST_MS) / BREAK_CHECK_STEP_MS + 1
+    }
+}
 
 /// What the Move reminder asks for: `(kind, line)`. The kinds take turns
 /// in the list (stretch, walk, water), so `index % 3` is the kind.
@@ -288,6 +325,68 @@ impl Core {
         self.settings.peek.move_mins > 0 && self.settings.peek.move_counts == CountTime::Focus
     }
 
+    /// A pomodoro break is running.
+    pub(super) fn break_running(&self, now: u64) -> bool {
+        let s = self.pomodoro.snapshot(now);
+        matches!(s.phase, Phase::ShortBreak | Phase::LongBreak) && s.run_state == RunState::Running
+    }
+
+    /// A still-working check of a running break was crossed since the last
+    /// look, just now (not slept through), and the user is here.
+    fn break_check(&self, prev_left: u64, cur: &Left, now: u64) -> bool {
+        if !self.settings.peek.still_working
+            || self.away
+            || !self.break_running(now)
+            || prev_left <= cur.left_ms
+        {
+            return false;
+        }
+        let elapsed = cur.total_ms.saturating_sub(cur.left_ms);
+        let before = break_checks(cur.total_ms.saturating_sub(prev_left));
+        break_checks(elapsed) > before
+            && (elapsed - BREAK_CHECK_FIRST_MS) % BREAK_CHECK_STEP_MS <= LATE_MS
+    }
+
+    /// The runtime should read the input idle time and send
+    /// `Input::InputIdle`: a still-working check is due.
+    pub fn wants_idle(&self) -> bool {
+        self.idle_wanted
+    }
+
+    /// The answer to `wants_idle`: seconds since the keyboard or mouse was
+    /// last used. Recent use during a break gets a reminder, firmer each
+    /// time; an idle user (on a break, as meant) gets none.
+    pub(super) fn input_idle(&mut self, secs: u32, now: u64) {
+        if !std::mem::take(&mut self.idle_wanted)
+            || secs >= WORKING_IDLE_SECS
+            || self.away
+            || !self.settings.peek.still_working
+            || !self.break_running(now)
+        {
+            return;
+        }
+        let n = usize::from(self.break_nags);
+        self.break_nags = self.break_nags.saturating_add(1);
+        if let Some(line) = STILL_WORKING_LINES.get(n) {
+            self.start_peek(Peek::nudge(PeekKind::StillWorking, BREAK_TITLE, line), now);
+            return;
+        }
+        let mins = self
+            .clock_left(Clock::Pomodoro, now)
+            .map_or(0, |l| l.total_ms.saturating_sub(l.left_ms) / 60_000);
+        self.post(
+            NotificationInput {
+                source: "pomodoro".into(),
+                title: STILL_WORKING_BANNER.into(),
+                body: format!("{mins} min in, still at the keyboard."),
+                priority: Priority::Normal,
+                group: Some("pomodoro".into()),
+                ttl_secs: Some(60),
+            },
+            now,
+        );
+    }
+
     /// Shows a peek now, or after the nudge that is showing. A nudge that
     /// replaces a peek shown for less than half its time brings that peek
     /// back afterwards.
@@ -392,6 +491,11 @@ impl Core {
                     ..p
                 });
         }
+        if !self.break_running(now) {
+            // A new break starts gently again.
+            self.break_nags = 0;
+            self.idle_wanted = false;
+        }
         let warn = self.warn_ms();
         let mut moved = false;
         for clock in CLOCKS {
@@ -405,6 +509,9 @@ impl Core {
                 continue;
             }
             moved |= clock == Clock::Pomodoro && self.focus_move(prev, &cur, now);
+            if clock == Clock::Pomodoro && self.break_check(prev, &cur, now) {
+                self.idle_wanted = true;
+            }
             if warn > 0 && cur.total_ms > 2 * warn && prev > warn && cur.left_ms <= warn {
                 self.start_peek(Peek::about(PeekKind::TimeWarning, clock), now);
             }
@@ -469,6 +576,17 @@ impl Core {
                     times.push(end.checked_sub(total - mark));
                 }
             }
+            if clock == Clock::Pomodoro
+                && self.settings.peek.still_working
+                && !self.away
+                && self.break_running(0)
+            {
+                let (total, elapsed) = (total_ms(clock), total_ms(clock).saturating_sub(left));
+                let mark = BREAK_CHECK_FIRST_MS + break_checks(elapsed) * BREAK_CHECK_STEP_MS;
+                if mark < total {
+                    times.push(end.checked_sub(total - mark));
+                }
+            }
         }
         times.push(self.eye_since.map(|s| s.saturating_add(self.eye_ms())));
         times.push(self.move_since.map(|s| s.saturating_add(self.move_ms())));
@@ -483,7 +601,7 @@ impl Core {
     ) -> Option<CompactView> {
         let peek = self.peek?;
         let shown = match (peek.kind, peek.clock) {
-            (PeekKind::EyeBreak | PeekKind::Move | PeekKind::Quote, _) => {
+            (PeekKind::EyeBreak | PeekKind::Move | PeekKind::Quote | PeekKind::StillWorking, _) => {
                 view(ActivityKind::Nudge, peek.title, peek.text)
             }
             (_, None) => playing_view(media)?,
@@ -551,6 +669,7 @@ fn playing_view(media: &Option<MediaView>) -> Option<CompactView> {
 mod tests {
     use super::*;
     use crate::media::NowPlaying;
+    use crate::notify::BannerAction;
     use crate::state::{Command, Input, Settings};
     use serde_json::json;
 
@@ -833,7 +952,14 @@ mod tests {
     #[test]
     fn move_in_focus_only_counts_focus_and_can_be_turned_off() {
         let mut c = moving(CountTime::Focus);
-        with(&mut c, |s| s.pomodoro.short_break_secs = 1800, T0);
+        with(
+            &mut c,
+            |s| {
+                s.pomodoro.short_break_secs = 1800;
+                s.peek.still_working = false;
+            },
+            T0,
+        );
         cmd(&mut c, Command::PomodoroToggle, T0);
         run_to(&mut c, T0 + 26 * MIN);
         assert_eq!(c.view(T0 + 26 * MIN).pomodoro.phase, Phase::ShortBreak);
@@ -997,6 +1123,8 @@ mod tests {
     /// Runs a default pomodoro through its focus and short break; the break
     /// ends at 30 minutes.
     fn through_a_break(c: &mut Core) -> u64 {
+        // No still-working checks during it.
+        with(c, |s| s.peek.still_working = false, T0);
         cmd(c, Command::PomodoroToggle, T0);
         // Breaks start by themselves.
         run_to(c, T0 + 25 * MIN + 5_000);
@@ -1080,6 +1208,162 @@ mod tests {
         assert_eq!(compact(&c, end + 10_000).peek, None);
         away(&mut c, false, end + 20_000);
         assert_eq!(compact(&c, end + 20_000).peek, Some(PeekKind::Quote));
+    }
+
+    /// A default pomodoro just into its short break (25:00 to 30:00), with
+    /// the time warning off so only still-working checks fall in it.
+    fn in_a_break(c: &mut Core) {
+        with(c, |s| s.peek.time_warning_secs = 0, T0);
+        cmd(c, Command::PomodoroToggle, T0);
+        run_to(c, T0 + 25 * MIN + 5_000);
+        assert!(c.break_running(0));
+    }
+
+    /// Runs to the next check and answers it with `idle` seconds.
+    fn check(c: &mut Core, at: u64, idle: u32) {
+        run_to(c, at - 1);
+        assert!(!c.wants_idle(), "not before {at}");
+        assert_eq!(c.next_deadline(), Some(at));
+        c.apply(Input::Tick, at);
+        assert!(c.wants_idle(), "at {at}");
+        c.apply(Input::InputIdle { secs: idle }, at);
+        assert!(!c.wants_idle());
+    }
+
+    #[test]
+    fn working_through_a_break_gets_two_peeks_then_a_banner() {
+        let mut c = Core::default();
+        in_a_break(&mut c);
+        let start = T0 + 25 * MIN;
+        let first = start + BREAK_CHECK_FIRST_MS;
+        check(&mut c, first, 2);
+        let v = compact(&c, first);
+        assert_eq!(
+            (v.kind, v.peek, v.title.as_str(), v.value.as_str()),
+            (
+                ActivityKind::Nudge,
+                Some(PeekKind::StillWorking),
+                BREAK_TITLE,
+                STILL_WORKING_LINES[0]
+            )
+        );
+        let second = first + BREAK_CHECK_STEP_MS;
+        check(&mut c, second, 0);
+        assert_eq!(compact(&c, second).value, STILL_WORKING_LINES[1]);
+        let third = second + BREAK_CHECK_STEP_MS;
+        check(&mut c, third, 0);
+        let banner = c.view(third).inbox.banner.expect("a banner");
+        assert_eq!(banner.title, STILL_WORKING_BANNER);
+        assert_eq!(banner.body, "4 min in, still at the keyboard.");
+        assert_eq!(banner.action, Some(BannerAction::SkipBreak));
+        // 5:30 is past the break's end: no fourth check.
+        run_to(&mut c, start + 5 * MIN - 1);
+        assert!(!c.wants_idle());
+        // Its button skips the break; then the offer goes.
+        cmd(&mut c, Command::PomodoroSkip, start + 5 * MIN - 1);
+        assert!(!c.break_running(0));
+        let b = c.view(start + 5 * MIN - 1).inbox.banner;
+        assert!(b.is_none() || b.and_then(|b| b.action).is_none());
+    }
+
+    #[test]
+    fn an_idle_user_is_on_a_break_and_hears_nothing() {
+        let mut c = Core::default();
+        in_a_break(&mut c);
+        let first = T0 + 25 * MIN + BREAK_CHECK_FIRST_MS;
+        check(&mut c, first, WORKING_IDLE_SECS);
+        assert_eq!(compact(&c, first).peek, None);
+        // Not counted: the next one is still the gentle one.
+        let second = first + BREAK_CHECK_STEP_MS;
+        check(&mut c, second, 1);
+        assert_eq!(compact(&c, second).value, STILL_WORKING_LINES[0]);
+        // An answer nobody asked for does nothing.
+        c.apply(Input::InputIdle { secs: 0 }, second + 1_000);
+        assert_eq!(compact(&c, second + 1_000).value, STILL_WORKING_LINES[0]);
+    }
+
+    #[test]
+    fn no_checks_off_paused_away_or_in_focus() {
+        let first = T0 + 25 * MIN + BREAK_CHECK_FIRST_MS;
+        let mut c = Core::default();
+        with(&mut c, |s| s.peek.still_working = false, T0);
+        in_a_break(&mut c);
+        run_to(&mut c, first + MIN);
+        assert!(!c.wants_idle());
+
+        let mut c = Core::default();
+        in_a_break(&mut c);
+        cmd(&mut c, Command::PomodoroToggle, first - 1_000);
+        run_to(&mut c, first + MIN);
+        assert!(!c.wants_idle(), "paused");
+
+        let mut c = Core::default();
+        in_a_break(&mut c);
+        away(&mut c, true, first - 1_000);
+        run_to(&mut c, first + MIN);
+        assert!(!c.wants_idle(), "away");
+        // A check asked for and then the screen locked gets no reminder.
+        away(&mut c, false, first + MIN);
+        let second = first + BREAK_CHECK_STEP_MS;
+        run_to(&mut c, second);
+        assert!(c.wants_idle());
+        away(&mut c, true, second);
+        c.apply(Input::InputIdle { secs: 0 }, second);
+        assert_eq!(compact(&c, second).peek, None);
+
+        // Focus phases never ask.
+        let mut c = Core::default();
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        run_to(&mut c, T0 + 20 * MIN);
+        assert!(!c.wants_idle());
+    }
+
+    #[test]
+    fn a_check_slept_through_is_skipped_and_a_new_break_starts_gently() {
+        let mut c = Core::default();
+        in_a_break(&mut c);
+        let first = T0 + 25 * MIN + BREAK_CHECK_FIRST_MS;
+        check(&mut c, first, 0);
+        // The Mac slept past the second mark by more than a minute.
+        c.apply(Input::Tick, first + BREAK_CHECK_STEP_MS + 70_000);
+        assert!(!c.wants_idle());
+        // The next break starts again from the gentle line.
+        let mut c = Core::default();
+        with(
+            &mut c,
+            |s| {
+                s.peek.time_warning_secs = 0;
+                s.pomodoro.auto_start_focus = true;
+            },
+            T0,
+        );
+        cmd(&mut c, Command::PomodoroToggle, T0);
+        check(&mut c, T0 + 25 * MIN + BREAK_CHECK_FIRST_MS, 0);
+        check(
+            &mut c,
+            T0 + 25 * MIN + BREAK_CHECK_FIRST_MS + BREAK_CHECK_STEP_MS,
+            0,
+        );
+        // Focus 30:00 to 55:00, the next break from 55:00.
+        let next = T0 + 55 * MIN + BREAK_CHECK_FIRST_MS;
+        check(&mut c, next, 0);
+        assert_eq!(compact(&c, next).value, STILL_WORKING_LINES[0]);
+    }
+
+    #[test]
+    fn still_working_lines_fit_and_are_on_by_default() {
+        for line in STILL_WORKING_LINES {
+            assert!(line.chars().count() <= 45, "{line}");
+        }
+        assert!(PeekConfig::default().still_working);
+        let old: PeekConfig = serde_json::from_value(json!({"track_change": true})).unwrap();
+        assert!(old.still_working, "settings saved before it default to on");
+        assert_eq!(break_checks(0), 0);
+        assert_eq!(break_checks(BREAK_CHECK_FIRST_MS), 1);
+        assert_eq!(
+            break_checks(BREAK_CHECK_FIRST_MS + BREAK_CHECK_STEP_MS - 1),
+            1
+        );
     }
 
     #[test]

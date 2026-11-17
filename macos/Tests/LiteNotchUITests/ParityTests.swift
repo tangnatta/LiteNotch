@@ -49,8 +49,14 @@ final class ParityTests: XCTestCase {
         try check("phase", Phase.self)
         try check("run_state", RunState.self)
         try check("tab", Tab.self)
+        try check("update_status", UpdateStatus.self)
         try check("peek_kind", PeekKind.self)
         try check("activity_kind", ActivityKind.self)
+    }
+
+    func testTheUpdateCommandIsTheCores() throws {
+        XCTAssertEqual(UpdateText.brewCommand, try json("schema")["brew_command"] as? String)
+        XCTAssertEqual(UpdateText.releasesPage, "https://github.com/tangnatta/LiteNotch/releases")
     }
 
     func testTheSoundsAreTheCoresSounds() throws {

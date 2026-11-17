@@ -143,6 +143,8 @@ struct SettingsTab: View {
     }
 
     @ViewBuilder private var general: some View {
+        updateBlock
+        Hairline().padding(.vertical, 2)
         toggle("Open on hover", $draft.general.hoverToExpand,
                caption: "Clicking the notch always opens it.")
         toggle("Show on every display", $draft.general.allScreens,
@@ -217,6 +219,38 @@ struct SettingsTab: View {
             TextPill(title: "Quit", tint: NT.text1, height: 22) { model.app?.onQuit() }
                 .help("Quit LiteNotch")
         }
+    }
+
+    /// This version, the button that asks whether there is a newer one, and
+    /// what to do when there is. Only the button (or the opt-in daily check)
+    /// contacts GitHub.
+    @ViewBuilder private var updateBlock: some View {
+        let u = vm.update
+        row("LiteNotch \(u.current)", caption: UpdateText.caption(u)) {
+            TextPill(title: u.status == .checking ? "Checking\u{2026}" : "Check for updates",
+                     tint: NT.text1, height: 22) { send(.updateCheck) }
+                .disabled(u.status == .checking)
+                .help("Asks GitHub for the newest release")
+        }
+        if u.status == .available, let latest = u.latest {
+            row("Version \(latest) is available") {
+                HStack(spacing: 6) {
+                    TextPill(title: "Copy update command", tint: .black, background: NT.allow, height: 22) {
+                        model.app?.copyText(UpdateText.brewCommand)
+                    }
+                    .help(UpdateText.brewCommand)
+                    if let page = UpdateText.releasePage(u.url) {
+                        TextPill(title: "Release page", tint: NT.text1, height: 22) { model.app?.openURL(page) }
+                    }
+                }
+            }
+            VText("Paste the command in Terminal if you installed with Homebrew. Otherwise download the new version from the release page.")
+                .nfont(.caption).foregroundStyle(NT.text2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        toggle("Check automatically", $draft.general.checkUpdates,
+               caption: "At start and once a day. This contacts GitHub; with it off nothing is sent until you press the button.")
+            .padding(.top, 6)
     }
 
     /// Solid or Liquid Glass for the open panel. Shown everywhere so the

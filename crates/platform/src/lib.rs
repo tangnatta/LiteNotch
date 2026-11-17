@@ -11,3 +11,4 @@ pub mod nowplaying;
 pub mod power;
 pub mod script;
 pub mod sound;
+pub mod update;

@@ -26,6 +26,7 @@ use crate::notify::{
     OpenTarget, Priority,
 };
 use crate::pomodoro::{Phase, Pomodoro, PomodoroConfig, PomodoroEvent, PomodoroStats, RunState};
+use crate::update::{Release, Update, UpdateView};
 use crate::usage::{local_day_start_ms, Usage, UsageRecord, UsageSnapshot};
 
 mod presentation;
@@ -61,6 +62,7 @@ const RESERVED_SOURCES: &[&str] = &[
     "caffeine",
     "color",
     "calendar",
+    "update",
 ];
 /// How the "starting now" notice of a calendar event begins; the banner
 /// with this body offers to pause a running focus session.
@@ -80,6 +82,10 @@ pub struct General {
     pub usage_alerts: bool,
     /// Show the notch on every display instead of only the built-in one.
     pub all_screens: bool,
+    /// Look for a newer LiteNotch at start and once a day, which contacts
+    /// GitHub. Off by default: the "Check for updates" button is the way
+    /// to ask without it.
+    pub check_updates: bool,
 }
 
 impl Default for General {
@@ -89,6 +95,7 @@ impl Default for General {
             hover_to_expand: true,
             usage_alerts: true,
             all_screens: false,
+            check_updates: false,
         }
     }
 }
@@ -469,6 +476,8 @@ pub enum Command {
     AgentSeen {
         session_id: String,
     },
+    /// The user asked whether a newer LiteNotch exists.
+    UpdateCheck,
     /// The user answered the questions of a pending `AskUserQuestion`.
     AgentAnswer {
         request_id: String,
@@ -551,6 +560,8 @@ pub enum Input {
     StatuslineInstalled(Option<bool>),
     /// A notification from the runtime itself (not from the socket).
     OwnNotify(NotificationInput),
+    /// The newest release GitHub named (or why it could not be asked).
+    UpdateChecked(Result<Release, String>),
     /// Seconds since the keyboard or mouse was last used, read because
     /// `Core::wants_idle` asked.
     InputIdle {
@@ -565,6 +576,8 @@ pub enum Effect {
     SetAssertion(AwakeMode),
     EnableLid,
     DisableLid,
+    /// Ask GitHub for the newest release; answer with `Input::UpdateChecked`.
+    CheckUpdate,
     WriteClipboard(String),
     /// Turn the displays off (the lid was just closed in closed-lid mode).
     SleepDisplay,
@@ -733,6 +746,7 @@ pub struct ViewModel {
     /// Colours picked from the screen, newest first.
     pub colors: Vec<String>,
     pub analytics: Vec<FeatureCount>,
+    pub update: UpdateView,
     pub settings: Settings,
 }
 
@@ -790,6 +804,7 @@ pub struct Core {
     /// The next local midnight while day progress is on, when today's
     /// office hours change.
     day_wake: Option<u64>,
+    update: Update,
     /// A still-working check is due: the runtime reads the idle time.
     idle_wanted: bool,
     /// Still-working reminders given in the current break.
@@ -892,6 +907,7 @@ impl Core {
             move_last: None,
             quote_due: None,
             day_wake: None,
+            update: Update::default(),
             idle_wanted: false,
             break_nags: 0,
         }
@@ -952,6 +968,8 @@ impl Core {
             self.calendar.next_deadline(),
             self.peek_deadline(),
             self.day_wake,
+            self.update
+                .next_deadline(self.settings.general.check_updates),
         ]
         .into_iter()
         .flatten()
@@ -1030,6 +1048,7 @@ impl Core {
             }
             Input::StatuslineInstalled(state) => self.statusline_installed = state,
             Input::OwnNotify(input) => self.post(input, now),
+            Input::UpdateChecked(answer) => self.update_checked(answer, now),
             Input::InputIdle { secs } => self.input_idle(secs, now),
             Input::Tick => {}
         }
@@ -1298,6 +1317,11 @@ impl Core {
                     fx.push(Effect::Resolve(resolved));
                 }
             }
+            Command::UpdateCheck => {
+                if self.update.start(false) {
+                    fx.push(Effect::CheckUpdate);
+                }
+            }
             Command::AgentSeen { session_id } => {
                 if self.agents.sessions().iter().any(|s| s.id == session_id) {
                     self.notify
@@ -1435,6 +1459,32 @@ impl Core {
         let events = self.notify.tick(now);
         self.notify_events(events, now);
         self.settle_peeks(now);
+        if self
+            .update
+            .auto_due(self.settings.general.check_updates, now)
+            && self.update.start(true)
+        {
+            fx.push(Effect::CheckUpdate);
+        }
+    }
+
+    /// The answer to a check. A newer version the daily check finds for the
+    /// first time is announced once.
+    fn update_checked(&mut self, answer: Result<Release, String>, now: u64) {
+        let on = self.settings.general.check_updates;
+        if let Some(release) = self.update.finish(answer, on, now) {
+            self.post(
+                NotificationInput {
+                    source: "update".into(),
+                    title: format!("LiteNotch {} is available", release.version),
+                    body: "Settings › General has how to update.".into(),
+                    priority: Priority::Normal,
+                    group: Some("update".into()),
+                    ttl_secs: None,
+                },
+                now,
+            );
+        }
     }
 
     /// A reminder or a start. High priority: a meeting is worth breaking
@@ -1720,6 +1770,7 @@ impl Core {
             "caffeine" => tab("settings", Some("keep_awake")),
             "color" => tab("clipboard", None),
             "calendar" => tab("home", None),
+            "update" => tab("settings", Some("general")),
             _ => None,
         }
     }
@@ -1916,6 +1967,7 @@ impl Core {
             analytics: self
                 .analytics
                 .totals(today.saturating_sub(ANALYTICS_VIEW_DAYS - 1)),
+            update: self.update.view(),
             settings: self.settings.clone(),
         }
     }
@@ -4718,5 +4770,136 @@ mod tests {
         assert_eq!(c.view(T0).agents.statusline_installed, None);
         c.apply(Input::StatuslineInstalled(Some(true)), T0);
         assert_eq!(c.view(T0).agents.statusline_installed, Some(true));
+    }
+
+    fn newer() -> Release {
+        Release {
+            version: "999.0.0".into(),
+            url: format!("{}/tag/v999.0.0", crate::update::RELEASES_PAGE),
+        }
+    }
+
+    fn auto_updates(c: &mut Core, on: bool, now: u64) -> Vec<Effect> {
+        let mut s = c.settings().clone();
+        s.general.check_updates = on;
+        cmd(
+            c,
+            Command::SetSettings {
+                settings: Box::new(s),
+            },
+            now,
+        )
+    }
+
+    #[test]
+    fn the_button_asks_once_and_the_answer_shows_in_the_view() {
+        let mut c = core();
+        let v = c.view(T0).update;
+        assert_eq!(v.current, crate::update::VERSION);
+        assert_eq!(v.status, crate::update::UpdateStatus::Idle);
+        assert_eq!(
+            cmd(&mut c, Command::UpdateCheck, T0),
+            vec![Effect::CheckUpdate]
+        );
+        assert_eq!(
+            c.view(T0).update.status,
+            crate::update::UpdateStatus::Checking
+        );
+        assert_eq!(
+            cmd(&mut c, Command::UpdateCheck, T0 + 1),
+            vec![],
+            "one at a time"
+        );
+        c.apply(Input::UpdateChecked(Ok(newer())), T0 + 2);
+        let v = c.view(T0 + 2).update;
+        assert_eq!(v.status, crate::update::UpdateStatus::Available);
+        assert_eq!(v.latest.as_deref(), Some("999.0.0"));
+        assert!(
+            c.view(T0 + 2).inbox.banner.is_none(),
+            "the user is looking: no banner"
+        );
+        // Nothing is asked without the button or the setting.
+        assert_eq!(c.next_deadline(), None);
+    }
+
+    #[test]
+    fn the_command_has_the_name_the_shell_sends() {
+        let cmd: Command = serde_json::from_str(r#"{"cmd":"update_check"}"#).unwrap();
+        assert_eq!(cmd, Command::UpdateCheck);
+    }
+
+    #[test]
+    fn the_daily_check_is_opt_in_asks_at_once_and_announces_a_new_version_once() {
+        let mut c = core();
+        assert!(!c.settings().general.check_updates, "off by default");
+        c.apply(Input::Tick, T0);
+        assert_eq!(c.next_deadline(), None);
+
+        let mut c = core();
+        // Turning it on asks at once, and only once while it runs.
+        assert_eq!(auto_updates(&mut c, true, T0), vec![Effect::CheckUpdate]);
+        assert_eq!(
+            c.apply(Input::Tick, T0 + 2),
+            vec![],
+            "not again while it runs"
+        );
+        c.apply(Input::UpdateChecked(Ok(newer())), T0 + 3);
+        let banner = c.view(T0 + 3).inbox.banner.expect("announced");
+        assert_eq!(banner.title, "LiteNotch 999.0.0 is available");
+        assert_eq!(banner.source, "update");
+        assert_eq!(
+            banner.open,
+            Some(OpenTarget::Tab {
+                tab: "settings".into(),
+                pane: Some("general".into())
+            })
+        );
+        // Next in a day, and the same version is not announced again.
+        c.apply(Input::Tick, T0 + 5_003); // the banner has gone
+        assert_eq!(c.next_deadline(), Some(T0 + 3 + 24 * 3_600_000));
+        let at = T0 + 3 + 24 * 3_600_000;
+        assert_eq!(c.apply(Input::Tick, at), vec![Effect::CheckUpdate]);
+        c.apply(Input::UpdateChecked(Ok(newer())), at + 1);
+        assert_eq!(
+            c.view(at + 1).inbox.history.len(),
+            1,
+            "one notice for one version"
+        );
+        // Turning it off stops the schedule.
+        auto_updates(&mut c, false, at + 2);
+        assert_eq!(c.next_deadline(), None);
+    }
+
+    #[test]
+    fn a_failed_check_shows_failed_and_is_retried_within_the_hour_when_on() {
+        let mut c = core();
+        auto_updates(&mut c, true, T0);
+        c.apply(Input::Tick, T0 + 1);
+        c.apply(Input::UpdateChecked(Err("offline".into())), T0 + 2);
+        assert_eq!(
+            c.view(T0 + 2).update.status,
+            crate::update::UpdateStatus::Failed
+        );
+        assert_eq!(c.next_deadline(), Some(T0 + 2 + 3_600_000));
+    }
+
+    #[test]
+    fn the_update_source_belongs_to_the_core_so_a_script_cannot_use_it() {
+        let mut c = core();
+        c.apply(
+            Input::ExternalNotify(NotificationInput {
+                source: "update".into(),
+                title: "LiteNotch 9 is available".into(),
+                body: "Run this".into(),
+                priority: Priority::High,
+                group: None,
+                ttl_secs: None,
+            }),
+            T0,
+        );
+        assert_eq!(
+            c.view(T0).inbox.banner.expect("shown").source,
+            "update (script)"
+        );
     }
 }

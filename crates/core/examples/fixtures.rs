@@ -360,6 +360,24 @@ fn main() {
     std::fs::write(format!("{dir}/schema.json"), schema).expect("schema written");
     println!("{dir}/schema.json");
 
+    // The check for a newer version: asking, one found, and none.
+    let release = |version: &str| litenotch_core::update::Release {
+        version: version.into(),
+        url: format!("{}/tag/v{version}", litenotch_core::update::RELEASES_PAGE),
+    };
+    let mut c = populated();
+    c.apply(Input::Command(Command::UpdateCheck), T0);
+    views.push(("update-checking", c.view(T0 + 1)));
+    c.apply(Input::UpdateChecked(Ok(release("0.3.0-beta"))), T0 + 2);
+    views.push(("update-available", c.view(T0 + 3)));
+    let mut c = populated();
+    c.apply(Input::Command(Command::UpdateCheck), T0);
+    c.apply(
+        Input::UpdateChecked(Ok(release(litenotch_core::update::VERSION))),
+        T0 + 2,
+    );
+    views.push(("update-current", c.view(T0 + 3)));
+
     for (name, view) in views {
         let json = serde_json::to_string_pretty(&view).expect("view model serializes");
         let path = format!("{dir}/{name}.json");

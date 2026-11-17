@@ -24,7 +24,7 @@ the time and uses almost no battery.
 - [Install](#install)
 - [Using the notch](#using-the-notch): [Music](#music) · [Focus timer](#focus-timer) · [Meeting timer](#meeting-timer) · [Countdown](#countdown) · [Clipboard](#clipboard) · [Calendar](#calendar) · [Inbox](#inbox) · [Keep awake](#keep-awake)
 - [Claude Code](#claude-code): [Set up](#set-up) · [Permission requests](#permission-requests) · [Questions](#questions-from-claude) · [Sessions and usage](#sessions-and-usage) · [Claude Desktop](#claude-desktop) · [Scripts](#post-from-scripts)
-- [Make it yours](#make-it-yours): [Closed notch](#what-the-closed-notch-shows) · [Heads-ups](#heads-ups-and-reminders) · [Island](#island) · [Appearance](#appearance) · [Settings](#settings)
+- [Make it yours](#make-it-yours): [Closed notch](#what-the-closed-notch-shows) · [Heads-ups](#heads-ups-and-reminders) · [Island](#island) · [Appearance](#appearance) · [Settings](#settings) · [Updates](#updates)
 - [What macOS may ask for](#what-macos-may-ask-for) · [Privacy](#privacy) · [Known limits](#known-limits-of-this-beta) · [Build from source](#build-from-source) · [License](#license)
 
 ## Install
@@ -351,6 +351,18 @@ All under **Settings › General**. The defaults are the original look.
 
 The **gear** opens Settings: everything adjustable, by feature, one page each.
 
+### Updates
+
+<img src="docs/preview/update.gif" width="680" alt="Settings › General showing the version, Check for updates, then a newer version with Copy update command and Release page, then You have the latest version">
+
+**Settings › General** starts with the version you are running and a **Check
+for updates** button. If there is a newer one it says so and offers **Copy
+update command**, then paste it in Terminal if you installed with Homebrew
+(`brew update && brew upgrade --cask litenotch`), or **Release page** to
+download it. LiteNotch only tells you; it never updates itself. **Check
+automatically** looks at start and once a day and posts a notice when a new
+version appears; it is off unless you turn it on.
+
 ## What macOS may ask for
 
 LiteNotch works without any permission. Four optional features need one:
@@ -379,6 +391,12 @@ Everything stays on your Mac. Clipboard history is kept in memory unless you
 turn on **Keep on restart**. LiteNotch counts how often each feature is used
 (never what you copy, play or type) so you can see the counts in
 **Settings › Privacy**; nothing is sent anywhere.
+
+The one exception is the update check. When you press **Check for updates**
+in **Settings › General** (or turn on **Check automatically**, which is off
+until you do), LiteNotch asks GitHub for the newest release, an ordinary
+request to `api.github.com`. It sends no version, identifier or anything about
+you or your Mac, and it never downloads or installs anything by itself.
 
 Now playing uses a private macOS interface (the same approach other notch
 apps use). If a macOS update breaks it, the Music tab stays empty and

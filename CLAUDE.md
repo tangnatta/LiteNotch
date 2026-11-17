@@ -487,6 +487,17 @@ command after changing the core.
 - Tests must not write to the user's real pasteboard, `~/.claude`, or
   `~/Library/Application Support/LiteNotch`; use `store::temp_dir` and the
   `FakePorts` harness in `crates/app/src/runtime.rs`.
+- **The one outgoing request is the update check** (`core::update`,
+  `platform::update`): `Effect::CheckUpdate` runs `/usr/bin/curl` (HTTPS only,
+  10 s, size-limited, a generic user agent, no identifier or version sent) against
+  GitHub's releases API for this repository only, from the "Check for updates"
+  button or the opt-in `general.check_updates` daily check (off by default). What
+  comes back is only data: `update::checked` accepts a version and a release page
+  under `RELEASES_PAGE` with a plain character set, and the shell opens only such a
+  page and copies only its own fixed `brew update && brew upgrade --cask
+  litenotch` (same text as the core's `BREW_COMMAND`, checked by `ParityTests`).
+  Nothing is downloaded or run; the "update" notification source is reserved.
+  There is no in-app updater (a Developer ID and notarization come first).
 - Analytics record feature-use counters per day only (`analytics::Feature`
   enum; no free-form strings). Uploading is opt-in and not implemented.
 - Clipboard history is in memory unless `general.persist_clipboard` is on.

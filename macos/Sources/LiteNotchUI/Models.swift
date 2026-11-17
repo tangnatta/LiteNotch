@@ -122,6 +122,8 @@ public struct GeneralSettings: Codable, Equatable {
     public var usageAlerts: Bool
     /// One notch per display instead of only the built-in (or main) one.
     public var allScreens: Bool
+    /// Look for a newer version at start and once a day (contacts GitHub).
+    public var checkUpdates: Bool
 }
 
 extension GeneralSettings {
@@ -132,6 +134,7 @@ extension GeneralSettings {
         hoverToExpand = try c.decode(Bool.self, forKey: .hoverToExpand)
         usageAlerts = try c.decode(Bool.self, forKey: .usageAlerts)
         allScreens = (try? c.decodeIfPresent(Bool.self, forKey: .allScreens)) ?? false
+        checkUpdates = (try? c.decodeIfPresent(Bool.self, forKey: .checkUpdates)) ?? false
     }
 }
 
@@ -991,6 +994,30 @@ public struct FeatureCount: Codable, Equatable {
     public var count: Int
 }
 
+/// Where the check for a newer version stands (`update.status`).
+public enum UpdateStatus: String, LenientEnum, CaseIterable {
+    case idle, checking, available, failed, unknown
+    case upToDate = "up_to_date"
+    static var unknownCase: UpdateStatus { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
+/// This build's version and what the last check found (`update`).
+public struct UpdateView: Codable, Equatable {
+    public var current: String
+    public var status: UpdateStatus
+    /// The newest version, when `available`.
+    public var latest: String?
+    /// Its release page, when `available`.
+    public var url: String?
+    public var checkedMs: Int?
+    /// What to run to update a Homebrew install (fixed text from the core).
+    public var command: String
+
+    public static let none = UpdateView(current: "", status: .idle, latest: nil, url: nil,
+                                        checkedMs: nil, command: "")
+}
+
 public struct ViewModel: Codable, Equatable {
     public var compact: CompactView
     /// A second running activity shown beside `compact`.
@@ -1013,6 +1040,8 @@ public struct ViewModel: Codable, Equatable {
     /// Colours picked from the screen, newest first.
     public var colors: [String]
     public var analytics: [FeatureCount]
+    /// This build's version and the state of the check for a newer one.
+    public var update: UpdateView = .none
     public var settings: Settings
 }
 
@@ -1037,6 +1066,7 @@ extension ViewModel {
         day = try? c.decodeIfPresent(DayView.self, forKey: .day)
         colors = (try? c.decodeIfPresent([String].self, forKey: .colors)) ?? []
         analytics = try c.decode([FeatureCount].self, forKey: .analytics)
+        update = (try? c.decodeIfPresent(UpdateView.self, forKey: .update)) ?? .none
         settings = try c.decode(Settings.self, forKey: .settings)
     }
 }

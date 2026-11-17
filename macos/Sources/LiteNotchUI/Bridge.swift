@@ -73,6 +73,8 @@ public enum ShellCommand: Equatable {
     case agentAnswer(requestId: String, answers: [[String]])
     /// The user went to this session: it no longer needs the waiting dot.
     case agentSeen(sessionId: String)
+    /// Ask whether a newer version exists.
+    case updateCheck
     case caffeineToggle
     case caffeineActivate(mode: AwakeMode, durationSecs: Int?)
     case caffeineLid(on: Bool)
@@ -135,6 +137,7 @@ public enum ShellCommand: Equatable {
             return c("notify_system", ["app": app, "title": title, "body": body])
         case .calendarEvents(let events): return c("calendar_events", ["events": events.map(\.object)])
         case .agentSeen(let id): return c("agent_seen", ["session_id": id])
+        case .updateCheck: return c("update_check")
         case .agentDecide(let id, let d): return c("agent_decide", ["request_id": id, "decision": d.rawValue])
         case .agentAnswer(let id, let answers): return c("agent_answer", ["request_id": id, "answers": answers])
         case .caffeineToggle: return c("caffeine_toggle")
@@ -237,6 +240,13 @@ public final class AppModel: ObservableObject {
 
     /// What "Quit" does. Defaults to `NSApplication.terminate`.
     public var onQuit: () -> Void = { NSApplication.shared.terminate(nil) }
+    /// Opens a web page (a release page). Tests replace it.
+    public var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    /// Puts text on the pasteboard (the update command). Tests replace it.
+    public var copyText: (String) -> Void = {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString($0, forType: .string)
+    }
     /// Brings another app forward. Tests replace it.
     public var activateApp: (OpenTarget) -> Void = AppModel.activate
     /// "Reset and ask again": clears a stale Accessibility entry and asks

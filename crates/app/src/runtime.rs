@@ -14,6 +14,7 @@ use litenotch_core::ipc::{Request, Response};
 use litenotch_core::media::parse_helper_line;
 use litenotch_core::notify::{NotificationInput, Priority};
 use litenotch_core::state::{Command, Core, Effect, Input};
+use litenotch_core::update::Release;
 use litenotch_core::usage::{statusline_text, UsageRecord};
 use serde::Deserialize;
 
@@ -81,6 +82,7 @@ enum Msg {
     Shell(ShellCommand),
     Server(ServerEvent),
     LidResult(bool),
+    UpdateResult(Result<Release, String>),
     Transcripts {
         reset: bool,
         records: Vec<UsageRecord>,
@@ -398,6 +400,7 @@ impl Loop {
                 }
             }
             Msg::LidResult(ok) => self.apply(Input::LidResult { ok }, now),
+            Msg::UpdateResult(answer) => self.apply(Input::UpdateChecked(answer), now),
             Msg::Transcripts { reset, records } => {
                 if reset {
                     self.apply(Input::UsageResetToday, now);
@@ -648,6 +651,12 @@ impl Loop {
                     }));
                 }
                 Effect::DisableLid => self.ports.disable_lid(),
+                Effect::CheckUpdate => {
+                    let tx = self.tx.clone();
+                    self.ports.check_update(Box::new(move |answer| {
+                        let _ = tx.send(Msg::UpdateResult(answer));
+                    }));
+                }
                 Effect::WriteClipboard(text) => self.ports.write_clipboard(&text),
                 Effect::WriteClipboardImage(path) => self.ports.write_clipboard_image(&path),
                 Effect::WriteClipboardRich { text, path } => {
@@ -719,6 +728,9 @@ pub(crate) mod testing {
         /// `Some(ok)` answers lid requests immediately; `None` leaves them open.
         pub lid_answer: Option<bool>,
         pub lid_done: Option<Box<dyn FnOnce(bool) + Send>>,
+        /// What a check for updates answers; `None` leaves it open.
+        pub update_answer: Option<Result<Release, String>>,
+        pub update_done: Option<crate::ports::UpdateDone>,
         /// Call this to play the part of the now-playing helper.
         pub now_playing: Option<Box<dyn Fn(String) + Send>>,
         pub now_playing_switches: Vec<bool>,
@@ -801,6 +813,17 @@ pub(crate) mod testing {
         }
         fn sleep_display(&mut self) {
             self.0.lock().unwrap().calls.push("display:sleep".into());
+        }
+        fn check_update(&mut self, done: crate::ports::UpdateDone) {
+            let mut os = self.0.lock().unwrap();
+            os.calls.push("update:check".into());
+            match os.update_answer.clone() {
+                Some(answer) => {
+                    drop(os);
+                    done(answer);
+                }
+                None => os.update_done = Some(done),
+            }
         }
         fn play_sound(&mut self, name: &str) {
             self.0.lock().unwrap().calls.push(format!("sound:{name}"));
@@ -1446,6 +1469,41 @@ mod tests {
             assert!(std::time::Instant::now() < deadline, "{:?}", h.calls());
             std::thread::sleep(Duration::from_millis(20));
         }
+    }
+
+    #[test]
+    fn checking_for_updates_goes_through_the_platform_and_the_answer_reaches_the_view() {
+        let os = FakeOs {
+            update_answer: Some(Ok(Release {
+                version: "999.0.0".into(),
+                url: format!("{}/tag/v999.0.0", litenotch_core::update::RELEASES_PAGE),
+            })),
+            ..FakeOs::default()
+        };
+        let h = Harness::start_in(crate::store::temp_dir("rt-update"), os);
+        assert!(
+            !h.calls().iter().any(|c| c == "update:check"),
+            "nothing is asked by itself"
+        );
+        h.send(r#"{"cmd":"update_check"}"#);
+        let v = h
+            .views
+            .wait("update found", |v| v["update"]["status"] == "available");
+        assert_eq!(v["update"]["latest"], "999.0.0");
+        assert_eq!(v["update"]["command"], litenotch_core::update::BREW_COMMAND);
+        assert_eq!(h.calls().iter().filter(|c| *c == "update:check").count(), 1);
+    }
+
+    #[test]
+    fn a_failed_update_check_is_shown_not_hidden() {
+        let os = FakeOs {
+            update_answer: Some(Err("GitHub could not be reached".into())),
+            ..FakeOs::default()
+        };
+        let h = Harness::start_in(crate::store::temp_dir("rt-update-fail"), os);
+        h.send(r#"{"cmd":"update_check"}"#);
+        h.views
+            .wait("failed", |v| v["update"]["status"] == "failed");
     }
 
     #[test]

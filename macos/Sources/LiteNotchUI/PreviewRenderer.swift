@@ -73,6 +73,8 @@ public enum PreviewRenderer {
     static func scenes(_ load: (String) throws -> ViewModel) throws -> [Scene] {
         let idle = try load("idle"), media = try load("media"), pomodoro = try load("pomodoro")
         let pair = try load("pair"), calendar = try load("calendar"), approval = try load("approval")
+        let checking = try load("update-checking"), available = try load("update-available")
+        let upToDate = try load("update-current")
         let banner = try load("banner"), caffeine = try load("caffeine")
         let track = try load("peek-track"), warning = try load("peek-warning")
         let eye = try load("peek-eye-break"), move = try load("peek-move"), quote = try load("peek-quote")
@@ -189,6 +191,12 @@ public enum PreviewRenderer {
                 Shot(vm: asking([single, multi, open]), secs: 3,
                      draft: draft([single, multi, open]) {
                          $0.toggle("SQLite", in: 0); $0.next(); $0.toggle("Clippy", in: 1); $0.next(); $0.type("greet", in: 2) }),
+            ]),
+            Scene(name: "update", shots: [
+                Shot(vm: media, secs: 2, tab: .settings, section: .general),
+                Shot(vm: checking, secs: 2, tab: .settings, section: .general),
+                Shot(vm: available, secs: 4, tab: .settings, section: .general),
+                Shot(vm: upToDate, secs: 3, tab: .settings, section: .general),
             ]),
             Scene(name: "settings", shots: SettingsSection.allCases.map {
                 Shot(vm: media, secs: 2, tab: .settings, section: $0)

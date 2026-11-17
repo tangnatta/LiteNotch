@@ -1,4 +1,5 @@
 {
+  "brew_command": "brew update && brew upgrade --cask litenotch",
   "enums": {
     "activity_kind": [
       "idle",
@@ -96,6 +97,13 @@
       "system",
       "dark",
       "light"
+    ],
+    "update_status": [
+      "idle",
+      "checking",
+      "up_to_date",
+      "available",
+      "failed"
     ]
   },
   "limits": {

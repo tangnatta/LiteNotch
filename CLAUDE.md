@@ -85,7 +85,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   terminal that is already in front is not noticed.
   The shell draws one activity exactly as before (icon left, value right);
   two as icon + time on each side, the second dimmed
-  (`ClosedActivityView`, widths in `NotchGeometry.wingWidth(for:floating:)`).
+  (`ClosedActivityView`, widths in `NotchGeometry.wingWidth(for:island:)`).
   On a display without a notch there is no camera to keep clear, so in
   both styles the same content is one row with no gap in the middle
   (`NotchLayout.oneRow`, `NotchGeometry.rowWidth`): one activity is its
@@ -176,10 +176,10 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   closed 5 min, else on the last tab (`PanelState.landing`).
   Two notch styles (`appearance.notch_style`, Settings → General): Attached
   (default, the original geometry; keep it pixel-identical for existing
-  users on a display with a notch; without one it uses the one row above) and Floating, a capsule inset 3 pt inside the menu bar or notch
+  users on a display with a notch; without one it uses the one row above) and Island (called Floating before; saved settings with `floating` still load, `serde(alias)`), a capsule inset 3 pt inside the menu bar or notch
   band, with the toast overlapping it by 8 pt and the panel 6 pt below
-  (`floatingPanelDrop`; at 0 it looked hung from the bar).
-  Floating sizes derive from the measured menu bar height; all geometry
+  (`islandPanelDrop`; at 0 it looked hung from the bar).
+  Island sizes derive from the measured menu bar height; all geometry
   lives in `NotchLayout` (`Geometry.swift`).
   The accent (`appearance.accent`) is `#RRGGBB`, `system` (macOS's accent,
   re-read on `NSColor.systemColorsDidChangeNotification`) or `mono` (the
@@ -204,7 +204,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   notch already is just the notch and a strip thinner than the camera
   housing could not be found with the pointer. Peeks, banners and
   approvals still show.
-  Four layouts exist (camera housing or not, Attached or Floating) and
+  Four layouts exist (camera housing or not, Attached or Island) and
   the user can choose either style on either machine. In each, what the
   closed notch draws must fit the shape `NotchLayout.size(for:content:)`
   gives it; `ClosedSpaceTests` measures the drawn content for every
@@ -231,6 +231,24 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   status line JSON (`litenotch statusline`, the only documented source of
   `rate_limits`); today's token totals are read from the session transcripts,
   whose format is internal to Claude Code and may change.
+- **Questions** (`AskUserQuestion`): the `PermissionRequest` for that tool
+  carries `questions` (`agent::Question`: header, text, `multi_select`,
+  options), parsed and sanitized by `parse_questions`; anything that would be
+  cut short (over 4 questions, 8 options, or the length caps) gives none and
+  the prompt falls back to the plain detail view. The shell answers with
+  `agent_answer` (one list of labels or typed text per question); the core
+  checks the shape and lengths (`Agents::answer`, no answer = request stays
+  pending) and the CLI prints `allow` with `updatedInput` = the original input
+  plus `answers` keyed by question text (`Response::Answer`; multi-select
+  joins labels with ", "). The raw input stays in the core (`#[serde(skip)]`).
+  Verified against a live Claude Code (Nov 2026): it accepts `updatedInput.answers`
+  from the hook, for single, multiple and several questions, including typed
+  answers of the user's own (single choice takes one; multiple choice up to
+  `MAX_ANSWERS` = 16 in all). Its own question tool always has 2+ options, so the
+  no-option (open) layout is only exercised with a hand-made hook payload.
+  The shell form is `QuestionView.swift` (`QuestionDraft` holds the rules:
+  single choice sends on click, several questions are a stepper, an open
+  question is a typing box).
 - **One copy's hooks only.** Each copy of the app registers its own CLI
   path, so test builds and moved installs used to pile up in
   `~/.claude/settings.json`: five hook processes per Claude Code event,
@@ -460,7 +478,7 @@ the physical memory footprint:
 | timer | countdown running (digits redraw each second) | ≤ 1.0 % | ≤ 30 MB |
 | music | a stand-in track playing (`scripts/bench/nowplaying-fake.c`) | ≤ 1.0 % | ≤ 30 MB |
 | panel | the panel open on Home | ≤ 1.5 % | ≤ 40 MB |
-| floating | the Floating style with a countdown running | ≤ 1.0 % | ≤ 30 MB |
+| island | the Island style with a countdown running | ≤ 1.0 % | ≤ 30 MB |
 | glass | the panel open on Home, drawn with Liquid Glass | ≤ 1.5 % | ≤ 40 MB |
 | calendar | an event about to start (the closed notch counts down to it) | ≤ 1.0 % | ≤ 30 MB |
 | pair | two countdowns side by side in the closed notch | ≤ 1.0 % | ≤ 30 MB |
@@ -474,7 +492,7 @@ mostly shared framework pages, so the budget is on physical footprint.
 Single runs occasionally show a short burst (an outside event such as a
 copy landing in the window); a real regression repeats. Measured Nov 2026
 on an M-series MacBook: idle 0.05–0.30 % and 15–16 MB, timer 0.15–0.35 %,
-music 0.45 %, panel 0.70 % and 22 MB, floating 0.35 %, glass 0.25 % and
+music 0.45 %, panel 0.70 % and 22 MB, island 0.35 %, glass 0.25 % and
 28 MB, calendar 0.20–0.25 % and 16 MB, bundle 6.5 MB (EventKit added 0.2). (One run right after a build showed idle at 2.9 % and
 timer at 5.5 %; two repeats of each did not.) Glass is measured over a
 still desktop only, not over moving content.
@@ -537,7 +555,7 @@ the plain animation.
   to control Terminal" question (which, like Accessibility, an ad-hoc signed
   build has to be asked again after an update), and the iTerm2 script
   (written from its scripting dictionary, never run).
-- The Floating notch style has been seen on a Mac without a notch only, not
+- The Island notch style has been seen on a Mac without a notch only, not
   on one with a notch.
 
 - Unverified against a live Claude Code session: whether the terminal's own

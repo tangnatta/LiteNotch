@@ -61,17 +61,17 @@ final class NotchPriorityTests: XCTestCase {
     // MARK: Geometry
 
     func testOneActivityKeepsItsWidthAndTheDotAddsALittle() {
-        for floating in [false, true] {
+        for island in [false, true] {
             for kind in [ActivityKind.pomodoro, .timer, .media, .caffeine, .meeting, .agent, .calendar] {
                 let c = compact(kind)
-                let before = floating ? NotchGeometry.floatingWingWidth(for: c) : NotchGeometry.wingWidth(for: c)
-                XCTAssertEqual(NotchGeometry.wingWidth(for: ClosedContent(primary: c), floating: floating), before,
+                let before = island ? NotchGeometry.islandWingWidth(for: c) : NotchGeometry.wingWidth(for: c)
+                XCTAssertEqual(NotchGeometry.wingWidth(for: ClosedContent(primary: c), island: island), before,
                                "\(kind) alone looks as it always did")
-                XCTAssertEqual(NotchGeometry.wingWidth(for: ClosedContent(primary: c, waiting: true), floating: floating),
+                XCTAssertEqual(NotchGeometry.wingWidth(for: ClosedContent(primary: c, waiting: true), island: island),
                                before + NotchGeometry.waitingDotSpace)
             }
-            XCTAssertEqual(NotchGeometry.wingWidth(for: ClosedContent(primary: nil), floating: floating), 0)
-            XCTAssertGreaterThan(NotchGeometry.wingWidth(for: ClosedContent(primary: nil, waiting: true), floating: floating),
+            XCTAssertEqual(NotchGeometry.wingWidth(for: ClosedContent(primary: nil), island: island), 0)
+            XCTAssertGreaterThan(NotchGeometry.wingWidth(for: ClosedContent(primary: nil, waiting: true), island: island),
                                  NotchGeometry.waitingDot, "room for the dot beside a bare notch")
         }
     }
@@ -80,25 +80,25 @@ final class NotchPriorityTests: XCTestCase {
     /// against the camera housing. The wing leaves clear space on the
     /// housing's side of the dot, at least as much as its outer padding.
     func testTheLoneDotSitsClearOfTheCameraHousing() {
-        let wing = NotchGeometry.wingWidth(for: ClosedContent(primary: nil, waiting: true), floating: false)
+        let wing = NotchGeometry.wingWidth(for: ClosedContent(primary: nil, waiting: true), island: false)
         let outerPadding: CGFloat = 12
         let clear = wing - outerPadding - NotchGeometry.waitingDot
         XCTAssertGreaterThanOrEqual(clear, 14, "space between the housing and the dot")
         XCTAssertGreaterThanOrEqual(clear, outerPadding)
         // With an activity the dot is at the far end of a full wing already.
         XCTAssertGreaterThan(NotchGeometry.wingWidth(for: ClosedContent(primary: compact(.pomodoro), waiting: true),
-                                                     floating: false), wing)
+                                                     island: false), wing)
     }
 
     func testTwoActivitiesFitIconAndTimeOnEachSideWithinABound() {
         let kinds: [ActivityKind] = [.meeting, .calendar, .timer, .pomodoro, .media, .caffeine, .agent]
-        for floating in [false, true] {
+        for island in [false, true] {
             for a in kinds {
                 for b in kinds where a != b {
                     let pair = ClosedContent(primary: compact(a, count: 3), secondary: compact(b, count: 3), waiting: true)
-                    let w = NotchGeometry.wingWidth(for: pair, floating: floating)
+                    let w = NotchGeometry.wingWidth(for: pair, island: island)
                     XCTAssertGreaterThanOrEqual(w, 30, "\(a)+\(b)")
-                    XCTAssertLessThanOrEqual(w, floating ? 90 : 104, "\(a)+\(b)")
+                    XCTAssertLessThanOrEqual(w, island ? 90 : 104, "\(a)+\(b)")
                     // Both wings are the same width, so the notch stays centred;
                     // each must hold its own side.
                     let need = 16 + (NotchGeometry.pairValueWidth(compact(a, count: 3)) > 0
@@ -115,19 +115,19 @@ final class NotchPriorityTests: XCTestCase {
 
     func testTheShapeIsSizedForWhatItShows() {
         let attached = NotchLayout(style: .attached, notch: CGSize(width: 185, height: 32))
-        let floating = NotchLayout(style: .floating, notch: NotchGeometry.fallbackSize, hasNotch: false, menuBarHeight: 24)
+        let island = NotchLayout(style: .island, notch: NotchGeometry.fallbackSize, hasNotch: false, menuBarHeight: 24)
         let one = ClosedContent(primary: compact(.pomodoro))
         let two = ClosedContent(primary: compact(.calendar), secondary: compact(.pomodoro))
         XCTAssertEqual(attached.size(for: .closed, content: one), attached.size(for: .closed, compact: compact(.pomodoro)))
-        // Without a notch (this floating layout) the closed notch is one row.
-        XCTAssertEqual(floating.size(for: .closed, content: one).width,
-                       max(floating.centerWidth, NotchGeometry.rowWidth(for: one, floating: true)))
+        // Without a notch (this island layout) the closed notch is one row.
+        XCTAssertEqual(island.size(for: .closed, content: one).width,
+                       max(island.centerWidth, NotchGeometry.rowWidth(for: one, island: true)))
         XCTAssertGreaterThan(attached.size(for: .closed, content: two).width, attached.size(for: .closed, content: one).width)
         XCTAssertEqual(attached.size(for: .closed, content: two).height, 32)
-        XCTAssertEqual(floating.size(for: .closed, content: two).height, 21)
+        XCTAssertEqual(island.size(for: .closed, content: two).height, 21)
         // Open and as a toast the size does not depend on the activities.
         XCTAssertEqual(attached.size(for: .expanded, content: two), attached.size(for: .expanded, compact: nil))
-        XCTAssertEqual(floating.size(for: .toast, content: two), floating.size(for: .toast, compact: nil))
+        XCTAssertEqual(island.size(for: .toast, content: two), island.size(for: .toast, compact: nil))
     }
 
     func testAnIdleFirstActivityShowsNothingAndDropsTheSecond() {

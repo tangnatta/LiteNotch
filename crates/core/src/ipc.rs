@@ -45,6 +45,11 @@ pub enum Response {
     Decision {
         decision: Decision,
     },
+    /// Allow the call, with this input in place of the original (an answered
+    /// question).
+    Answer {
+        updated_input: Value,
+    },
     /// Usage text for the status line, e.g. `5h 42% · 7d 18%`.
     Statusline {
         text: String,

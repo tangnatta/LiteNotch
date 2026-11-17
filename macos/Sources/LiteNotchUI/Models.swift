@@ -198,10 +198,10 @@ public enum ThemeChoice: String, LenientEnum {
 }
 
 /// How the notch is drawn: hanging from the top edge in the notch's own
-/// silhouette (the original look), or as a capsule floating inside the
+/// silhouette (the original look), or as an island: a capsule inside the
 /// menu bar with the toast and the open panel just below it.
 public enum NotchStyle: String, LenientEnum {
-    case attached, floating, unknown
+    case attached, island, unknown
     static var unknownCase: NotchStyle { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
@@ -723,6 +723,23 @@ public struct AgentSession: Codable, Equatable, Identifiable {
     }
 }
 
+public struct QuestionOption: Codable, Equatable {
+    public var label: String
+    public var description: String
+    public init(label: String, description: String = "") { self.label = label; self.description = description }
+}
+
+/// One question of Claude Code's `AskUserQuestion`, as the core cleaned it.
+public struct AgentQuestion: Codable, Equatable {
+    public var header: String
+    public var question: String
+    public var multiSelect: Bool
+    public var options: [QuestionOption]
+    public init(header: String, question: String, multiSelect: Bool = false, options: [QuestionOption]) {
+        self.header = header; self.question = question; self.multiSelect = multiSelect; self.options = options
+    }
+}
+
 public struct PermissionRequest: Codable, Equatable, Identifiable {
     public var id: String
     public var sessionId: String
@@ -733,10 +750,13 @@ public struct PermissionRequest: Codable, Equatable, Identifiable {
     public var truncated: Bool
     public var createdMs: Int
     public var expiresMs: Int
+    /// Not empty for a question: the prompt shows choices instead of Allow / Deny.
+    public var questions: [AgentQuestion]
 
     public init(id: String, sessionId: String, project: String, toolName: String,
                 summary: String, detail: String, truncated: Bool = false,
-                createdMs: Int, expiresMs: Int) {
+                createdMs: Int, expiresMs: Int, questions: [AgentQuestion] = []) {
+        self.questions = questions
         self.id = id; self.sessionId = sessionId; self.project = project
         self.toolName = toolName; self.summary = summary; self.detail = detail
         self.truncated = truncated; self.createdMs = createdMs; self.expiresMs = expiresMs
@@ -754,6 +774,7 @@ public struct PermissionRequest: Codable, Equatable, Identifiable {
         truncated = try c.decodeIfPresent(Bool.self, forKey: .truncated) ?? false
         createdMs = try c.decode(Int.self, forKey: .createdMs)
         expiresMs = try c.decode(Int.self, forKey: .expiresMs)
+        questions = try c.decodeIfPresent([AgentQuestion].self, forKey: .questions) ?? []
     }
 }
 

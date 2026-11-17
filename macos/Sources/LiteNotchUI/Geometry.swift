@@ -125,7 +125,7 @@ public enum NotchGeometry {
 
     /// The window frame: large enough for the biggest state, centred on the
     /// notch and flush with the top of the screen. The extra `notch.height`
-    /// leaves room for the floating panel, which starts below the menu bar.
+    /// leaves room for the island panel, which starts below the menu bar.
     public static func panelFrame(screenFrame: CGRect, notch: CGRect) -> CGRect {
         let w = expandedSize.width + 2 * panelMargin
         let h = notch.height + expandedSize.height + panelMargin
@@ -140,28 +140,28 @@ public enum NotchGeometry {
     }
 }
 
-// MARK: - Floating style
+// MARK: - Island style
 
 extension NotchGeometry {
-    /// Space between the floating capsule and the top and bottom of the menu
+    /// Space between the island capsule and the top and bottom of the menu
     /// bar (or of the notch), so the capsule is `bar − 2 × margin` tall.
-    public static let floatingMargin: CGFloat = 3
+    public static let islandMargin: CGFloat = 3
     /// Width between the wings on a screen without a notch: nothing to step
     /// around, so only a little room between the two sides.
-    public static let floatingCenterWidth: CGFloat = 50
-    /// The floating toast overlaps the bottom of the menu bar by this much.
-    public static let floatingToastLift: CGFloat = 8
-    /// Gap between the bottom of the menu bar and the floating panel, so
-    /// the panel reads as floating rather than hanging from the bar.
-    public static let floatingPanelDrop: CGFloat = 6
-    /// Space between a floating wing's content and the capsule's round end.
-    public static let floatingWingPadding: CGFloat = 7
-    /// Height of the floating panel's tab bar (it no longer shares a row
+    public static let islandCenterWidth: CGFloat = 50
+    /// The island toast overlaps the bottom of the menu bar by this much.
+    public static let islandToastLift: CGFloat = 8
+    /// Gap between the bottom of the menu bar and the island panel, so
+    /// the panel reads as island rather than hanging from the bar.
+    public static let islandPanelDrop: CGFloat = 6
+    /// Space between an island wing's content and the capsule's round end.
+    public static let islandWingPadding: CGFloat = 7
+    /// Height of the island panel's tab bar (it no longer shares a row
     /// with the notch).
-    public static let floatingHeaderHeight: CGFloat = 32
+    public static let islandHeaderHeight: CGFloat = 32
 
-    /// Width of one floating wing: narrower than the attached ones.
-    public static func floatingWingWidth(for compact: CompactView) -> CGFloat {
+    /// Width of one island wing: narrower than the attached ones.
+    public static func islandWingWidth(for compact: CompactView) -> CGFloat {
         let icon: CGFloat = 30
         let value: CGFloat
         switch compact.peek {
@@ -245,19 +245,19 @@ extension NotchGeometry {
 
     /// Width of one wing for what the closed notch shows. With one activity
     /// this is the width it always had; the dot adds a little.
-    public static func wingWidth(for content: ClosedContent, floating: Bool) -> CGFloat {
+    public static func wingWidth(for content: ClosedContent, island: Bool) -> CGFloat {
         let dot = content.waiting ? waitingDotSpace : 0
-        guard let first = content.primary else { return content.waiting ? (floating ? 16 : loneDotWing) : 0 }
+        guard let first = content.primary else { return content.waiting ? (island ? 16 : loneDotWing) : 0 }
         guard let second = content.secondary else {
-            return (floating ? floatingWingWidth(for: first) : wingWidth(for: first)) + dot
+            return (island ? islandWingWidth(for: first) : wingWidth(for: first)) + dot
         }
-        let pad: CGFloat = floating ? floatingWingPadding : 12
-        let icon: CGFloat = floating ? 16 : 18
+        let pad: CGFloat = island ? islandWingPadding : 12
+        let icon: CGFloat = island ? 16 : 18
         func slot(_ c: CompactView) -> CGFloat {
             let value = pairValueWidth(c)
             return pad + icon + (value > 0 ? pairGap + value : 0) + 4
         }
-        return min(max(slot(first), slot(second) + dot), floating ? 90 : 104)
+        return min(max(slot(first), slot(second) + dot), island ? 90 : 104)
     }
 
     // MARK: One row, on a screen without a notch
@@ -298,13 +298,13 @@ extension NotchGeometry {
     /// notch shows as one row (padding at both ends included). One activity
     /// is its icon, then its value through the middle; two sit side by side,
     /// each as icon and time, as they would around a notch. 0 when empty.
-    public static func rowWidth(for content: ClosedContent, floating: Bool) -> CGFloat {
+    public static func rowWidth(for content: ClosedContent, island: Bool) -> CGFloat {
         guard let first = content.primary else { return 0 }
-        let edge: CGFloat = floating ? floatingWingPadding : 12
+        let edge: CGFloat = island ? islandWingPadding : 12
         let dot = content.waiting ? waitingDotSpace : 0
         let inner: CGFloat
         if let second = content.secondary {
-            let icon: CGFloat = floating ? 16 : 18
+            let icon: CGFloat = island ? 16 : 18
             func slot(_ c: CompactView) -> CGFloat {
                 let value = pairValueWidth(c)
                 return icon + (value > 0 ? pairGap + value : 0)
@@ -359,9 +359,9 @@ public struct NotchLayout: Equatable {
         }
     }
 
-    public var floating: Bool { style == .floating }
+    public var island: Bool { style == .island }
 
-    /// The band the floating capsule sits in: the notch, which on those
+    /// The band the island capsule sits in: the notch, which on those
     /// Macs is as tall as the menu bar, or the menu bar itself.
     public var bar: CGFloat {
         if hasNotch { return notch.height }
@@ -370,18 +370,18 @@ public struct NotchLayout: Equatable {
 
     /// Room between the wings.
     public var centerWidth: CGFloat {
-        floating && !hasNotch ? NotchGeometry.floatingCenterWidth : notch.width
+        island && !hasNotch ? NotchGeometry.islandCenterWidth : notch.width
     }
 
-    /// Height of the closed floating capsule.
-    public var capsuleHeight: CGFloat { max(0, bar - 2 * NotchGeometry.floatingMargin) }
+    /// Height of the closed island capsule.
+    public var capsuleHeight: CGFloat { max(0, bar - 2 * NotchGeometry.islandMargin) }
 
     public func wingWidth(for compact: CompactView) -> CGFloat {
-        floating ? NotchGeometry.floatingWingWidth(for: compact) : NotchGeometry.wingWidth(for: compact)
+        island ? NotchGeometry.islandWingWidth(for: compact) : NotchGeometry.wingWidth(for: compact)
     }
 
     public func wingWidth(for content: ClosedContent) -> CGFloat {
-        NotchGeometry.wingWidth(for: content, floating: floating)
+        NotchGeometry.wingWidth(for: content, island: island)
     }
 
     /// Size of the area the shape takes for what the closed notch shows
@@ -391,21 +391,21 @@ public struct NotchLayout: Equatable {
         if minimized {
             // A strip where there is no notch; the bare notch where there is.
             guard hasNotch else { return NotchGeometry.minimizedSize }
-            return floating
+            return island
                 ? CGSize(width: centerWidth, height: top(for: .closed) + capsuleHeight)
                 : NotchGeometry.closedSize(notch: notch, wing: 0)
         }
         if oneRow && content.primary != nil {
             // Never narrower than the idle shape, so something showing never
             // makes it smaller.
-            let row = NotchGeometry.rowWidth(for: content, floating: floating)
-            if floating {
+            let row = NotchGeometry.rowWidth(for: content, island: island)
+            if island {
                 return CGSize(width: max(centerWidth, row), height: top(for: .closed) + capsuleHeight)
             }
             return CGSize(width: max(notch.width, row) + 2 * NotchGeometry.closedEar, height: notch.height)
         }
         let wing = wingWidth(for: content)
-        if floating {
+        if island {
             return CGSize(width: centerWidth + 2 * wing, height: top(for: .closed) + capsuleHeight)
         }
         return NotchGeometry.closedSize(notch: notch, wing: wing)
@@ -414,19 +414,19 @@ public struct NotchLayout: Equatable {
     /// Empty space between the top of the screen and the shape; always 0
     /// when attached.
     public func top(for mode: NotchMode) -> CGFloat {
-        guard floating else { return 0 }
+        guard island else { return 0 }
         switch mode {
         // The strip is flush with the top edge; beside a camera housing the
         // shrunk shape is the ordinary capsule with nothing in it.
-        case .closed: return minimized && !hasNotch ? 0 : NotchGeometry.floatingMargin
-        case .toast: return max(0, bar - NotchGeometry.floatingToastLift)
-        case .expanded: return bar + NotchGeometry.floatingPanelDrop
+        case .closed: return minimized && !hasNotch ? 0 : NotchGeometry.islandMargin
+        case .toast: return max(0, bar - NotchGeometry.islandToastLift)
+        case .expanded: return bar + NotchGeometry.islandPanelDrop
         }
     }
 
     /// Size of the area the shape takes, including the space above it.
     public func size(for mode: NotchMode, compact: CompactView?) -> CGSize {
-        guard floating else { return NotchGeometry.size(for: mode, compact: compact, notch: notch) }
+        guard island else { return NotchGeometry.size(for: mode, compact: compact, notch: notch) }
         switch mode {
         case .closed:
             let wing = compact.map(wingWidth(for:)) ?? 0
@@ -440,7 +440,7 @@ public struct NotchLayout: Equatable {
     }
 
     /// Whether a point (from the top-left of the shape's area) takes hover
-    /// and clicks. Above a floating shape only the column over the notch
+    /// and clicks. Above an island shape only the column over the notch
     /// does, so the pointer can travel from the notch down to the shape
     /// while the rest of the menu bar stays usable.
     public func contains(_ p: CGPoint, mode: NotchMode, in size: CGSize) -> Bool {

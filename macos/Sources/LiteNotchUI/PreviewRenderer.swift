@@ -17,6 +17,8 @@ public enum PreviewRenderer {
         var timerPane: TimerPane = .focus
         var clipPreview: Int?
         var notchless = false
+        /// A question form already part-answered.
+        var draft: QuestionDraft?
         /// The clock at the shot's first frame, where the scene's own
         /// running clock would be wrong for the fixture.
         var at: Int?
@@ -53,6 +55,8 @@ public enum PreviewRenderer {
                     frame += 1
                     let clock = shot.at.map { $0 + i * 1000 } ?? SnapshotRenderer.snapshotNowMs + frame * 1000
                     let url = dir.appendingPathComponent(String(format: "f-%04d.png", frame))
+                    QuestionForm.previewDraft = shot.draft
+                    defer { QuestionForm.previewDraft = nil }
                     _ = try SnapshotRenderer.write(
                         shot.vm, expanded: shot.expanded, tab: shot.tab, section: shot.section,
                         pane: shot.pane, timerPane: shot.timerPane, clipPreview: shot.clipPreview,
@@ -76,10 +80,10 @@ public enum PreviewRenderer {
         // The warning fixture is taken 20 minutes into a 25-minute focus.
         let fiveLeft = now - 90_000 + 20 * 60_000 + 1000
 
-        var floating = pomodoro
-        floating.settings.appearance.notchStyle = .floating
-        var floatingPair = pair
-        floatingPair.settings.appearance.notchStyle = .floating
+        var island = pomodoro
+        island.settings.appearance.notchStyle = .island
+        var islandPair = pair
+        islandPair.settings.appearance.notchStyle = .island
         var shrunk = idle
         shrunk.settings.appearance.shrink = .whenEmpty
         var light = media
@@ -112,7 +116,83 @@ public enum PreviewRenderer {
         let running = SnapshotRenderer.meeting(pomodoro, "running")
         let over = SnapshotRenderer.meeting(pomodoro, "over")
 
+        // Questions, one scene per kind of layout.
+        func asking(_ qs: [AgentQuestion]) -> ViewModel {
+            var v = approval
+            v.agents.pending[0].toolName = "AskUserQuestion"
+            v.agents.pending[0].questions = qs
+            return v
+        }
+        let pg = QuestionOption(label: "Postgres", description: "Relational, what the team already runs")
+        let lite = QuestionOption(label: "SQLite", description: "Embedded, one file")
+        let single = AgentQuestion(header: "Database", question: "Which database should the service use?",
+                                   options: [pg, lite, QuestionOption(label: "DynamoDB", description: "Managed key-value")])
+        let multi = AgentQuestion(header: "Checks", question: "Which checks should run before merging?", multiSelect: true,
+                                  options: [QuestionOption(label: "Unit tests", description: "cargo test"),
+                                            QuestionOption(label: "Clippy", description: "-D warnings"),
+                                            QuestionOption(label: "Benchmarks", description: "scripts/bench.sh")])
+        let open = AgentQuestion(header: "Name", question: "What should the new command be called?", options: [])
+        func draft(_ qs: [AgentQuestion], _ edit: (inout QuestionDraft) -> Void) -> QuestionDraft {
+            var d = QuestionDraft(qs); edit(&d); return d
+        }
+        func asIsland(_ vm: ViewModel) -> ViewModel {
+            var v = vm
+            v.settings.appearance.notchStyle = .island
+            return v
+        }
+        var truncated = approval
+        truncated.agents.pending[0].truncated = true
+        truncated.agents.pending[0].detail = String(repeating: "rm -rf build && cargo build --release --target aarch64-apple-darwin && ", count: 8)
+
         return [
+            // The island style: a capsule inside the menu bar, on a Mac with a
+            // notch and then on a display without one.
+            Scene(name: "island", shots: [
+                Shot(vm: asIsland(idle), secs: 1, expanded: false),
+                Shot(vm: asIsland(media), secs: 2, expanded: false),
+                Shot(vm: asIsland(pomodoro), secs: 2, expanded: false),
+                Shot(vm: asIsland(pair), secs: 2, expanded: false),
+                Shot(vm: asIsland(banner), secs: 2, expanded: false),
+                Shot(vm: asIsland(media), secs: 3),
+                Shot(vm: asIsland(pomodoro), secs: 2, tab: .timer),
+                Shot(vm: asIsland(asking([single])), secs: 3),
+                Shot(vm: asIsland(pair), secs: 2, expanded: false, notchless: true),
+                Shot(vm: asIsland(media), secs: 3, notchless: true),
+            ]),
+            Scene(name: "approvals", shots: [
+                Shot(vm: approval, secs: 3),
+                Shot(vm: truncated, secs: 3),
+            ]),
+            Scene(name: "question-single", shots: [
+                Shot(vm: asking([single]), secs: 3),
+                Shot(vm: asking([single]), secs: 2, draft: draft([single]) { $0.toggle("SQLite", in: 0) }),
+            ]),
+            Scene(name: "question-multi", shots: [
+                Shot(vm: asking([multi]), secs: 2),
+                Shot(vm: asking([multi]), secs: 2, draft: draft([multi]) { $0.toggle("Unit tests", in: 0) }),
+                Shot(vm: asking([multi]), secs: 3, draft: draft([multi]) { $0.toggle("Unit tests", in: 0); $0.toggle("Clippy", in: 0) }),
+                Shot(vm: asking([multi]), secs: 3, draft: draft([multi]) {
+                    $0.toggle("Unit tests", in: 0); $0.type("Accessibility audit", in: 0); $0.commit(0)
+                    $0.type("Manual smoke test", in: 0) }),
+            ]),
+            Scene(name: "question-open", shots: [
+                Shot(vm: asking([open]), secs: 2),
+                Shot(vm: asking([open]), secs: 3, draft: draft([open]) { $0.type("greet", in: 0) }),
+            ]),
+            Scene(name: "question-steps", shots: [
+                Shot(vm: asking([single, multi, open]), secs: 2),
+                Shot(vm: asking([single, multi, open]), secs: 2,
+                     draft: draft([single, multi, open]) { $0.toggle("SQLite", in: 0); $0.next() }),
+                Shot(vm: asking([single, multi, open]), secs: 2,
+                     draft: draft([single, multi, open]) {
+                         $0.toggle("SQLite", in: 0); $0.next(); $0.toggle("Clippy", in: 1); $0.next() }),
+                Shot(vm: asking([single, multi, open]), secs: 3,
+                     draft: draft([single, multi, open]) {
+                         $0.toggle("SQLite", in: 0); $0.next(); $0.toggle("Clippy", in: 1); $0.next(); $0.type("greet", in: 2) }),
+            ]),
+            Scene(name: "settings", shots: SettingsSection.allCases.map {
+                Shot(vm: media, secs: 2, tab: .settings, section: $0)
+            }),
             Scene(name: "overview", shots: [
                 Shot(vm: idle, secs: 1, expanded: false),
                 Shot(vm: media, secs: 2, expanded: false),
@@ -157,7 +237,6 @@ public enum PreviewRenderer {
                 Shot(vm: colored, secs: 2, tab: .clipboard),
             ]),
             Scene(name: "agents", shots: [
-                Shot(vm: approval, secs: 3),
                 Shot(vm: media, secs: 2, tab: .agents),
                 Shot(vm: dot, secs: 2, expanded: false),
                 Shot(vm: media, secs: 3, tab: .agents, pane: .usage),
@@ -175,8 +254,8 @@ public enum PreviewRenderer {
             ]),
             Scene(name: "appearance", shots: [
                 Shot(vm: pomodoro, secs: 2),
-                Shot(vm: floating, secs: 2),
-                Shot(vm: floatingPair, secs: 2, expanded: false, notchless: true),
+                Shot(vm: island, secs: 2),
+                Shot(vm: islandPair, secs: 2, expanded: false, notchless: true),
                 Shot(vm: shrunk, secs: 1, expanded: false, notchless: true),
                 Shot(vm: light, secs: 2),
                 Shot(vm: purple, secs: 2),

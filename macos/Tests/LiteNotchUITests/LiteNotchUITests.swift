@@ -333,7 +333,7 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(track.kind, .media)
         XCTAssertEqual(track.peek, .trackChanged)
         XCTAssertEqual(NotchGeometry.wingWidth(for: track), 130, "room for the scrolling title")
-        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: track), 80)
+        XCTAssertEqual(NotchGeometry.islandWingWidth(for: track), 80)
 
         let warning = try loadFixture("peek-warning").compact
         XCTAssertEqual(warning.kind, .pomodoro)
@@ -357,14 +357,14 @@ final class GeometryTests: XCTestCase {
         XCTAssertTrue(eye.peek?.isNudge ?? false)
         XCTAssertLessThan(NotchGeometry.wingWidth(for: eye), 100)
         XCTAssertGreaterThan(NotchGeometry.wingWidth(for: eye), 40)
-        XCTAssertLessThanOrEqual(NotchGeometry.floatingWingWidth(for: eye), 80)
+        XCTAssertLessThanOrEqual(NotchGeometry.islandWingWidth(for: eye), 80)
 
         let move = try loadFixture("peek-move").compact
         XCTAssertEqual(move.kind, .nudge)
         XCTAssertEqual(move.peek, .move)
         XCTAssertTrue(["Stretch", "Walk", "Water"].contains(move.title))
         XCTAssertEqual(NotchGeometry.wingWidth(for: move), 130)
-        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: move), 80)
+        XCTAssertEqual(NotchGeometry.islandWingWidth(for: move), 80)
         var m = move
         for (title, symbol) in [("Stretch", "figure.flexibility"), ("Walk", "figure.walk"), ("Water", "drop.fill"),
                                 ("Dance", "figure.walk")] {
@@ -378,7 +378,7 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(quote.peek, .quote)
         XCTAssertFalse(quote.value.isEmpty)
         XCTAssertEqual(NotchGeometry.wingWidth(for: quote), 130)
-        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: quote), 80)
+        XCTAssertEqual(NotchGeometry.islandWingWidth(for: quote), 80)
         XCTAssertEqual(ClosedActivityView.nudgeSymbol(quote), "sparkles")
         XCTAssertFalse(PeekKind.timeWarning.isNudge)
 
@@ -388,7 +388,7 @@ final class GeometryTests: XCTestCase {
         XCTAssertTrue(working.peek?.isNudge ?? false)
         XCTAssertFalse(working.value.isEmpty)
         XCTAssertEqual(NotchGeometry.wingWidth(for: working), 130)
-        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: working), 80)
+        XCTAssertEqual(NotchGeometry.islandWingWidth(for: working), 80)
         XCTAssertEqual(ClosedActivityView.nudgeSymbol(working), "cup.and.saucer.fill")
         XCTAssertNotNil(NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: nil))
 
@@ -398,7 +398,7 @@ final class GeometryTests: XCTestCase {
         future.peek = .unknown
         XCTAssertLessThanOrEqual(NotchGeometry.wingWidth(for: future), 130)
         XCTAssertGreaterThan(NotchGeometry.wingWidth(for: future), 40)
-        XCTAssertLessThanOrEqual(NotchGeometry.floatingWingWidth(for: future), 80)
+        XCTAssertLessThanOrEqual(NotchGeometry.islandWingWidth(for: future), 80)
     }
 
     func testTheStillWorkingBannerOffersToSkipTheBreak() throws {
@@ -517,18 +517,18 @@ final class GeometryTests: XCTestCase {
         XCTAssertGreaterThan(wide, idle.width)
         XCTAssertLessThan(wide, notched.size(for: .closed, content: ClosedContent(primary: song)).width)
         XCTAssertLessThanOrEqual(wide, NotchGeometry.maxRowWidth + 2 * NotchGeometry.closedEar)
-        // Floating: the same, never narrower than its idle capsule.
-        let floating = NotchLayout(style: .floating, notch: notch, hasNotch: false, menuBarHeight: 24)
-        XCTAssertEqual(floating.size(for: .closed, content: pair).width, NotchGeometry.rowWidth(for: pair, floating: true))
-        XCTAssertLessThan(floating.size(for: .closed, content: pair).width,
-                          floating.centerWidth + 2 * floating.wingWidth(for: pair))
+        // Island: the same, never narrower than its idle capsule.
+        let island = NotchLayout(style: .island, notch: notch, hasNotch: false, menuBarHeight: 24)
+        XCTAssertEqual(island.size(for: .closed, content: pair).width, NotchGeometry.rowWidth(for: pair, island: true))
+        XCTAssertLessThan(island.size(for: .closed, content: pair).width,
+                          island.centerWidth + 2 * island.wingWidth(for: pair))
         // Just the dot keeps the original layout.
         XCTAssertEqual(bare.size(for: .closed, content: ClosedContent(primary: nil, waiting: true)),
                        NotchGeometry.closedSize(notch: notch, wing: bare.wingWidth(for: ClosedContent(primary: nil, waiting: true))))
     }
 
     func testShrinkIsAThinStripAtTheTopWithoutANotch() {
-        for style in [NotchStyle.attached, .floating] {
+        for style in [NotchStyle.attached, .island] {
             let bare = NotchLayout(style: style, notch: NotchGeometry.fallbackSize, hasNotch: false,
                                    menuBarHeight: 24, minimized: true)
             XCTAssertEqual(bare.size(for: .closed, content: ClosedContent(primary: nil)), CGSize(width: 120, height: 8))
@@ -559,35 +559,35 @@ final class GeometryTests: XCTestCase {
         XCTAssertFalse(shrinks(.unknown, empty))
     }
 
-    func testFloatingLayoutSitsInsideTheMenuBar() {
+    func testIslandLayoutSitsInsideTheMenuBar() {
         let pomo = CompactView(kind: .pomodoro, title: "Focus", value: "", endsAtMs: 1, totalSecs: 1500, count: 0)
         // No notch, 24 pt menu bar: a capsule 3 pt in from top and bottom.
-        let bare = NotchLayout(style: .floating, notch: NotchGeometry.fallbackSize, hasNotch: false, menuBarHeight: 24)
+        let bare = NotchLayout(style: .island, notch: NotchGeometry.fallbackSize, hasNotch: false, menuBarHeight: 24)
         XCTAssertEqual(bare.bar, 24)
         XCTAssertEqual(bare.capsuleHeight, 18)
         XCTAssertEqual(bare.top(for: .closed), 3)
-        XCTAssertEqual(bare.size(for: .closed, compact: nil), CGSize(width: NotchGeometry.floatingCenterWidth, height: 21))
+        XCTAssertEqual(bare.size(for: .closed, compact: nil), CGSize(width: NotchGeometry.islandCenterWidth, height: 21))
         XCTAssertEqual(bare.size(for: .closed, compact: pomo).width,
-                       NotchGeometry.floatingCenterWidth + 2 * NotchGeometry.floatingWingWidth(for: pomo))
+                       NotchGeometry.islandCenterWidth + 2 * NotchGeometry.islandWingWidth(for: pomo))
         // The toast overlaps the menu bar; the panel starts below it.
-        XCTAssertEqual(bare.top(for: .toast), 24 - NotchGeometry.floatingToastLift)
-        XCTAssertEqual(bare.top(for: .expanded), 24 + NotchGeometry.floatingPanelDrop)
-        XCTAssertGreaterThanOrEqual(NotchGeometry.floatingPanelDrop, 4, "a visible gap under the menu bar")
+        XCTAssertEqual(bare.top(for: .toast), 24 - NotchGeometry.islandToastLift)
+        XCTAssertEqual(bare.top(for: .expanded), 24 + NotchGeometry.islandPanelDrop)
+        XCTAssertGreaterThanOrEqual(NotchGeometry.islandPanelDrop, 4, "a visible gap under the menu bar")
         XCTAssertEqual(bare.size(for: .expanded, compact: pomo).height,
-                       24 + NotchGeometry.floatingPanelDrop + NotchGeometry.expandedSize.height)
+                       24 + NotchGeometry.islandPanelDrop + NotchGeometry.expandedSize.height)
         // A hidden menu bar falls back to the stand-in's height.
-        XCTAssertEqual(NotchLayout(style: .floating, notch: NotchGeometry.fallbackSize, hasNotch: false).bar, 32)
+        XCTAssertEqual(NotchLayout(style: .island, notch: NotchGeometry.fallbackSize, hasNotch: false).bar, 32)
         // With a notch the capsule keeps the notch's width and height band.
-        let notched = NotchLayout(style: .floating, notch: CGSize(width: 185, height: 38), hasNotch: true, menuBarHeight: 38)
+        let notched = NotchLayout(style: .island, notch: CGSize(width: 185, height: 38), hasNotch: true, menuBarHeight: 38)
         XCTAssertEqual(notched.centerWidth, 185)
         XCTAssertEqual(notched.capsuleHeight, 32)
-        XCTAssertEqual(notched.top(for: .expanded), 38 + NotchGeometry.floatingPanelDrop)
+        XCTAssertEqual(notched.top(for: .expanded), 38 + NotchGeometry.islandPanelDrop)
         // Above the open panel only the column under the notch takes the pointer.
         let open = bare.size(for: .expanded, compact: nil)
         XCTAssertFalse(bare.contains(CGPoint(x: 10, y: 5), mode: .expanded, in: open))
         XCTAssertTrue(bare.contains(CGPoint(x: open.width / 2, y: 5), mode: .expanded, in: open))
         XCTAssertTrue(bare.contains(CGPoint(x: 10, y: 30), mode: .expanded, in: open))
-        // The window has room for the floating panel.
+        // The window has room for the island panel.
         let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
         let notch = NotchGeometry.notchRect(screenFrame: frame, safeAreaTop: 0, leftAux: nil, rightAux: nil)
         XCTAssertGreaterThanOrEqual(NotchGeometry.panelFrame(screenFrame: frame, notch: notch).height,
@@ -599,8 +599,8 @@ final class GeometryTests: XCTestCase {
         d.keyDecodingStrategy = .convertFromSnakeCase
         let old = try d.decode(AppearanceConfig.self, from: Data(##"{"theme":"dark","accent":"#000000"}"##.utf8))
         XCTAssertEqual(old.notchStyle, .attached)
-        let floating = try d.decode(AppearanceConfig.self, from: Data(##"{"theme":"dark","accent":"#000000","notch_style":"floating"}"##.utf8))
-        XCTAssertEqual(floating.notchStyle, .floating)
+        let island = try d.decode(AppearanceConfig.self, from: Data(##"{"theme":"dark","accent":"#000000","notch_style":"island"}"##.utf8))
+        XCTAssertEqual(island.notchStyle, .island)
         let future = try d.decode(AppearanceConfig.self, from: Data(##"{"theme":"dark","accent":"#000000","notch_style":"orbit"}"##.utf8))
         XCTAssertEqual(future.notchStyle, .unknown)
         // An unknown style is not sent back, so the core keeps its own.
@@ -608,7 +608,7 @@ final class GeometryTests: XCTestCase {
         e.keyEncodingStrategy = .convertToSnakeCase
         let json = String(decoding: try e.encode(future), as: UTF8.self)
         XCTAssertFalse(json.contains("notch_style"))
-        XCTAssertTrue(String(decoding: try e.encode(floating), as: UTF8.self).contains(#""notch_style":"floating""#))
+        XCTAssertTrue(String(decoding: try e.encode(island), as: UTF8.self).contains(#""notch_style":"island""#))
     }
 
     func testHitRectIsCentredAndTopAligned() {
@@ -1342,11 +1342,11 @@ final class NewCommandTests: XCTestCase {
     func testSettingsCarryTheNewFields() throws {
         var s = try loadFixture("idle").settings
         s.general.allScreens = true
-        s.appearance = AppearanceConfig(theme: .light, accent: "#30D158", notchStyle: .floating)
+        s.appearance = AppearanceConfig(theme: .light, accent: "#30D158", notchStyle: .island)
         let inner = try obj(ShellCommand.setSettings(s).encode())["settings"] as! NSDictionary
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, true)
         XCTAssertEqual(inner["appearance"] as? NSDictionary,
-                       ["theme": "light", "accent": "#30D158", "notch_style": "floating", "closed_notch": "dark",
+                       ["theme": "light", "accent": "#30D158", "notch_style": "island", "closed_notch": "dark",
                         "material": "solid", "shrink": "off"])
     }
 
@@ -2310,7 +2310,7 @@ final class RoundTwoTests: XCTestCase {
 
 // MARK: - Notch style, closed-notch theme and panel material together
 
-/// The three appearance options that arrived as separate changes (Floating
+/// The three appearance options that arrived as separate changes (Island
 /// notch, closed notch following the theme, Liquid Glass), and how they
 /// meet in one panel.
 final class AppearanceOptionsTests: XCTestCase {
@@ -2326,7 +2326,7 @@ final class AppearanceOptionsTests: XCTestCase {
     }
 
     /// The silhouette as it was drawn before the shape learned about
-    /// floating: Attached must stay exactly this.
+    /// island: Attached must stay exactly this.
     private func originalNotchPath(in r: CGRect, top: CGFloat, bottom: CGFloat) -> Path {
         let t = min(top, r.height / 2)
         let b = min(bottom, max(0, r.height - t), (r.width - 2 * t) / 2)
@@ -2357,7 +2357,7 @@ final class AppearanceOptionsTests: XCTestCase {
         }
     }
 
-    func testTheFloatingShapeIsACapsuleBelowItsInset() {
+    func testTheIslandShapeIsACapsuleBelowItsInset() {
         // 21 pt tall area: 3 pt left empty, then an 18 pt capsule.
         let rect = CGRect(x: 0, y: 0, width: 120, height: 21)
         let path = NotchShape(topRadius: 0, bottomRadius: 9, topCorner: 9, topInset: 3).path(in: rect)
@@ -2390,13 +2390,13 @@ final class AppearanceOptionsTests: XCTestCase {
         XCTAssertEqual(PointerShape(shape: attached, top: 0, column: 183).path(in: rect), attached.path(in: rect))
     }
 
-    func testAFloatingWingIsNeverWiderThanTheAttachedOneAllows() {
+    func testAIslandWingIsNeverWiderThanTheAttachedOneAllows() {
         func compact(_ kind: ActivityKind, title: String = "", value: String = "", count: Int = 0) -> CompactView {
             CompactView(kind: kind, title: title, value: value, endsAtMs: nil, totalSecs: nil, count: count)
         }
-        XCTAssertEqual(NotchGeometry.floatingWingWidth(for: compact(.idle)), 0)
+        XCTAssertEqual(NotchGeometry.islandWingWidth(for: compact(.idle)), 0)
         for kind in [ActivityKind.pomodoro, .timer, .caffeine, .meeting, .media, .approval, .banner, .agent] {
-            let w = NotchGeometry.floatingWingWidth(for: compact(kind, title: String(repeating: "long title ", count: 20),
+            let w = NotchGeometry.islandWingWidth(for: compact(kind, title: String(repeating: "long title ", count: 20),
                                                                  value: String(repeating: "9", count: 40), count: 3))
             XCTAssertGreaterThanOrEqual(w, 30, "\(kind)")
             XCTAssertLessThanOrEqual(w, 80, "\(kind)")
@@ -2405,29 +2405,29 @@ final class AppearanceOptionsTests: XCTestCase {
 
     func testThePanelFollowsTheNotchStyleSetting() throws {
         let attached = try panel()
-        XCTAssertFalse(attached.layout.floating)
+        XCTAssertFalse(attached.layout.island)
         XCTAssertEqual(attached.targetSize,
                        NotchGeometry.closedSize(notch: attached.notch,
                                                 wing: NotchGeometry.wingWidth(for: ClosedContent(view: attached.view),
-                                                                              floating: false)))
+                                                                              island: false)))
         XCTAssertTrue(attached.shapeContains(CGPoint(x: 1, y: 0)))
 
-        let floating = try panel { $0.appearance.notchStyle = .floating }
-        floating.hasNotch = false
-        floating.menuBarHeight = 24
-        XCTAssertTrue(floating.layout.floating)
-        XCTAssertEqual(floating.targetSize.height, 3 + 18, "a capsule inside a 24 pt menu bar")
-        XCTAssertLessThan(floating.targetSize.width, attached.targetSize.width)
-        floating.open()
-        XCTAssertEqual(floating.targetSize.height,
-                       24 + NotchGeometry.floatingPanelDrop + NotchGeometry.expandedSize.height)
+        let island = try panel { $0.appearance.notchStyle = .island }
+        island.hasNotch = false
+        island.menuBarHeight = 24
+        XCTAssertTrue(island.layout.island)
+        XCTAssertEqual(island.targetSize.height, 3 + 18, "a capsule inside a 24 pt menu bar")
+        XCTAssertLessThan(island.targetSize.width, attached.targetSize.width)
+        island.open()
+        XCTAssertEqual(island.targetSize.height,
+                       24 + NotchGeometry.islandPanelDrop + NotchGeometry.expandedSize.height)
         // Above the open panel the menu bar stays usable except under the notch.
-        XCTAssertFalse(floating.shapeContains(CGPoint(x: 5, y: 5)))
-        XCTAssertTrue(floating.shapeContains(CGPoint(x: floating.targetSize.width / 2, y: 5)))
-        XCTAssertTrue(floating.shapeContains(CGPoint(x: 5, y: 60)))
+        XCTAssertFalse(island.shapeContains(CGPoint(x: 5, y: 5)))
+        XCTAssertTrue(island.shapeContains(CGPoint(x: island.targetSize.width / 2, y: 5)))
+        XCTAssertTrue(island.shapeContains(CGPoint(x: 5, y: 60)))
         // A style this build does not know draws the original.
         let unknown = try panel { $0.appearance.notchStyle = .unknown }
-        XCTAssertFalse(unknown.layout.floating)
+        XCTAssertFalse(unknown.layout.island)
     }
 
     func testTheThreeOptionsAreIndependentAndDefaultToTheOldLook() throws {
@@ -2441,7 +2441,7 @@ final class AppearanceOptionsTests: XCTestCase {
         // Every combination survives the trip to the core and back.
         let encoder = JSONEncoder(); encoder.keyEncodingStrategy = .convertToSnakeCase
         let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
-        for style in [NotchStyle.attached, .floating] {
+        for style in [NotchStyle.attached, .island] {
             for closed in [ClosedNotchChoice.dark, .theme] {
                 for material in [MaterialChoice.solid, .glass] {
                     let a = AppearanceConfig(theme: .light, accent: "#30D158", notchStyle: style,
@@ -2484,7 +2484,7 @@ final class AppearanceOptionsTests: XCTestCase {
         let src = try String(contentsOf: URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/LiteNotchUI/SnapshotRenderer.swift"), encoding: .utf8)
-        for name in ["floating-\\(name)-closed", "floating-notchless-pomodoro-expanded-home",
+        for name in ["island-\\(name)-closed", "island-notchless-pomodoro-expanded-home",
                      "light-matched-\\(name)-closed", "dark-matched-\\(name)-closed", "glass-media-expanded-home"] {
             XCTAssertTrue(src.contains(name), name)
         }

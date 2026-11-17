@@ -658,8 +658,13 @@ impl Loop {
                 Effect::MediaCommand(command) => self.ports.media_command(command.code()),
                 Effect::Resolve(resolved) => {
                     if let Some((_, reply)) = self.waiters.remove(&resolved.request_id) {
-                        let _ = reply.send(Response::Decision {
-                            decision: resolved.decision,
+                        let _ = reply.send(match resolved.updated_input {
+                            Some(updated_input) if resolved.decision == Decision::Allow => {
+                                Response::Answer { updated_input }
+                            }
+                            _ => Response::Decision {
+                                decision: resolved.decision,
+                            },
                         });
                     }
                 }
@@ -1150,6 +1155,35 @@ mod tests {
             .views
             .wait("banner", |v| v["inbox"]["banner"]["title"] == "New message");
         assert_eq!(v["inbox"]["banner"]["source"], "Mail");
+    }
+
+    #[test]
+    fn an_answered_question_reaches_the_waiting_hook_as_updated_input() {
+        let h = Harness::start("rt-answer");
+        let input = json!({"questions":[{"question":"Which DB?","header":"DB","multiSelect":false,
+            "options":[{"label":"Postgres","description":""},{"label":"SQLite","description":""}]}]});
+        let stream = hook(
+            &h,
+            json!({"hook_event_name":"PermissionRequest","session_id":"s1","cwd":"/work/api",
+                   "tool_name":"AskUserQuestion","tool_input":input}),
+        );
+        let view = h
+            .views
+            .wait("question shown", |v| v["compact"]["kind"] == "approval");
+        let pending = &view["agents"]["pending"][0];
+        assert_eq!(pending["questions"][0]["options"][1]["label"], "SQLite");
+        assert!(
+            pending.get("input").is_none(),
+            "the raw input stays in the core"
+        );
+        let id = pending["id"].as_str().unwrap().to_string();
+        h.send(&json!({"cmd":"agent_answer","request_id":id,"answers":[["SQLite"]]}).to_string());
+        match reply(stream) {
+            Response::Answer { updated_input } => {
+                assert_eq!(updated_input["answers"]["Which DB?"], "SQLite");
+            }
+            other => panic!("expected Answer, got {other:?}"),
+        }
     }
 
     #[test]

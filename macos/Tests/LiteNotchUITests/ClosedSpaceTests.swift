@@ -3,12 +3,12 @@ import SwiftUI
 import XCTest
 @testable import LiteNotchUI
 
-/// Reported: in the Floating style the icon and time were drawn outside the
+/// Reported: in the Island style the icon and time were drawn outside the
 /// black shape. The shape was sized by one rule and the content laid out by
 /// another.
 ///
 /// A Mac has a camera housing or it does not, and the user picks Attached or
-/// Floating on either, so there are four layouts. In each, whatever the
+/// Island on either, so there are four layouts. In each, whatever the
 /// closed notch shows must fit inside the shape the layout gives it.
 @MainActor
 final class ClosedSpaceTests: XCTestCase {
@@ -21,10 +21,10 @@ final class ClosedSpaceTests: XCTestCase {
         let notch = CGSize(width: 185, height: 32)
         return [
             Machine(name: "notch, attached", layout: NotchLayout(style: .attached, notch: notch, hasNotch: true, menuBarHeight: 32)),
-            Machine(name: "notch, floating", layout: NotchLayout(style: .floating, notch: notch, hasNotch: true, menuBarHeight: 32)),
+            Machine(name: "notch, island", layout: NotchLayout(style: .island, notch: notch, hasNotch: true, menuBarHeight: 32)),
             Machine(name: "no notch, attached", layout: NotchLayout(style: .attached, notch: NotchGeometry.fallbackSize,
                                                                     hasNotch: false, menuBarHeight: 24)),
-            Machine(name: "no notch, floating", layout: NotchLayout(style: .floating, notch: NotchGeometry.fallbackSize,
+            Machine(name: "no notch, island", layout: NotchLayout(style: .island, notch: NotchGeometry.fallbackSize,
                                                                     hasNotch: false, menuBarHeight: 24)),
         ]
     }
@@ -62,10 +62,10 @@ final class ClosedSpaceTests: XCTestCase {
     }
 
     private func view(_ content: ClosedContent, _ layout: NotchLayout) -> ClosedActivityView {
-        if layout.floating {
+        if layout.island {
             return ClosedActivityView(content: content, notchWidth: layout.centerWidth, ear: 0,
                                       wing: layout.wingWidth(for: content),
-                                      edgePadding: NotchGeometry.floatingWingPadding,
+                                      edgePadding: NotchGeometry.islandWingPadding,
                                       artworkSize: min(20, layout.capsuleHeight - 4),
                                       artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
                                       oneRow: layout.oneRow)
@@ -77,7 +77,7 @@ final class ClosedSpaceTests: XCTestCase {
     /// Fails when what is drawn is wider than the room the layout gives it.
     private func check(_ content: ClosedContent, on m: Machine, _ what: String) {
         let v = view(content, m.layout)
-        let shape = m.layout.size(for: .closed, content: content).width - (m.layout.floating ? 0 : 2 * NotchGeometry.closedEar)
+        let shape = m.layout.size(for: .closed, content: content).width - (m.layout.island ? 0 : 2 * NotchGeometry.closedEar)
         if m.layout.oneRow, content.primary != nil {
             XCTAssertLessThanOrEqual(width(v.row), shape + 0.5, "\(m.name): \(what) in one row")
         } else {
@@ -112,14 +112,14 @@ final class ClosedSpaceTests: XCTestCase {
 
     func testTheSettingsPreviewDrawsInsideItsShapeInEveryLayout() {
         for hasNotch in [true, false] {
-            for floating in [false, true] {
-                let layout = NotchPreview.layout(floating: floating, hasNotch: hasNotch)
+            for island in [false, true] {
+                let layout = NotchPreview.layout(island: island, hasNotch: hasNotch)
                 XCTAssertEqual(layout.oneRow, !hasNotch)
                 for s in NotchPriority.situations {
                     let content = NotchPriority.content(for: s, config: .default)
                     let shape = NotchPreview.shapeWidth(layout, content: content)
                     let v = view(content, layout)
-                    let name = "\(hasNotch ? "notch" : "no notch"), \(floating ? "floating" : "attached"), \(s.title)"
+                    let name = "\(hasNotch ? "notch" : "no notch"), \(island ? "island" : "attached"), \(s.title)"
                     if layout.oneRow, content.primary != nil {
                         XCTAssertLessThanOrEqual(width(v.row), shape + 0.5, name)
                     } else {
@@ -155,7 +155,7 @@ final class ClosedSpaceTests: XCTestCase {
         // Shrunk beside a housing, the shape is the bare notch: full height,
         // so the pointer finds it, and nothing beside it.
         let notch = CGSize(width: 185, height: 32)
-        for style in [NotchStyle.attached, .floating] {
+        for style in [NotchStyle.attached, .island] {
             let shrunk = NotchLayout(style: style, notch: notch, hasNotch: true, menuBarHeight: 32, minimized: true)
             let plain = NotchLayout(style: style, notch: notch, hasNotch: true, menuBarHeight: 32)
             XCTAssertEqual(shrunk.size(for: .closed, content: busy), plain.size(for: .closed, content: empty), "\(style)")

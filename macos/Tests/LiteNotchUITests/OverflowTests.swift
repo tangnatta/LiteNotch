@@ -20,7 +20,7 @@ private func fixture(_ name: String) throws -> ViewModel {
 final class OverflowTests: XCTestCase {
     /// The space a tab gets inside the open panel (see `ExpandedView`).
     private var room: CGSize {
-        let header = max(NotchGeometry.fallbackSize.height, NotchGeometry.floatingHeaderHeight)
+        let header = max(NotchGeometry.fallbackSize.height, NotchGeometry.islandHeaderHeight)
         return CGSize(width: NotchGeometry.expandedSize.width - 2 * (NotchGeometry.expandedEar + 14),
                       height: NotchGeometry.expandedSize.height - header - 8 - 20)
     }

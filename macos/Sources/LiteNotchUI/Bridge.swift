@@ -69,6 +69,8 @@ public enum ShellCommand: Equatable {
     /// The upcoming events, read by `CalendarObserver`; replaces the last list.
     case calendarEvents([CalendarEventInput])
     case agentDecide(requestId: String, decision: Decision)
+    /// The answers to a question: one list per question, the chosen labels or typed text.
+    case agentAnswer(requestId: String, answers: [[String]])
     /// The user went to this session: it no longer needs the waiting dot.
     case agentSeen(sessionId: String)
     case caffeineToggle
@@ -134,6 +136,7 @@ public enum ShellCommand: Equatable {
         case .calendarEvents(let events): return c("calendar_events", ["events": events.map(\.object)])
         case .agentSeen(let id): return c("agent_seen", ["session_id": id])
         case .agentDecide(let id, let d): return c("agent_decide", ["request_id": id, "decision": d.rawValue])
+        case .agentAnswer(let id, let answers): return c("agent_answer", ["request_id": id, "answers": answers])
         case .caffeineToggle: return c("caffeine_toggle")
         case .caffeineActivate(let mode, let secs):
             return c("caffeine_activate", ["mode": mode.rawValue, "duration_secs": secs.map { $0 as Any } ?? NSNull()])
@@ -496,7 +499,7 @@ public final class PanelState: ObservableObject {
         let shrunk = mode == .closed && NotchLayout.shrinks(view?.settings.appearance.shrink ?? .off,
                                                             content: ClosedContent(view: view),
                                                             peek: view?.compact.peek != nil, hasNotch: hasNotch)
-        return NotchLayout(style: style == .floating ? .floating : .attached,
+        return NotchLayout(style: style == .island ? .island : .attached,
                            notch: notch, hasNotch: hasNotch, menuBarHeight: menuBarHeight, minimized: shrunk)
     }
 

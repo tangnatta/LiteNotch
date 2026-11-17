@@ -128,7 +128,7 @@ struct SettingsTab: View {
     @ViewBuilder private var pane: some View {
         switch model.settingsSection {
         case .general: general
-        case .notch: NotchPriorityPane(config: $draft.notch, floating: draft.appearance.notchStyle == .floating,
+        case .notch: NotchPriorityPane(config: $draft.notch, island: draft.appearance.notchStyle == .island,
                                          hasNotch: model.hasNotch)
         case .home: home
         case .timer: timer
@@ -155,8 +155,8 @@ struct SettingsTab: View {
                           label: "Theme", height: 22)
         }
         row("Notch") {
-            SegmentedPill(options: [(NotchStyle.attached, "Attached"), (NotchStyle.floating, "Floating")],
-                          selection: Binding(get: { draft.appearance.notchStyle == .floating ? .floating : .attached },
+            SegmentedPill(options: [(NotchStyle.attached, "Attached"), (NotchStyle.island, "Island")],
+                          selection: Binding(get: { draft.appearance.notchStyle == .island ? .island : .attached },
                                              set: { draft.appearance.notchStyle = $0 }),
                           label: "Notch style", height: 22)
         }

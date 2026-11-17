@@ -48,7 +48,7 @@ final class CalendarTests: XCTestCase {
         XCTAssertEqual(vm.compact.kind, .calendar)
         XCTAssertEqual(vm.compact.endsAtMs, vm.calendar.events[0].startMs)
         XCTAssertGreaterThan(NotchGeometry.wingWidth(for: vm.compact), 0)
-        XCTAssertGreaterThan(NotchGeometry.floatingWingWidth(for: vm.compact), 0)
+        XCTAssertGreaterThan(NotchGeometry.islandWingWidth(for: vm.compact), 0)
     }
 
     func testTheCalendarIsOffByDefaultAndAViewModelWithoutItStillDecodes() throws {

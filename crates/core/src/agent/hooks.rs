@@ -369,6 +369,14 @@ fn summarize_raw(tool_name: &str, tool_input: &Value) -> (String, String) {
     (summary, detail)
 }
 
+/// The JSON a hook CLI prints to allow a call with a changed input (an
+/// answered question).
+pub fn allow_with_input_output(updated_input: &Value) -> String {
+    serde_json::json!({"hookSpecificOutput":{"hookEventName":"PermissionRequest",
+        "decision":{"behavior":"allow","updatedInput":updated_input}}})
+    .to_string()
+}
+
 /// The JSON a hook CLI prints for a decision; `None` for `Pass` (print nothing).
 pub fn decision_output(decision: Decision) -> Option<String> {
     match decision {
@@ -885,6 +893,21 @@ mod tests {
                 .unwrap()
                 .app,
             None
+        );
+    }
+
+    #[test]
+    fn an_answer_is_printed_as_allow_with_updated_input() {
+        let out = allow_with_input_output(&json!({"answers":{"Q?":"A"}}));
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(
+            v["hookSpecificOutput"]["hookEventName"],
+            "PermissionRequest"
+        );
+        assert_eq!(v["hookSpecificOutput"]["decision"]["behavior"], "allow");
+        assert_eq!(
+            v["hookSpecificOutput"]["decision"]["updatedInput"]["answers"]["Q?"],
+            "A"
         );
     }
 }

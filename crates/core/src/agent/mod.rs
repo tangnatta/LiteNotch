@@ -5,14 +5,15 @@ pub mod install;
 pub mod statusline;
 
 pub use hooks::{
-    decision_output, describe, sanitize, summarize, valid_bundle_id, valid_tty, Description,
-    HookError, HookEvent, HookKind,
+    allow_with_input_output, decision_output, describe, sanitize, summarize, valid_bundle_id,
+    valid_tty, Description, HookError, HookEvent, HookKind,
 };
 pub use install::{
     install, is_installed, other_hook_clis, remove_other_hooks, uninstall, InstallError,
 };
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Longest stored `last_message`, in chars.
 const MAX_MESSAGE_CHARS: usize = 200;
@@ -65,6 +66,95 @@ pub struct PermissionRequest {
     pub truncated: bool,
     pub created_ms: u64,
     pub expires_ms: u64,
+    /// The questions of an `AskUserQuestion` call, empty for any other tool.
+    /// The UI shows them instead of Allow / Deny.
+    #[serde(default)]
+    pub questions: Vec<Question>,
+    /// The tool input as received; never sent to the shell. An answer is this
+    /// input plus an `answers` object.
+    #[serde(skip)]
+    input: Value,
+}
+
+/// One question Claude asks, with its choices, cleaned for display.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Question {
+    pub header: String,
+    pub question: String,
+    pub multi_select: bool,
+    pub options: Vec<QuestionOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuestionOption {
+    pub label: String,
+    pub description: String,
+}
+
+const MAX_QUESTIONS: usize = 4;
+const MAX_OPTIONS: usize = 8;
+const MAX_QUESTION_CHARS: usize = 300;
+const MAX_HEADER_CHARS: usize = 30;
+const MAX_LABEL_CHARS: usize = 80;
+const MAX_OPTION_NOTE_CHARS: usize = 200;
+/// Most answers one multiple-choice question takes: its options plus the user's own.
+const MAX_ANSWERS: usize = 16;
+/// Longest typed answer, in chars.
+pub const MAX_ANSWER_CHARS: usize = 500;
+
+/// The questions of an `AskUserQuestion` input, or none if it is not shaped
+/// as expected (the prompt then falls back to the plain detail view). Also
+/// none when anything would be cut short: a question must be read in full.
+fn parse_questions(input: &Value) -> Vec<Question> {
+    let Some(items) = input.get("questions").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    if items.is_empty() || items.len() > MAX_QUESTIONS {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for item in items {
+        let text = |v: Option<&Value>, max: usize| -> Option<String> {
+            let raw = v.and_then(Value::as_str).unwrap_or_default();
+            let clean = sanitize(raw);
+            (clean.chars().count() <= max).then_some(clean)
+        };
+        let Some(question) =
+            text(item.get("question"), MAX_QUESTION_CHARS).filter(|q| !q.is_empty())
+        else {
+            return Vec::new();
+        };
+        let Some(header) = text(item.get("header"), MAX_HEADER_CHARS) else {
+            return Vec::new();
+        };
+        let raw_options = item
+            .get("options")
+            .and_then(Value::as_array)
+            .map_or(&[][..], Vec::as_slice);
+        if raw_options.len() > MAX_OPTIONS {
+            return Vec::new();
+        }
+        let mut options = Vec::new();
+        for o in raw_options {
+            let (Some(label), Some(description)) = (
+                text(o.get("label"), MAX_LABEL_CHARS).filter(|l| !l.is_empty()),
+                text(o.get("description"), MAX_OPTION_NOTE_CHARS),
+            ) else {
+                return Vec::new();
+            };
+            options.push(QuestionOption { label, description });
+        }
+        out.push(Question {
+            header,
+            question,
+            multi_select: item
+                .get("multiSelect")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            options,
+        });
+    }
+    out
 }
 
 /// The hook is registered with a 130 s timeout, after which the agent kills
@@ -130,6 +220,10 @@ pub enum HookOutcome {
 pub struct Resolved {
     pub request_id: String,
     pub decision: Decision,
+    /// With `Allow`: the tool input to run with instead (an answered
+    /// question carries its `answers`).
+    #[serde(default)]
+    pub updated_input: Option<Value>,
 }
 
 /// Tracks agent sessions and pending permission requests.
@@ -209,6 +303,7 @@ impl Agents {
                     orphaned.push(Resolved {
                         request_id: r.id.clone(),
                         decision: Decision::Pass,
+                        updated_input: None,
                     });
                     false
                 } else {
@@ -233,6 +328,11 @@ impl Agents {
             truncated,
         } = describe(&tool, &ev.tool_input);
         let tool = sanitize(&tool);
+        let questions = if tool == "AskUserQuestion" {
+            parse_questions(&ev.tool_input)
+        } else {
+            Vec::new()
+        };
         let id = format!("req-{}", self.next_id);
         self.next_id = self.next_id.saturating_add(1);
         self.pending.push(PermissionRequest {
@@ -245,6 +345,8 @@ impl Agents {
             truncated,
             created_ms: now_ms,
             expires_ms: now_ms.saturating_add(self.cfg.approval_timeout_secs.saturating_mul(1000)),
+            questions,
+            input: ev.tool_input.clone(),
         });
         HookOutcome::Pending(id)
     }
@@ -325,7 +427,50 @@ impl Agents {
         Some(Resolved {
             request_id: req.id,
             decision,
+            updated_input: None,
         })
+    }
+
+    /// Answers a pending `AskUserQuestion`: one entry per question, each the
+    /// chosen option labels or typed text. Anything that does not fit (no such
+    /// request, not a question, wrong count, an empty or over-long answer, more
+    /// than one answer to a single-choice question) changes nothing and returns
+    /// `None`, so the request stays pending.
+    pub fn answer(
+        &mut self,
+        request_id: &str,
+        answers: &[Vec<String>],
+        now_ms: u64,
+    ) -> Option<Resolved> {
+        let req = self.pending.iter().find(|r| r.id == request_id)?;
+        if req.questions.is_empty() || answers.len() != req.questions.len() {
+            return None;
+        }
+        let raw = req.input.get("questions")?.as_array()?;
+        let mut map = serde_json::Map::new();
+        for ((q, raw_q), given) in req.questions.iter().zip(raw).zip(answers) {
+            if given.is_empty() || (!q.multi_select && given.len() > 1) || given.len() > MAX_ANSWERS
+            {
+                return None;
+            }
+            let mut parts = Vec::new();
+            for a in given {
+                let clean = sanitize(a.trim());
+                if clean.is_empty() || clean.chars().count() > MAX_ANSWER_CHARS {
+                    return None;
+                }
+                parts.push(clean);
+            }
+            let key = raw_q.get("question")?.as_str()?;
+            map.insert(key.to_owned(), Value::String(parts.join(", ")));
+        }
+        let mut input = req.input.clone();
+        input
+            .as_object_mut()?
+            .insert("answers".into(), Value::Object(map));
+        let mut resolved = self.decide(request_id, Decision::Allow, now_ms)?;
+        resolved.updated_input = Some(input);
+        Some(resolved)
     }
 
     /// Expires requests (as `Pass`) and drops stale sessions; idempotent per `now_ms`.
@@ -336,6 +481,7 @@ impl Agents {
                 out.push(Resolved {
                     request_id: r.id.clone(),
                     decision: Decision::Pass,
+                    updated_input: None,
                 });
                 false
             } else {
@@ -642,7 +788,8 @@ mod tests {
             r,
             Resolved {
                 request_id: id.clone(),
-                decision: Decision::Allow
+                decision: Decision::Allow,
+                updated_input: None
             }
         );
         assert!(a.pending().is_empty());
@@ -697,7 +844,8 @@ mod tests {
             out,
             vec![Resolved {
                 request_id: id,
-                decision: Decision::Pass
+                decision: Decision::Pass,
+                updated_input: None
             }]
         );
         assert!(a.pending().is_empty());
@@ -897,7 +1045,8 @@ mod tests {
             a.tick(10),
             vec![Resolved {
                 request_id: r1,
-                decision: Decision::Pass
+                decision: Decision::Pass,
+                updated_input: None
             }]
         );
         assert!(a.tick(10).is_empty());
@@ -974,6 +1123,135 @@ mod tests {
         assert_eq!(
             a.sessions()[0].last_message.as_deref(),
             Some("done\u{FFFD}")
+        );
+    }
+
+    fn ask(multi: bool) -> serde_json::Value {
+        json!({"questions":[
+            {"question":"Which DB?","header":"Database","multiSelect":multi,
+             "options":[{"label":"Postgres","description":"relational"},
+                        {"label":"SQLite","description":"embedded"}]},
+            {"question":"Add tests?","header":"Tests","multiSelect":false,
+             "options":[{"label":"Yes","description":""},{"label":"No","description":""}]}
+        ]})
+    }
+
+    #[test]
+    fn a_question_tool_shows_its_questions_and_choices() {
+        let mut a = agents();
+        a.on_hook(&perm("s", "AskUserQuestion", ask(false)), 0);
+        let q = &a.pending()[0].questions;
+        assert_eq!(q.len(), 2);
+        assert_eq!(q[0].header, "Database");
+        assert_eq!(q[0].options[1].label, "SQLite");
+        assert!(!q[0].multi_select);
+        // Other tools never carry questions, even with the same input.
+        a.on_hook(&perm("t", "Bash", ask(false)), 0);
+        assert!(a.pending()[1].questions.is_empty());
+    }
+
+    #[test]
+    fn an_answer_allows_with_the_input_plus_answers_by_question_text() {
+        let mut a = agents();
+        let id = pending_id(a.on_hook(&perm("s", "AskUserQuestion", ask(true)), 0));
+        let r = a
+            .answer(
+                &id,
+                &[vec!["Postgres".into(), "SQLite".into()], vec!["No".into()]],
+                5,
+            )
+            .unwrap();
+        assert_eq!(r.decision, Decision::Allow);
+        let input = r.updated_input.unwrap();
+        assert_eq!(input["answers"]["Which DB?"], "Postgres, SQLite");
+        assert_eq!(input["answers"]["Add tests?"], "No");
+        assert_eq!(input["questions"], ask(true)["questions"]);
+        assert!(a.pending().is_empty());
+    }
+
+    #[test]
+    fn typed_text_is_a_valid_answer_and_is_made_safe() {
+        let mut a = agents();
+        let id = pending_id(a.on_hook(&perm("s", "AskUserQuestion", ask(false)), 0));
+        let r = a
+            .answer(
+                &id,
+                &[vec!["  MySQL\u{202e}  ".into()], vec!["Yes".into()]],
+                1,
+            )
+            .unwrap();
+        assert_eq!(
+            r.updated_input.unwrap()["answers"]["Which DB?"],
+            "MySQL\u{FFFD}"
+        );
+    }
+
+    #[test]
+    fn an_answer_that_does_not_fit_leaves_the_request_waiting() {
+        let mut a = agents();
+        let id = pending_id(a.on_hook(&perm("s", "AskUserQuestion", ask(false)), 0));
+        let long = "x".repeat(MAX_ANSWER_CHARS + 1);
+        let bad: Vec<Vec<Vec<String>>> = vec![
+            vec![],                                                 // wrong count
+            vec![vec!["Postgres".into()]],                          // wrong count
+            vec![vec![], vec!["Yes".into()]],                       // nothing chosen
+            vec![vec!["  ".into()], vec!["Yes".into()]],            // blank
+            vec![vec!["A".into(), "B".into()], vec!["Yes".into()]], // two for single choice
+            vec![vec![long], vec!["Yes".into()]],                   // too long
+        ];
+        for answers in bad {
+            assert!(a.answer(&id, &answers, 1).is_none(), "{answers:?}");
+            assert_eq!(a.pending().len(), 1);
+        }
+        assert!(a.answer("nope", &[], 1).is_none());
+    }
+
+    #[test]
+    fn only_a_question_can_be_answered() {
+        let mut a = agents();
+        let id = pending_id(a.on_hook(&perm("s", "Bash", json!({"command":"ls"})), 0));
+        assert!(a.answer(&id, &[vec!["x".into()]], 1).is_none());
+        assert_eq!(a.pending().len(), 1);
+    }
+
+    #[test]
+    fn a_question_that_cannot_be_shown_in_full_falls_back_to_the_plain_prompt() {
+        let mut a = agents();
+        let mut input = ask(false);
+        input["questions"][0]["question"] = json!("q".repeat(MAX_QUESTION_CHARS + 1));
+        a.on_hook(&perm("s", "AskUserQuestion", input), 0);
+        assert!(a.pending()[0].questions.is_empty());
+        a.on_hook(
+            &perm("t", "AskUserQuestion", json!({"questions": "nope"})),
+            0,
+        );
+        assert!(a.pending()[1].questions.is_empty());
+        let many = json!({"questions": (0..5).map(|i| json!({"question": format!("q{i}"),
+            "header":"h","options":[]})).collect::<Vec<_>>()});
+        a.on_hook(&perm("u", "AskUserQuestion", many), 0);
+        assert!(a.pending()[2].questions.is_empty());
+    }
+
+    #[test]
+    fn a_multiple_choice_takes_several_answers_of_the_users_own_up_to_a_limit() {
+        let mut a = agents();
+        let id = pending_id(a.on_hook(&perm("s", "AskUserQuestion", ask(true)), 0));
+        let own: Vec<String> = (0..MAX_ANSWERS + 1).map(|i| format!("mine {i}")).collect();
+        let second = vec!["No".to_string()];
+        assert!(a.answer(&id, &[own.clone(), second.clone()], 1).is_none());
+        let r = a
+            .answer(
+                &id,
+                &[
+                    vec!["Postgres".into(), "my own".into(), "another".into()],
+                    second,
+                ],
+                1,
+            )
+            .unwrap();
+        assert_eq!(
+            r.updated_input.unwrap()["answers"]["Which DB?"],
+            "Postgres, my own, another"
         );
     }
 }

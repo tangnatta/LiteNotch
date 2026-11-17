@@ -119,14 +119,16 @@ pub enum ThemeChoice {
 }
 
 /// How the notch is drawn. `Attached` hangs from the top edge in the
-/// notch's own silhouette; `Floating` is a capsule inside the menu bar, and
-/// the toast and the open panel float just below it.
+/// notch's own silhouette; `Island` is a capsule inside the menu bar, and
+/// the toast and the open panel hang just below it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum NotchStyle {
     #[default]
     Attached,
-    Floating,
+    /// Saved as `floating` by earlier versions, which are still read.
+    #[serde(alias = "floating")]
+    Island,
 }
 
 /// How the closed notch and the toast are drawn.
@@ -468,6 +470,11 @@ pub enum Command {
     /// window forward): it no longer needs the waiting dot.
     AgentSeen {
         session_id: String,
+    },
+    /// The user answered the questions of a pending `AskUserQuestion`.
+    AgentAnswer {
+        request_id: String,
+        answers: Vec<Vec<String>>,
     },
     CaffeineToggle,
     CaffeineActivate {
@@ -1281,6 +1288,15 @@ impl Core {
                         },
                         now,
                     );
+                    fx.push(Effect::Resolve(resolved));
+                }
+            }
+            Command::AgentAnswer {
+                request_id,
+                answers,
+            } => {
+                if let Some(resolved) = self.agents.answer(&request_id, &answers, now) {
+                    self.count(Feature::AgentAllow, now);
                     fx.push(Effect::Resolve(resolved));
                 }
             }
@@ -3289,7 +3305,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: id.clone(),
-                decision: Decision::Allow
+                decision: Decision::Allow,
+                updated_input: None
             })]
         );
         let v = c.view(T0 + 2);
@@ -3332,7 +3349,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: a,
-                decision: Decision::Deny
+                decision: Decision::Deny,
+                updated_input: None
             })]
         );
         let b = permission(&mut c, "s1", "ls", T0 + 2);
@@ -3342,7 +3360,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: b,
-                decision: Decision::Pass
+                decision: Decision::Pass,
+                updated_input: None
             })]
         );
         assert_eq!(
@@ -3369,7 +3388,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: id,
-                decision: Decision::Pass
+                decision: Decision::Pass,
+                updated_input: None
             })]
         );
         assert_eq!(uses(&c, Feature::AgentAllow), 0);
@@ -3387,7 +3407,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: id,
-                decision: Decision::Deny
+                decision: Decision::Deny,
+                updated_input: None
             })]
         );
     }
@@ -3405,7 +3426,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: id,
-                decision: Decision::Pass
+                decision: Decision::Pass,
+                updated_input: None
             })]
         );
         assert!(c.view(T0 + 1).agents.sessions.is_empty());
@@ -3920,7 +3942,8 @@ mod tests {
             fx,
             vec![Effect::Resolve(Resolved {
                 request_id: id,
-                decision: Decision::Pass
+                decision: Decision::Pass,
+                updated_input: None
             })]
         );
         assert_eq!(uses(&c, Feature::AgentAllow), 0);
@@ -4057,7 +4080,7 @@ mod tests {
         assert!(!s.general.all_screens);
         s.appearance.theme = ThemeChoice::Light;
         s.appearance.accent = "3366ff".into();
-        s.appearance.notch_style = NotchStyle::Floating;
+        s.appearance.notch_style = NotchStyle::Island;
         s.general.all_screens = true;
         cmd(
             &mut c,
@@ -4069,7 +4092,7 @@ mod tests {
         let v = c.view(T0).settings;
         assert_eq!(v.appearance.theme, ThemeChoice::Light);
         assert_eq!(v.appearance.accent, "#3366FF");
-        assert_eq!(v.appearance.notch_style, NotchStyle::Floating);
+        assert_eq!(v.appearance.notch_style, NotchStyle::Island);
         assert!(v.general.all_screens);
         s.appearance.accent = "not a colour".into();
         cmd(
@@ -4109,7 +4132,7 @@ mod tests {
         let json = serde_json::to_value(c.view(T0).settings.appearance).unwrap();
         assert_eq!(
             json,
-            json!({"theme":"light","accent":DEFAULT_ACCENT,"notch_style":"floating","closed_notch":"dark","material":"solid","shrink":"off"})
+            json!({"theme":"light","accent":DEFAULT_ACCENT,"notch_style":"island","closed_notch":"dark","material":"solid","shrink":"off"})
         );
         // Settings saved before the field existed load as the original look.
         let old: Appearance =
@@ -4147,7 +4170,7 @@ mod tests {
     fn the_appearance_options_persist_together_and_a_partial_file_loads() {
         let mut c = core();
         let mut s = c.view(T0).settings;
-        s.appearance.notch_style = NotchStyle::Floating;
+        s.appearance.notch_style = NotchStyle::Island;
         s.appearance.closed_notch = ClosedNotch::Theme;
         s.appearance.material = Material::Glass;
         cmd(
@@ -4158,17 +4181,26 @@ mod tests {
             T0,
         );
         let again = Core::new(c.persisted()).view(T0).settings.appearance;
-        assert_eq!(again.notch_style, NotchStyle::Floating);
+        assert_eq!(again.notch_style, NotchStyle::Island);
         assert_eq!(again.closed_notch, ClosedNotch::Theme);
         assert_eq!(again.material, Material::Glass);
         // A settings file that names one option leaves the rest at the old look.
         let partial: Settings =
-            serde_json::from_value(json!({"appearance":{"notch_style":"floating"}})).unwrap();
-        assert_eq!(partial.appearance.notch_style, NotchStyle::Floating);
+            serde_json::from_value(json!({"appearance":{"notch_style":"island"}})).unwrap();
+        assert_eq!(partial.appearance.notch_style, NotchStyle::Island);
         assert_eq!(partial.appearance.closed_notch, ClosedNotch::Dark);
         assert_eq!(partial.appearance.material, Material::Solid);
         assert_eq!(partial.appearance.theme, ThemeChoice::System);
         assert_eq!(partial.appearance.accent, DEFAULT_ACCENT);
+    }
+
+    #[test]
+    fn a_style_saved_as_floating_by_an_earlier_version_still_loads_as_island() {
+        let old: Settings =
+            serde_json::from_value(json!({"appearance":{"notch_style":"floating"}})).unwrap();
+        assert_eq!(old.appearance.notch_style, NotchStyle::Island);
+        let saved = serde_json::to_value(&old).unwrap();
+        assert_eq!(saved["appearance"]["notch_style"], "island");
     }
 
     #[test]

@@ -168,7 +168,8 @@
         "detail": "cargo test --workspace && git push origin feature/notch-ui",
         "truncated": false,
         "created_ms": 1794400000010,
-        "expires_ms": 1794400120010
+        "expires_ms": 1794400120010,
+        "questions": []
       }
     ],
     "hooks_installed": true,

@@ -108,13 +108,15 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   mark while running; pausing keeps time left still, so it never repeats.
   Warning times join `next_deadline`, so peeks add no polling.
   Three wellbeing peeks (`ActivityKind::Nudge`), each with an Off choice
-  in Settings › Timer:
+  in Settings › Timer. The eye break and Move both count screen time only
+  (`Core::is_away`: the shell's `screen_away` or `lid_shut`, which is the lid
+  shut in closed-lid mode with no other display, so caffeine holding a shut
+  Mac awake does not count); they never follow the focus timer (an earlier
+  `move_counts` choice is gone, old files still load):
   the eye break (`peek.eye_break_mins`, 0 = off, the default; every few
   minutes of screen time), a quick blinking `>_<` with "Look away" for 3 s
   (`EYE_MS`) so the user blinks; the Move reminder (`peek.move_mins`, 0 =
-  off, the default; `move_counts`: Focus = time into a running focus
-  phase, tied to focus rather than the wall clock so it is not ignored as
-  background noise, or Screen = time the screen is on), one of
+  off, the default), one of
   `MOVE_LINES` (stretch, walk, water) picked from `now_ms` and never the
   same kind twice in a row, 8 s (`NUDGE_MS`) so its line can scroll; and a
   line after a completed (not skipped) break (`peek.break_quote`, on by
@@ -393,6 +395,20 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   It removes the quarantine flag in `postflight` because the app is not
   notarized; notarization needs a Developer ID certificate.
 - Only Apple silicon is built: every Mac with a notch is Apple silicon.
+
+## Core and shell are held to each other
+
+`core::schema` writes `macos/Fixtures/schema.json` with the fixtures: the
+limits the core really keeps (measured by saving extreme values through
+`SetSettings`), the sounds, and every enum's variants (listed with an
+exhaustive `match`, so a new variant does not compile until listed).
+`ParityTests` (Swift) compares the shell with it: the same enum values, sounds
+from the core, every Settings control inside what the core keeps
+(`SettingsLimits`, the one place the ranges are written), every setting the
+core writes surviving a decode and encode unchanged, and every top-level
+view-model field known to the shell. A core setting with no control must be in
+`ParityTests.withoutControl` with a reason. Regenerate with the fixtures
+command after changing the core.
 
 ## Rules that are easy to break
 

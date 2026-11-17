@@ -16,14 +16,14 @@ private func decodeLenient<E: LenientEnum>(_ decoder: Decoder) throws -> E {
     return E(rawValue: raw) ?? E.unknownCase
 }
 
-public enum ActivityKind: String, LenientEnum {
+public enum ActivityKind: String, LenientEnum, CaseIterable {
     case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, calendar, nudge, day, unknown
     static var unknownCase: ActivityKind { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
 /// Why the closed notch is showing something for a moment (`compact.peek`).
-public enum PeekKind: String, LenientEnum {
+public enum PeekKind: String, LenientEnum, CaseIterable {
     case trackChanged = "track_changed"
     case timeWarning = "time_warning"
     /// Blink and look away, briefly; `compact.kind` is `.nudge`.
@@ -42,13 +42,6 @@ public enum PeekKind: String, LenientEnum {
     public var isNudge: Bool { self == .eyeBreak || self == .move || self == .quote || self == .stillWorking }
 }
 
-/// What the Move reminder counts (`settings.peek.move_counts`).
-public enum CountTime: String, LenientEnum {
-    case focus, screen, unknown
-    static var unknownCase: CountTime { .unknown }
-    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
-}
-
 /// Something a banner offers to do in one click.
 public enum BannerAction: String, LenientEnum {
     /// Pause the running focus session (a meeting is starting).
@@ -60,7 +53,7 @@ public enum BannerAction: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
-public enum Phase: String, LenientEnum {
+public enum Phase: String, LenientEnum, CaseIterable {
     case idle, focus
     case shortBreak = "short_break"
     case longBreak = "long_break"
@@ -69,37 +62,37 @@ public enum Phase: String, LenientEnum {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
-public enum RunState: String, LenientEnum {
+public enum RunState: String, LenientEnum, CaseIterable {
     case stopped, running, paused, unknown
     static var unknownCase: RunState { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
-public enum ClipKind: String, LenientEnum {
+public enum ClipKind: String, LenientEnum, CaseIterable {
     case text, files, image, unknown
     static var unknownCase: ClipKind { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
-public enum Priority: String, LenientEnum {
+public enum Priority: String, LenientEnum, CaseIterable {
     case low, normal, high, critical, unknown
     static var unknownCase: Priority { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
-public enum AwakeMode: String, LenientEnum {
+public enum AwakeMode: String, LenientEnum, CaseIterable {
     case off, system, display, unknown
     static var unknownCase: AwakeMode { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
-public enum LidState: String, LenientEnum {
+public enum LidState: String, LenientEnum, CaseIterable {
     case off, pending, on, unknown
     static var unknownCase: LidState { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
-public enum AgentStatus: String, LenientEnum {
+public enum AgentStatus: String, LenientEnum, CaseIterable {
     case working
     case waitingApproval = "waiting_approval"
     case waitingInput = "waiting_input"
@@ -150,9 +143,8 @@ public struct PeekConfig: Codable, Equatable {
 
     /// Minutes of screen time between eye breaks; 0 (the default) is off.
     public var eyeBreakMins: Int = 0
-    /// Minutes between Move reminders; 0 (the default) is off.
+    /// Minutes of screen time between Move reminders; 0 (the default) is off.
     public var moveMins: Int = 0
-    public var moveCounts: CountTime = .focus
     /// A short encouraging line when a pomodoro break completes.
     public var breakQuote: Bool = true
     /// Remind the user who keeps working during a break.
@@ -161,7 +153,7 @@ public struct PeekConfig: Codable, Equatable {
     public static let `default` = PeekConfig(trackChange: true, timeWarningSecs: 300)
 
     enum CodingKeys: String, CodingKey {
-        case trackChange, timeWarningSecs, eyeBreakMins, moveMins, moveCounts, breakQuote, stillWorking
+        case trackChange, timeWarningSecs, eyeBreakMins, moveMins, breakQuote, stillWorking
     }
 }
 
@@ -173,25 +165,22 @@ extension PeekConfig {
         timeWarningSecs = try c.decode(Int.self, forKey: .timeWarningSecs)
         eyeBreakMins = (try? c.decodeIfPresent(Int.self, forKey: .eyeBreakMins)) ?? 0
         moveMins = (try? c.decodeIfPresent(Int.self, forKey: .moveMins)) ?? 0
-        moveCounts = (try? c.decodeIfPresent(CountTime.self, forKey: .moveCounts)) ?? .focus
         breakQuote = (try? c.decodeIfPresent(Bool.self, forKey: .breakQuote)) ?? true
         stillWorking = (try? c.decodeIfPresent(Bool.self, forKey: .stillWorking)) ?? true
     }
 
-    // An unknown `move_counts` is left out so the core keeps its default.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(trackChange, forKey: .trackChange)
         try c.encode(timeWarningSecs, forKey: .timeWarningSecs)
         try c.encode(eyeBreakMins, forKey: .eyeBreakMins)
         try c.encode(moveMins, forKey: .moveMins)
-        if moveCounts != .unknown { try c.encode(moveCounts, forKey: .moveCounts) }
         try c.encode(breakQuote, forKey: .breakQuote)
         try c.encode(stillWorking, forKey: .stillWorking)
     }
 }
 
-public enum ThemeChoice: String, LenientEnum {
+public enum ThemeChoice: String, LenientEnum, CaseIterable {
     case system, dark, light, unknown
     static var unknownCase: ThemeChoice { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
@@ -200,7 +189,7 @@ public enum ThemeChoice: String, LenientEnum {
 /// How the notch is drawn: hanging from the top edge in the notch's own
 /// silhouette (the original look), or as an island: a capsule inside the
 /// menu bar with the toast and the open panel just below it.
-public enum NotchStyle: String, LenientEnum {
+public enum NotchStyle: String, LenientEnum, CaseIterable {
     case attached, island, unknown
     static var unknownCase: NotchStyle { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
@@ -208,7 +197,7 @@ public enum NotchStyle: String, LenientEnum {
 
 /// How the closed notch and the toast are drawn: black in every theme
 /// (the default, it reads as part of the hardware notch) or like the panel.
-public enum ClosedNotchChoice: String, LenientEnum {
+public enum ClosedNotchChoice: String, LenientEnum, CaseIterable {
     case dark, theme, unknown
     static var unknownCase: ClosedNotchChoice { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
@@ -216,7 +205,7 @@ public enum ClosedNotchChoice: String, LenientEnum {
 
 /// On a display without a notch, when the closed notch shrinks to a thin
 /// strip (`appearance.shrink`). Never with a hardware notch.
-public enum ShrinkChoice: String, LenientEnum {
+public enum ShrinkChoice: String, LenientEnum, CaseIterable {
     case off
     case whenEmpty = "when_empty"
     case always, unknown
@@ -226,7 +215,7 @@ public enum ShrinkChoice: String, LenientEnum {
 
 /// What the open panel is drawn with (`appearance.material`). Glass is the
 /// macOS 26 Liquid Glass material; see `GlassSupport`.
-public enum MaterialChoice: String, LenientEnum {
+public enum MaterialChoice: String, LenientEnum, CaseIterable {
     case solid, glass, unknown
     static var unknownCase: MaterialChoice { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
@@ -372,6 +361,8 @@ public struct AgentConfig: Codable, Equatable {
     public var enabled: Bool
     public var approvalTimeoutSecs: Int
     public var sessionTtlSecs: Int
+    /// A session with no event for this long is forgotten (no control for it).
+    public var sessionKeepSecs: Int
     public var autoAllowTools: [String]
 }
 
@@ -428,7 +419,7 @@ public struct CalendarConfig: Codable, Equatable {
 }
 
 /// What the big card on the left of Home shows (`day::HomeCard`).
-public enum HomeCard: String, Codable, Equatable {
+public enum HomeCard: String, Codable, Equatable, CaseIterable {
     case media, day, auto
     public init(from decoder: Decoder) throws {
         self = HomeCard(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .auto

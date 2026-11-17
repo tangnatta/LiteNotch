@@ -1,0 +1,179 @@
+{
+  "enums": {
+    "activity_kind": [
+      "idle",
+      "approval",
+      "banner",
+      "pomodoro",
+      "media",
+      "caffeine",
+      "agent",
+      "meeting",
+      "timer",
+      "calendar",
+      "nudge",
+      "day"
+    ],
+    "agent_status": [
+      "working",
+      "waiting_approval",
+      "waiting_input",
+      "idle",
+      "ended"
+    ],
+    "awake_mode": [
+      "off",
+      "system",
+      "display"
+    ],
+    "clip_kind": [
+      "text",
+      "files",
+      "image"
+    ],
+    "closed_notch": [
+      "dark",
+      "theme"
+    ],
+    "home_card": [
+      "media",
+      "day",
+      "auto"
+    ],
+    "lid_state": [
+      "off",
+      "pending",
+      "on"
+    ],
+    "material": [
+      "solid",
+      "glass"
+    ],
+    "notch_style": [
+      "attached",
+      "island"
+    ],
+    "peek_kind": [
+      "track_changed",
+      "time_warning",
+      "eye_break",
+      "move",
+      "quote",
+      "still_working"
+    ],
+    "phase": [
+      "idle",
+      "focus",
+      "short_break",
+      "long_break"
+    ],
+    "priority": [
+      "low",
+      "normal",
+      "high",
+      "critical"
+    ],
+    "run_state": [
+      "stopped",
+      "running",
+      "paused"
+    ],
+    "shrink": [
+      "off",
+      "when_empty",
+      "always"
+    ],
+    "tab": [
+      "home",
+      "music",
+      "timer",
+      "clipboard",
+      "agents",
+      "inbox",
+      "settings"
+    ],
+    "theme": [
+      "system",
+      "dark",
+      "light"
+    ]
+  },
+  "limits": {
+    "agent.approval_timeout_secs": [
+      5,
+      120
+    ],
+    "caffeine.battery_floor_pct": [
+      0,
+      100
+    ],
+    "calendar.alert_minutes": [
+      0,
+      60
+    ],
+    "clipboard.max_items": [
+      1,
+      10000
+    ],
+    "day.end_min": [
+      630,
+      1440
+    ],
+    "day.start_min": [
+      0,
+      1410
+    ],
+    "notify.banner_secs": [
+      2,
+      30
+    ],
+    "notify.max_history": [
+      1,
+      500
+    ],
+    "peek.eye_break_mins": [
+      1,
+      60
+    ],
+    "peek.move_mins": [
+      5,
+      180
+    ],
+    "peek.time_warning_secs": [
+      0,
+      3600
+    ],
+    "pomodoro.focus_secs": [
+      10,
+      14400
+    ],
+    "pomodoro.long_break_secs": [
+      10,
+      14400
+    ],
+    "pomodoro.rounds_before_long": [
+      1,
+      12
+    ],
+    "pomodoro.short_break_secs": [
+      10,
+      14400
+    ]
+  },
+  "sounds": [
+    "Basso",
+    "Blow",
+    "Bottle",
+    "Frog",
+    "Funk",
+    "Glass",
+    "Hero",
+    "Morse",
+    "Ping",
+    "Pop",
+    "Purr",
+    "Sosumi",
+    "Submarine",
+    "Tink"
+  ]
+}

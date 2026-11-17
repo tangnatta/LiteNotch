@@ -308,8 +308,13 @@ it was showing. These never land in the inbox. All are set in
   ends.
 - **Eye break** (off unless you turn it on): every few minutes at the
   screen, a blinking face and "Look away".
-- **Move** (off unless you turn it on): stretch, walk or drink water, counted
-  either from the start of a focus session or from time at the Mac.
+- **Move** (off unless you turn it on): stretch, walk or drink water.
+
+Both count only the minutes you are at the Mac, whatever the focus timer is
+doing: the screen on and unlocked, and the lid open. They start over when you
+lock the screen, the Mac sleeps, or you close the lid (also when keep awake
+holds a closed-lid Mac awake, since nobody can see the screen then). With an
+external display connected the lid does not matter.
 
 Reminders pause while the screen is locked or asleep.
 

@@ -356,6 +356,10 @@ fn main() {
     nag(&mut w, first + 180_000);
     views.push(("banner-skip-break", w.view(first + 180_020)));
 
+    let schema = serde_json::to_string_pretty(&litenotch_core::schema::schema()).expect("schema");
+    std::fs::write(format!("{dir}/schema.json"), schema).expect("schema written");
+    println!("{dir}/schema.json");
+
     for (name, view) in views {
         let json = serde_json::to_string_pretty(&view).expect("view model serializes");
         let path = format!("{dir}/{name}.json");

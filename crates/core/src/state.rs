@@ -30,9 +30,7 @@ use crate::usage::{local_day_start_ms, Usage, UsageRecord, UsageSnapshot};
 
 mod presentation;
 use presentation::Peek;
-pub use presentation::{
-    CountTime, PeekConfig, PeekKind, BREAK_LINES, EYE_MS, MOVE_LINES, NUDGE_MS, PEEK_MS,
-};
+pub use presentation::{PeekConfig, PeekKind, BREAK_LINES, EYE_MS, MOVE_LINES, NUDGE_MS, PEEK_MS};
 
 /// Version of the persisted file layout.
 pub const PERSIST_VERSION: u32 = 1;
@@ -1391,6 +1389,7 @@ impl Core {
         // Store what the modules accepted after clamping.
         settings.pomodoro = self.pomodoro.config().clone();
         settings.clipboard = self.clipboard.config().clone();
+        settings.notify = self.notify.config().clone();
         settings.caffeine = self.caffeine.config().clone();
         settings.agent = self.agents.config().clone();
         settings.calendar = self.calendar.config().clone();

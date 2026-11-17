@@ -17,5 +17,6 @@ pub mod media;
 pub mod meeting;
 pub mod notify;
 pub mod pomodoro;
+pub mod schema;
 pub mod state;
 pub mod usage;

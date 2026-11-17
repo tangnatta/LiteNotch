@@ -247,7 +247,7 @@ final class CommandTests: XCTestCase {
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
         XCTAssertEqual(inner["peek"] as? NSDictionary,
                        ["track_change": true, "time_warning_secs": 300,
-                        "eye_break_mins": 0, "move_mins": 0, "move_counts": "focus", "break_quote": true,
+                        "eye_break_mins": 0, "move_mins": 0, "break_quote": true,
                         "still_working": true])
         XCTAssertEqual(inner["appearance"] as? NSDictionary,
                        ["theme": "system", "accent": "#FF9E0A", "notch_style": "attached", "closed_notch": "dark",
@@ -467,19 +467,17 @@ final class GeometryTests: XCTestCase {
         let oldPeek = try d.decode(PeekConfig.self, from: Data(#"{"track_change":false,"time_warning_secs":0}"#.utf8))
         XCTAssertEqual(oldPeek.eyeBreakMins, 0)
         XCTAssertEqual(oldPeek.moveMins, 0)
-        XCTAssertEqual(oldPeek.moveCounts, .focus)
         XCTAssertTrue(oldPeek.breakQuote)
-        let futurePeek = try d.decode(PeekConfig.self, from: Data(#"{"track_change":true,"time_warning_secs":0,"move_counts":"steps"}"#.utf8))
-        XCTAssertEqual(futurePeek.moveCounts, .unknown)
-        XCTAssertFalse(String(decoding: try e.encode(futurePeek), as: UTF8.self).contains("move_counts"))
+        // A file saved when Move could count focus time still loads, and the key is not written back.
+        let withCounts = try d.decode(PeekConfig.self, from: Data(#"{"track_change":true,"time_warning_secs":0,"move_mins":20,"move_counts":"focus"}"#.utf8))
+        XCTAssertEqual(withCounts.moveMins, 20)
+        XCTAssertFalse(String(decoding: try e.encode(withCounts), as: UTF8.self).contains("move_counts"))
         settings.peek.eyeBreakMins = 5
         settings.peek.moveMins = 30
-        settings.peek.moveCounts = .screen
         settings.peek.breakQuote = false
         let edited = String(decoding: try e.encode(settings), as: UTF8.self)
         XCTAssertTrue(edited.contains(#""eye_break_mins":5"#))
         XCTAssertTrue(edited.contains(#""move_mins":30"#))
-        XCTAssertTrue(edited.contains(#""move_counts":"screen""#))
         XCTAssertTrue(edited.contains(#""break_quote":false"#))
     }
 

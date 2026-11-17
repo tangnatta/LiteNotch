@@ -439,7 +439,6 @@
       "time_warning_secs": 300,
       "eye_break_mins": 0,
       "move_mins": 20,
-      "move_counts": "focus",
       "break_quote": true,
       "still_working": true
     },

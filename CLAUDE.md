@@ -154,6 +154,10 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   Settings is a sidebar of feature categories (`AppModel.settingsSection`,
   so other tabs can deep-link). Hover opens after a delay, a click opens at
   once, a click on the tab-bar background closes.
+  Opening (hover or click) lands on the page of a banner that showed since
+  the panel last closed (within 5 min; agent banners → Agents › Sessions,
+  others without a tab → Inbox), else on Home once the panel has been
+  closed 5 min, else on the last tab (`PanelState.landing`).
   Two notch styles (`appearance.notch_style`, Settings → General): Attached
   (default, the original geometry; keep it pixel-identical for existing
   users on a display with a notch; without one it uses the one row above) and Floating, a capsule inset 3 pt inside the menu bar or notch

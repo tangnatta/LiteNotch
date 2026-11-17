@@ -503,7 +503,13 @@ struct SettingsTab: View {
             VText(g).nfont(.caption).foregroundStyle(NT.text2).lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        stepper("Stop when battery is below", $draft.caffeine.batteryFloorPct, 5...50, step: 5, unit: "%")
+        stepper("Keep awake stops below", $draft.caffeine.batteryFloorPct, 0...50, step: 5, unit: "%")
+        stepper("Lid-closed mode needs at least", $draft.caffeine.lidBatteryFloorPct, 0...50, step: 5, unit: "%")
+        if draft.caffeine.batteryFloorPct == 0 || draft.caffeine.lidBatteryFloorPct == 0 {
+            VText("0 % means no limit: the Mac stays awake until the battery runs out.")
+                .nfont(.caption).foregroundStyle(NT.text2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
         row("Keep awake for", caption: awakeCaption(c)) {
             HStack(spacing: 4) {
                 chip("30m", 1800); chip("1h", 3600); chip("2h", 7200); chip("\u{221E}", nil)

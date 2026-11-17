@@ -845,6 +845,30 @@ mod tests {
     }
 
     #[test]
+    fn the_users_own_battery_floors_decide_what_is_allowed() {
+        // A lid floor of 15 lets lid mode start at 17 %, where the default
+        // floor of 25 refused it.
+        let mut k = Caffeine::new(CaffeineConfig {
+            lid_battery_floor_pct: 15,
+            ..Default::default()
+        });
+        k.on_power(batt(17), 0);
+        assert_eq!(k.set_lid(true, 1)[1], CaffeineEffect::EnableLid);
+
+        // A floor of 0 means no limit, for both, even at 3 %.
+        let mut k = Caffeine::new(CaffeineConfig {
+            battery_floor_pct: 0,
+            lid_battery_floor_pct: 0,
+            ..Default::default()
+        });
+        k.on_power(batt(3), 0);
+        assert!(!k.activate(AwakeMode::Display, None, 1).is_empty());
+        assert!(k.on_power(batt(2), 2).is_empty());
+        assert_eq!(k.set_lid(true, 3), vec![CaffeineEffect::EnableLid]);
+        assert_eq!(k.snapshot(3).guard, None);
+    }
+
+    #[test]
     fn lid_requires_ac_with_unknown_battery_pct() {
         let mut k = Caffeine::new(CaffeineConfig {
             lid_requires_ac: true,

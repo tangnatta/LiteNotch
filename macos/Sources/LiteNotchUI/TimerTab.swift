@@ -37,16 +37,20 @@ struct TimerTab: View {
     private var today: some View {
         HStack(alignment: .top, spacing: 0) {
             stat("\(vm.pomodoro.completedToday)",
-                 vm.pomodoro.completedToday == 1 ? "focus session today" : "focus sessions today")
+                 vm.pomodoro.completedToday == 1 ? "focus session today" : "focus sessions today",
+                 tomato: true)
             stat(Format.duration(secs: vm.pomodoro.focusSecsToday), "focused today")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func stat(_ value: String, _ caption: String) -> some View {
+    private func stat(_ value: String, _ caption: String, tomato: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(verbatim: value).nfont(.display)
-                .foregroundStyle(NT.text1).lineLimit(1)
+            HStack(spacing: 4) {
+                if tomato { TomatoIcon(size: 22) }
+                Text(verbatim: value).nfont(.display)
+                    .foregroundStyle(NT.text1).lineLimit(1)
+            }
             Text(verbatim: caption).nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -135,11 +139,12 @@ struct PomodoroCard: View {
     }
 
     private var dots: some View {
-        HStack(spacing: 6) {
+        // Done rounds are ripe tomatoes, the one being focused on is in the
+        // accent, the rest are grey: how far it is to the long break.
+        HStack(spacing: 4) {
             ForEach(0..<max(1, min(p.roundsBeforeLong, 12)), id: \.self) { i in
-                Circle()
-                    .fill(i < p.round ? NT.text1 : (i == p.round && p.phase == .focus ? NT.accent : NT.fillHi))
-                    .frame(width: 6, height: 6)
+                TomatoIcon(size: 14,
+                           tint: i < p.round ? nil : (i == p.round && p.phase == .focus ? NT.accent : NT.fillHi))
             }
         }
         .accessibilityElement(children: .ignore)

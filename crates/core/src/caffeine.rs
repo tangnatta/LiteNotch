@@ -308,6 +308,24 @@ impl Caffeine {
         ]
     }
 
+    /// The Mac slept while closed-lid mode was on and the lid shut, so macOS
+    /// ignored the sleep-disabled flag. Ends the mode and says so, instead of
+    /// leaving it shown as on.
+    pub fn lid_slept(&mut self) -> Vec<CaffeineEffect> {
+        if self.lid != LidState::On {
+            return Vec::new();
+        }
+        self.lid = LidState::Off;
+        vec![
+            CaffeineEffect::DisableLid,
+            notice(
+                "Mac slept with the lid closed",
+                "Closed-lid mode did not keep it awake, so sessions and timers paused. Turn it on again if you need it."
+                    .to_string(),
+            ),
+        ]
+    }
+
     /// When closed-lid mode turns itself off, while it is on.
     fn lid_deadline(&self) -> Option<u64> {
         (self.lid == LidState::On)
@@ -703,6 +721,19 @@ mod tests {
         assert!(is_notice(&fx[1]));
         assert_eq!(k.snapshot(2).lid, LidState::Off);
         assert!(k.lid_lost().is_empty());
+    }
+
+    #[test]
+    fn sleeping_with_lid_mode_on_ends_it_with_a_notice() {
+        let mut k = c();
+        assert!(k.lid_slept().is_empty());
+        k.set_lid(true, 0);
+        k.lid_result(true, 1);
+        let fx = k.lid_slept();
+        assert_eq!(fx[0], CaffeineEffect::DisableLid);
+        assert!(is_notice(&fx[1]));
+        assert_eq!(k.snapshot(2).lid, LidState::Off);
+        assert!(k.lid_slept().is_empty());
     }
 
     #[test]

@@ -89,7 +89,14 @@ pub enum Decision {
 pub struct AgentConfig {
     pub enabled: bool,
     pub approval_timeout_secs: u64,
+    /// A session that is shown as working but has sent no hook event for this
+    /// long is shown as idle: it is most likely waiting on a long tool or on
+    /// the user, and `Stop` never came (idle compaction, a sleeping Mac).
     pub session_ttl_secs: u64,
+    /// A session with no event for this long is forgotten. Claude Code sends
+    /// `SessionEnd` when a session closes, so this only cleans up after
+    /// sessions that died without saying so. Never shorter than the TTL.
+    pub session_keep_secs: u64,
     /// Tool names allowed without asking.
     pub auto_allow_tools: Vec<String>,
 }
@@ -100,6 +107,7 @@ impl Default for AgentConfig {
             enabled: true,
             approval_timeout_secs: 120,
             session_ttl_secs: 1800,
+            session_keep_secs: 12 * 3600,
             auto_allow_tools: Vec::new(),
         }
     }
@@ -139,6 +147,7 @@ fn clamp_cfg(mut cfg: AgentConfig) -> AgentConfig {
     cfg.approval_timeout_secs = cfg
         .approval_timeout_secs
         .clamp(MIN_APPROVAL_TIMEOUT_SECS, MAX_APPROVAL_TIMEOUT_SECS);
+    cfg.session_keep_secs = cfg.session_keep_secs.max(cfg.session_ttl_secs);
     cfg
 }
 
@@ -334,23 +343,41 @@ impl Agents {
             }
         });
         let ttl_ms = self.cfg.session_ttl_secs.saturating_mul(1000);
+        let keep_ms = self.cfg.session_keep_secs.saturating_mul(1000);
         let pending = &self.pending;
         self.sessions.retain(|s| {
             pending.iter().any(|r| r.session_id == s.id)
-                || now_ms.saturating_sub(s.last_event_ms) < ttl_ms
+                || now_ms.saturating_sub(s.last_event_ms) < keep_ms
         });
+        for s in &mut self.sessions {
+            let quiet = now_ms.saturating_sub(s.last_event_ms) >= ttl_ms;
+            if quiet
+                && s.status == AgentStatus::Working
+                && !pending.iter().any(|r| r.session_id == s.id)
+            {
+                s.status = AgentStatus::Idle;
+            }
+        }
         out
     }
 
     /// Earliest time `tick` will change something.
     pub fn next_deadline(&self) -> Option<u64> {
         let ttl_ms = self.cfg.session_ttl_secs.saturating_mul(1000);
+        let keep_ms = self.cfg.session_keep_secs.saturating_mul(1000);
         let req = self.pending.iter().map(|r| r.expires_ms);
         let ses = self
             .sessions
             .iter()
             .filter(|s| !self.pending.iter().any(|r| r.session_id == s.id))
-            .map(|s| s.last_event_ms.saturating_add(ttl_ms));
+            .map(|s| {
+                let after = if s.status == AgentStatus::Working {
+                    ttl_ms
+                } else {
+                    keep_ms
+                };
+                s.last_event_ms.saturating_add(after)
+            });
         let orphaned = (!self.orphaned.is_empty()).then_some(0);
         req.chain(ses).chain(orphaned).min()
     }
@@ -392,6 +419,7 @@ mod tests {
         assert!(c.enabled);
         assert_eq!(c.approval_timeout_secs, 120);
         assert_eq!(c.session_ttl_secs, 1800);
+        assert_eq!(c.session_keep_secs, 12 * 3600);
         assert!(c.auto_allow_tools.is_empty());
     }
 
@@ -697,13 +725,57 @@ mod tests {
     }
 
     #[test]
-    fn tick_removes_sessions_past_ttl() {
+    fn idle_session_outlives_the_ttl_and_is_dropped_only_after_keep() {
+        // A session waiting at its prompt, or one that just compacted, sends
+        // nothing for a long time. It must stay listed (a Mac that slept for
+        // hours used to lose every session at wake).
         let mut a = agents();
-        a.on_hook(&ev("SessionStart", "s", "/p"), 0);
-        a.tick(1_799_999);
-        assert_eq!(a.sessions().len(), 1);
+        a.on_hook(&ev("Stop", "s", "/p"), 0);
         a.tick(1_800_000);
+        a.tick(6 * 3_600_000);
+        assert_eq!(a.sessions().len(), 1);
+        assert_eq!(a.sessions()[0].status, AgentStatus::Idle);
+        a.tick(12 * 3_600_000 - 1);
+        assert_eq!(a.sessions().len(), 1);
+        a.tick(12 * 3_600_000);
         assert!(a.sessions().is_empty());
+    }
+
+    #[test]
+    fn working_session_goes_idle_after_ttl_but_is_kept() {
+        let mut a = agents();
+        a.on_hook(&ev("UserPromptSubmit", "s", "/p"), 0);
+        assert_eq!(a.sessions()[0].status, AgentStatus::Working);
+        a.tick(1_799_999);
+        assert_eq!(a.sessions()[0].status, AgentStatus::Working);
+        a.tick(1_800_000);
+        assert_eq!(a.sessions().len(), 1);
+        assert_eq!(a.sessions()[0].status, AgentStatus::Idle);
+    }
+
+    #[test]
+    fn waiting_input_session_is_not_demoted() {
+        let mut a = agents();
+        let n = HookEvent::parse(
+            &json!({"hook_event_name":"Notification","session_id":"s","cwd":"/p",
+                "message":"Claude needs your input"})
+            .to_string(),
+        )
+        .unwrap();
+        a.on_hook(&n, 0);
+        let before = a.sessions()[0].status;
+        a.tick(3_600_000);
+        assert_eq!(a.sessions()[0].status, before);
+    }
+
+    #[test]
+    fn keep_is_never_shorter_than_ttl() {
+        let a = Agents::new(AgentConfig {
+            session_ttl_secs: 100,
+            session_keep_secs: 5,
+            ..AgentConfig::default()
+        });
+        assert_eq!(a.config().session_keep_secs, 100);
     }
 
     #[test]
@@ -733,7 +805,10 @@ mod tests {
         let mut a = agents();
         assert_eq!(a.next_deadline(), None);
         a.on_hook(&ev("SessionStart", "s", "/p"), 1000);
-        assert_eq!(a.next_deadline(), Some(1000 + 1_800_000));
+        assert_eq!(a.next_deadline(), Some(1000 + 12 * 3_600_000));
+        let mut b = agents();
+        b.on_hook(&ev("UserPromptSubmit", "s", "/p"), 1000);
+        assert_eq!(b.next_deadline(), Some(1000 + 1_800_000));
         a.on_hook(&perm("t", "Bash", json!({})), 2000);
         assert_eq!(a.next_deadline(), Some(2000 + 120_000));
     }

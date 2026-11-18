@@ -175,6 +175,22 @@ public enum Format {
         [startMs, dayAfternoonMs(startMs: startMs, endMs: endMs), endMs]
     }
 
+    /// The plant for the day: a seed before the start, two leaves to 33 %,
+    /// a sapling to 66 %, a young tree to the end, then the full tree.
+    static func growthStage(startMs: Int, endMs: Int, nowMs: Int) -> GrowthStage {
+        if nowMs < startMs { return .seed }
+        if nowMs >= endMs { return .tree }
+        let p = dayPercent(startMs: startMs, endMs: endMs, nowMs: nowMs)
+        return p < 33 ? .leaves : p < 66 ? .sapling : .youngTree
+    }
+
+    /// The times `growthStage` changes: the first moment of each stage.
+    static func growthStageChanges(startMs: Int, endMs: Int) -> [Int] {
+        let span = Double(max(1, endMs - startMs))
+        let at = { (pct: Double) in startMs + Int((pct * span / 100).rounded(.up)) }
+        return [startMs, at(33), at(66), endMs]
+    }
+
     /// When `dayPercent` next changes after `nowMs`.
     public static func nextDayPercentMs(startMs: Int, endMs: Int, nowMs: Int) -> Int {
         let span = max(1, endMs - startMs)

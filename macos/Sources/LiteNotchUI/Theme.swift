@@ -85,6 +85,8 @@ enum NT {
 
     /// Primary text: titles, values.
     static let text1 = dynamic(.text1)
+    /// Day progress's plant in the closed notch; the only place it is green.
+    static let grow = Color(nsColor: .systemGreen)
     /// Secondary text: subtitles, body copy.
     static let text2 = dynamic(.text2)
     /// Captions, timestamps, inactive icons. Still 4.5:1 on every surface
@@ -183,6 +185,7 @@ extension AppearanceConfig {
 
 private struct SnapshotKey: EnvironmentKey { static let defaultValue = false }
 private struct ClockOffsetKey: EnvironmentKey { static let defaultValue = 0 }
+private struct DayIconsKey: EnvironmentKey { static let defaultValue = DayIcons.sun }
 private struct KeyboardRequestKey: EnvironmentKey {
     static let defaultValue: (Bool) -> Void = { _ in }
 }
@@ -198,6 +201,11 @@ extension EnvironmentValues {
     var clockOffsetMs: Int {
         get { self[ClockOffsetKey.self] }
         set { self[ClockOffsetKey.self] = newValue }
+    }
+    /// How the closed notch draws day progress (`settings.day.icons`).
+    var dayIcons: DayIcons {
+        get { self[DayIconsKey.self] }
+        set { self[DayIconsKey.self] = newValue }
     }
     /// Asks the panel to take (or give back) the keyboard, for controls that
     /// have a text field but no `PanelState` of their own.

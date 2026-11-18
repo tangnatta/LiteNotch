@@ -41,6 +41,7 @@ final class ParityTests: XCTestCase {
         try check("shrink", ShrinkChoice.self)
         try check("material", MaterialChoice.self)
         try check("home_card", HomeCard.self)
+        try check("day_icons", DayIcons.self)
         try check("priority", Priority.self)
         try check("awake_mode", AwakeMode.self)
         try check("lid_state", LidState.self)

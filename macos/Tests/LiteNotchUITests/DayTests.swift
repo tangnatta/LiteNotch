@@ -39,6 +39,40 @@ final class DayTests: XCTestCase {
         XCTAssertEqual(Format.daySymbol(startMs: start, endMs: start + 3_600_000, nowMs: start), "sun.horizon.fill")
     }
 
+    func testThePlantGrowsThroughTheDayAndNeverWithers() {
+        func stage(_ hoursIn: Double) -> GrowthStage {
+            Format.growthStage(startMs: start, endMs: end, nowMs: start + Int(hoursIn * 3_600_000))
+        }
+        // An 8-hour day: 33 % is 2 h 38.4 m in, 66 % is 5 h 16.8 m.
+        XCTAssertEqual(stage(-3), .seed)
+        XCTAssertEqual(stage(0), .leaves)
+        XCTAssertEqual(stage(2.6), .leaves)
+        XCTAssertEqual(stage(2.7), .sapling)
+        XCTAssertEqual(stage(5.2), .sapling)
+        XCTAssertEqual(stage(5.3), .youngTree)
+        XCTAssertEqual(stage(7.99), .youngTree)
+        XCTAssertEqual(stage(8), .tree)
+        XCTAssertEqual(stage(16), .tree, "late at night it is still a full tree")
+        // Each change time is the first moment of the next stage.
+        let changes = Format.growthStageChanges(startMs: start, endMs: end)
+        XCTAssertEqual(changes.count, 4)
+        for (at, next) in zip(changes, [GrowthStage.leaves, .sapling, .youngTree, .tree]) {
+            XCTAssertEqual(Format.growthStage(startMs: start, endMs: end, nowMs: at), next)
+            XCTAssertNotEqual(Format.growthStage(startMs: start, endMs: end, nowMs: at - 1), next)
+        }
+    }
+
+    func testIconsDefaultToTheSunAndOldSettingsLoad() throws {
+        let vm = try fixture("day")
+        XCTAssertEqual(vm.settings.day.icons, .sun)
+        let snake = JSONDecoder(); snake.keyDecodingStrategy = .convertFromSnakeCase
+        let old = #"{"enabled":true,"start_min":600,"end_min":1080,"days":31}"#
+        let d = try snake.decode(DayConfig.self, from: Data(old.utf8))
+        XCTAssertEqual(d.icons, .sun)
+        let tree = #"{"enabled":true,"start_min":600,"end_min":1080,"days":31,"icons":"tree"}"#
+        XCTAssertEqual(try snake.decode(DayConfig.self, from: Data(tree.utf8)).icons, .tree)
+    }
+
     func testHomeCardChoice() throws {
         var vm = try fixture("day")
         XCTAssertEqual(vm.settings.day.homeCard, .auto)

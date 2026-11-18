@@ -429,6 +429,14 @@ public enum HomeCard: String, Codable, Equatable, CaseIterable {
     }
 }
 
+/// Mirrors `day::DayIcons`: sun and moon, or a growing plant.
+public enum DayIcons: String, Codable, Equatable, CaseIterable {
+    case sun, tree
+    public init(from decoder: Decoder) throws {
+        self = DayIcons(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .sun
+    }
+}
+
 /// Mirrors `day::DayConfig`: fixed office hours.
 public struct DayConfig: Codable, Equatable {
     public var enabled: Bool
@@ -438,6 +446,7 @@ public struct DayConfig: Codable, Equatable {
     /// Working days, bit 0 = Monday … bit 6 = Sunday.
     public var days: Int
     public var homeCard: HomeCard = .auto
+    public var icons: DayIcons = .sun
 
     public static let `default` = DayConfig(enabled: false, startMin: 600, endMin: 1080, days: 0b001_1111)
 
@@ -453,7 +462,7 @@ public struct DayConfig: Codable, Equatable {
 }
 
 extension DayConfig {
-    // `home_card` is newer than the rest.
+    // `home_card` and `icons` are newer than the rest.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try c.decode(Bool.self, forKey: .enabled)
@@ -461,6 +470,7 @@ extension DayConfig {
         endMin = try c.decode(Int.self, forKey: .endMin)
         days = try c.decode(Int.self, forKey: .days)
         homeCard = (try? c.decodeIfPresent(HomeCard.self, forKey: .homeCard)) ?? .auto
+        icons = (try? c.decodeIfPresent(DayIcons.self, forKey: .icons)) ?? .sun
     }
 }
 

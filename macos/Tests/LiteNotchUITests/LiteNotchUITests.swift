@@ -901,7 +901,7 @@ final class HoverAndClickTests: XCTestCase {
         XCTAssertEqual(model.tab, .settings)
         XCTAssertEqual(model.settingsSection, .timer)
         XCTAssertEqual(bridge.sent.last, #"{"cmd":"tab_opened","tab":"settings"}"#)
-        XCTAssertEqual(SettingsSection.allCases.count, 11)
+        XCTAssertEqual(SettingsSection.allCases.count, 12)
     }
 }
 

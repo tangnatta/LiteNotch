@@ -305,6 +305,23 @@ public struct ClipboardConfig: Codable, Equatable {
 
 public struct MediaConfig: Codable, Equatable {
     public var enabled: Bool
+    /// A ring around the closed notch's artwork that fills as the song plays.
+    public var progressRing: Bool = true
+
+    public static let `default` = MediaConfig(enabled: true, progressRing: true)
+
+    enum CodingKeys: String, CodingKey { case enabled, progressRing }
+
+    // The ring is newer than the rest.
+    public init(enabled: Bool, progressRing: Bool = true) {
+        self.enabled = enabled; self.progressRing = progressRing
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decode(Bool.self, forKey: .enabled)
+        progressRing = (try? c.decodeIfPresent(Bool.self, forKey: .progressRing)) ?? true
+    }
 }
 
 public struct NotifyConfig: Codable, Equatable {
@@ -509,7 +526,7 @@ extension Settings {
         appearance = (try? c.decodeIfPresent(AppearanceConfig.self, forKey: .appearance)) ?? .default
         pomodoro = try c.decode(PomodoroConfig.self, forKey: .pomodoro)
         clipboard = try c.decode(ClipboardConfig.self, forKey: .clipboard)
-        media = try c.decodeIfPresent(MediaConfig.self, forKey: .media) ?? MediaConfig(enabled: true)
+        media = try c.decodeIfPresent(MediaConfig.self, forKey: .media) ?? .default
         notify = try c.decode(NotifyConfig.self, forKey: .notify)
         caffeine = try c.decode(CaffeineConfig.self, forKey: .caffeine)
         agent = try c.decode(AgentConfig.self, forKey: .agent)

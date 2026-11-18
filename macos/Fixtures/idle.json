@@ -208,7 +208,8 @@
       "shrink": "off"
     },
     "media": {
-      "enabled": true
+      "enabled": true,
+      "progress_ring": true
     },
     "pomodoro": {
       "focus_secs": 1500,

@@ -36,6 +36,7 @@ public struct NotchRootView: View {
         let layout = model.layout
         let top = layout.top(for: mode)
         let closedScheme = appearance.closedScheme(system: systemScheme, hardwareNotch: model.hasNotch)
+        let ringMedia = model.view?.settings.media.progressRing == true ? model.view?.media : nil
         let ear = mode == .expanded ? NotchGeometry.expandedEar : NotchGeometry.closedEar
         let bottom: CGFloat = {
             switch mode {
@@ -82,6 +83,7 @@ public struct NotchRootView: View {
                                                artworkSize: min(20, layout.capsuleHeight - 4),
                                                artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
                                                artworkPath: model.view?.media?.artworkPath,
+                                               ring: ringMedia,
                                                oneRow: layout.oneRow)
                                 .frame(height: layout.capsuleHeight)
                                 .padding(.top, top)
@@ -89,6 +91,7 @@ public struct NotchRootView: View {
                             ClosedActivityView(content: content, notchWidth: model.notch.width, ear: ear,
                                                wing: layout.wingWidth(for: content),
                                                artworkPath: model.view?.media?.artworkPath,
+                                               ring: ringMedia,
                                                oneRow: layout.oneRow)
                         }
                     }
@@ -145,6 +148,9 @@ struct ClosedActivityView: View {
     /// capsule's top, bottom and end, so it nests inside the round end.
     var artworkInset: CGFloat?
     var artworkPath: String?
+    /// The track, when the progress ring is on: the artwork then sits inside a
+    /// ring that fills as the song plays. Nil draws the artwork alone.
+    var ring: MediaView?
     /// No notch: one row with no gap in the middle (`NotchLayout.oneRow`).
     var oneRow = false
 
@@ -256,7 +262,7 @@ struct ClosedActivityView: View {
             Image(systemName: Self.pomodoroSymbol(title: compact.title))
                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(NT.accentText)
         case .media:
-            ArtworkView(path: artworkPath, size: artworkSize, radius: artworkInset == nil ? artworkSize / 4 : artworkSize / 2)
+            ClosedArtwork(path: artworkPath, size: artworkSize, round: artworkInset != nil, media: ring)
         case .caffeine:
             Image(systemName: "cup.and.heat.waves.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.text1)
         case .agent:

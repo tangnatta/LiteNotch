@@ -48,10 +48,24 @@ cargo build --locked $CARGO_FLAGS -p litenotch-app
 cargo build --locked $CARGO_FLAGS -p litenotch
 
 echo "==> Shell ($SWIFT_CONFIG)"
+# macOS gives an app the look and behaviour of the SDK recorded in its
+# binary (LC_BUILD_VERSION). SwiftPM's newer build system (default from
+# Swift 6.4) records the deployment target there instead of the SDK, so
+# macOS 26+ treated the app as one built for macOS 14. State both.
+MIN_OS=$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' macos/Info.plist)
+SDK_VERSION=$(xcrun --show-sdk-version)
+SDK_FLAGS="-Xlinker -platform_version -Xlinker macos -Xlinker $MIN_OS -Xlinker $SDK_VERSION"
+# shellcheck disable=SC2086
 LITENOTCH_RUST_LIB="$ROOT/target/$PROFILE" \
-    swift build --package-path macos -c "$SWIFT_CONFIG" --product LiteNotch
+    swift build --package-path macos -c "$SWIFT_CONFIG" --product LiteNotch $SDK_FLAGS
+# shellcheck disable=SC2086
 BIN_DIR=$(LITENOTCH_RUST_LIB="$ROOT/target/$PROFILE" \
-    swift build --package-path macos -c "$SWIFT_CONFIG" --show-bin-path)
+    swift build --package-path macos -c "$SWIFT_CONFIG" --show-bin-path $SDK_FLAGS)
+BUILT_SDK=$(vtool -show-build "$BIN_DIR/LiteNotch" | awk '$1 == "sdk" { print $2; exit }')
+if [ "$BUILT_SDK" != "$SDK_VERSION" ]; then
+    echo "error: the app records SDK ${BUILT_SDK:-none}, expected $SDK_VERSION" >&2
+    exit 1
+fi
 
 echo "==> Bundle"
 rm -rf "$APP"

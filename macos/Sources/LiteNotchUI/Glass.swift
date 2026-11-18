@@ -1,16 +1,18 @@
 import SwiftUI
 
-/// Liquid Glass (macOS 26) for the open panel.
+/// Liquid Glass (macOS 26) for the open panel, and for the closed notch and
+/// the toast where those follow the theme.
 ///
 /// Two gates: the build must use the macOS 26 SDK (Swift 6.2 or later, which
 /// ships with it), and the system must be macOS 26 or later. A build made
 /// with an older SDK never draws glass and Settings says why; the setting is
 /// kept, so the same saved file shows glass once a newer build runs.
 ///
-/// Only the open panel uses it. The closed notch and the toast stay black so
-/// they blend with the hardware notch (glass there would show a black
+/// The closed notch and the toast use it only on a display without a notch
+/// and with "Closed notch: Match theme" (`closedDrawsGlass`). With a camera
+/// housing they stay black to blend with it (glass there would show a black
 /// cut-out in a translucent band, and its edge highlight would outline the
-/// camera housing).
+/// housing).
 public enum GlassSupport {
     /// The build has the API.
     public static var compiled: Bool {

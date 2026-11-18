@@ -16,7 +16,8 @@ extension NotchPresentation {
 /// content by default so it blends with the hardware notch, or follows the
 /// theme when "Closed notch: Match theme" is set; open it follows the chosen
 /// theme (solid or Liquid Glass, see `GlassSupport`), and the fill fades
-/// with the spring.
+/// with the spring. Without a notch and with "Match theme", a Glass choice
+/// covers the closed notch and the toast too.
 public struct NotchRootView: View {
     @ObservedObject var model: PanelState
     /// The window's scheme, which follows the system setting live.
@@ -62,10 +63,17 @@ public struct NotchRootView: View {
             // With Liquid Glass chosen (and drawable) the open panel is glass and
             // the closed fill fades out under it. Not while an approval waits:
             // its text is contrast-tested against the solid colour only.
-            if appearance.drawsGlass(approvalPending: !(model.view?.agents.pending.isEmpty ?? true)) {
+            // Without a camera housing and with "Match theme", the closed notch
+            // and the toast are glass as well (`closedDrawsGlass`), and the
+            // glass stays through opening and closing instead of fading out.
+            let approvalPending = !(model.view?.agents.pending.isEmpty ?? true)
+            let glassClosed = appearance.closedDrawsGlass(hardwareNotch: model.hasNotch,
+                                                          approvalPending: approvalPending,
+                                                          minimized: layout.minimized)
+            if appearance.drawsGlass(approvalPending: approvalPending) {
                 shape.fill(appearance.closedFollowsTheme(hardwareNotch: model.hasNotch) ? NT.panel : Color.black)
-                    .opacity(mode == .expanded ? 0 : 1)
-                if mode == .expanded {
+                    .opacity(mode == .expanded || glassClosed ? 0 : 1)
+                if mode == .expanded || glassClosed {
                     PanelFill(shape: shape, glass: true).transition(.opacity)
                 }
             } else {

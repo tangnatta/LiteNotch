@@ -179,6 +179,16 @@ extension AppearanceConfig {
     func closedScheme(system: ColorScheme, hardwareNotch: Bool = false) -> ColorScheme {
         closedFollowsTheme(hardwareNotch: hardwareNotch) ? theme.scheme(system: system) : .dark
     }
+
+    /// Whether the closed notch and the toast are glass too, not only the
+    /// open panel. Only where they already follow the theme: with a camera
+    /// housing glass would show a black cut-out in a translucent band, and
+    /// "Always dark" keeps them black. The Shrink strip stays solid: on an
+    /// 8 pt strip the glass would be little more than its edge highlight.
+    /// Never while an approval waits (see `drawsGlass`).
+    func closedDrawsGlass(hardwareNotch: Bool, approvalPending: Bool, minimized: Bool) -> Bool {
+        !minimized && closedFollowsTheme(hardwareNotch: hardwareNotch) && drawsGlass(approvalPending: approvalPending)
+    }
 }
 
 // MARK: - Environment

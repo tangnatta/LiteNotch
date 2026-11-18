@@ -417,6 +417,8 @@ struct SettingsTab: View {
     @ViewBuilder private var music: some View {
         toggle("Show now playing", $draft.media.enabled,
                caption: "Shows and controls what\u{2019}s playing in any app.")
+        toggle("Progress ring", $draft.media.progressRing,
+               caption: "A ring around the artwork in the closed notch fills as the song plays.")
         toggle("Show a new song for a moment", $draft.peek.trackChange,
                caption: "The closed notch shows the title when the song changes.")
     }

@@ -105,11 +105,17 @@ impl Default for General {
 pub struct MediaConfig {
     /// Show what is playing. Off also stops the now-playing helper process.
     pub enabled: bool,
+    /// A ring around the artwork in the closed notch that fills as the
+    /// song plays. Drawn by the shell; the core only keeps the choice.
+    pub progress_ring: bool,
 }
 
 impl Default for MediaConfig {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            progress_ring: true,
+        }
     }
 }
 
@@ -4133,6 +4139,27 @@ mod tests {
         assert_eq!(saved.colors, colors);
         saved.colors.push("nope".into());
         assert_eq!(Core::new(saved).view(T0).colors, colors);
+    }
+
+    #[test]
+    fn the_progress_ring_is_on_by_default_and_survives_old_settings_files() {
+        assert!(MediaConfig::default().progress_ring);
+        // A settings file from before the ring has no such key.
+        let old: MediaConfig = serde_json::from_str(r#"{"enabled": true}"#).unwrap();
+        assert!(old.progress_ring);
+        let mut c = core();
+        let mut s = c.view(T0).settings;
+        assert!(s.media.progress_ring);
+        s.media.progress_ring = false;
+        cmd(
+            &mut c,
+            Command::SetSettings {
+                settings: Box::new(s),
+            },
+            T0 + 1,
+        );
+        assert!(!c.view(T0 + 1).settings.media.progress_ring);
+        assert!(!c.persisted().settings.media.progress_ring);
     }
 
     #[test]

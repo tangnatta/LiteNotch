@@ -270,6 +270,15 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   Agents › Remove them) takes them out while leaving this copy and
   everything that is not LiteNotch's alone. A command counts as
   LiteNotch's only in exactly the form LiteNotch writes it.
+- **Progress ring** (`settings.media.progress_ring`, on by default, Settings ›
+  Music): while a track with a known length plays, the closed notch's artwork
+  sits inside a ring that fills clockwise from the top (`ClosedArtwork`,
+  `ProgressRing`): a rounded square in Attached, a circle in Island. The ring
+  takes its space from the artwork (artwork 20 pt → 15 pt inside the same 20 pt),
+  so nothing around it moves. It is one Core Animation `strokeEnd` animation from
+  where the song is to its end, started again only when the position, play state
+  or length in the view model changes; no timer, no SwiftUI animation. Paused,
+  it stands still. The core only keeps the choice.
 - **Now playing** is system-wide (any app, including browser tabs). macOS
   answers MediaRemote queries only for Apple-entitled processes since 15.4,
   so the runtime starts `/usr/bin/perl` (which is entitled) with a small

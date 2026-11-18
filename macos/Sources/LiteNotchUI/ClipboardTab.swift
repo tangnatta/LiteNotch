@@ -12,7 +12,7 @@ struct ClipboardTab: View {
     @FocusState private var focused: Bool
 
     private var items: [ClipView] { vm.clipboard.items }
-    private var hasUnpinned: Bool { items.contains { !$0.pinned } }
+    private var hasUnpinned: Bool { items.contains { !$0.pinned } || !vm.colors.isEmpty }
 
     var body: some View {
         if let id = model.clipPreview, let item = items.first(where: { $0.id == id }),
@@ -28,7 +28,7 @@ struct ClipboardTab: View {
             HStack(spacing: 8) {
                 searchField
                 ConfirmPill(title: "Clear history", question: ConfirmGate.question(count: clearCount),
-                            help: "Remove everything except pinned items", enabled: hasUnpinned, height: 30) {
+                            help: "Remove everything except pinned items, and the picked colours", enabled: hasUnpinned, height: 30) {
                     model.send(.clipClear)
                 }
             }

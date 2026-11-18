@@ -398,7 +398,9 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   repository `tangnatta/homebrew-litenotch` and pushes that.
 - `main` is protected: every change goes through a branch and a pull request
   that passes CI (`rust`, `app`) and is reviewed; never push to `main`.
-- To release: bump `version` in `Cargo.toml` in a pull request, merge it,
+- To release: bump `version` in `Cargo.toml` and add a `## <version>` section to
+  `CHANGELOG.md` (what is new, improved, fixed) in a pull request; the release
+  fails early without the section and copies it into the GitHub release notes. Merge it,
   then tag the merged commit:
   `git fetch origin && git tag v<version> origin/main && git push origin v<version>`.
 - The cask lives in the tap repository (`brew install --cask

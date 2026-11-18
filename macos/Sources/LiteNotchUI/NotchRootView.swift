@@ -93,6 +93,7 @@ public struct NotchRootView: View {
                         }
                     }
                         .environment(\.colorScheme, closedScheme)
+                        .environment(\.dayIcons, model.view?.settings.day.icons ?? .sun)
                         .transition(.opacity)
                 }
             case .toast:
@@ -986,6 +987,7 @@ struct DayPercent: View {
     let compact: CompactView
     @Environment(\.isSnapshot) private var snapshot
     @Environment(\.clockOffsetMs) private var offset
+    @Environment(\.dayIcons) private var icons
 
     var body: some View {
         if let end = compact.endsAtMs, let total = compact.totalSecs {
@@ -1000,14 +1002,17 @@ struct DayPercent: View {
                 }
             }
         } else {
-            VText(compact.value).font(NType.body.font).monospacedDigit().foregroundStyle(NT.text1).lineLimit(1)
+            VText(compact.value).font(NType.body.font).monospacedDigit().foregroundStyle(color).lineLimit(1)
         }
     }
 
+    /// Green with the plant, the same all day: it grows, it never warns.
+    private var color: Color { icons == .tree ? NT.grow : NT.text1 }
+
     private func label(start: Int, end: Int, now: Int) -> some View {
         let p = Format.dayPercent(startMs: start, endMs: end, nowMs: now)
-        // Regular weight and no colour: a quiet reading, not a deadline.
-        return VText(Format.dayProgress(p)).font(NType.body.font).monospacedDigit().foregroundStyle(NT.text1).lineLimit(1)
+        // Regular weight, and no colour that changes: a reading, not a deadline.
+        return VText(Format.dayProgress(p)).font(NType.body.font).monospacedDigit().foregroundStyle(color).lineLimit(1)
     }
 }
 
@@ -1027,33 +1032,41 @@ struct DaySchedule: TimelineSchedule {
     }
 }
 
-/// The sun or moon for the time of day, redrawn only at the four times it
-/// changes.
+/// The sun or moon for the time of day, or the growing plant, redrawn
+/// only at the times it changes.
 struct DayIcon: View {
     let compact: CompactView
     @Environment(\.isSnapshot) private var snapshot
     @Environment(\.clockOffsetMs) private var offset
+    @Environment(\.dayIcons) private var icons
 
     var body: some View {
         if let end = compact.endsAtMs, let total = compact.totalSecs {
             let start = end - total * 1000
             if snapshot {
-                symbol(Format.daySymbol(startMs: start, endMs: end, nowMs: nowMs(Date(), offset: offset)))
+                glyph(start, end)
             } else {
-                let dates = Format.daySymbolChanges(startMs: start, endMs: end)
-                    .map { Date(timeIntervalSince1970: Double($0 + 1 - offset) / 1000) }
+                let changes = icons == .tree
+                    ? Format.growthStageChanges(startMs: start, endMs: end)
+                    : Format.daySymbolChanges(startMs: start, endMs: end)
+                let dates = changes.map { Date(timeIntervalSince1970: Double($0 + 1 - offset) / 1000) }
                 TimelineView(.explicit(dates)) { _ in
                     // The clock, not the entry's date: once every change is
                     // past, an explicit schedule hands back an old one.
-                    symbol(Format.daySymbol(startMs: start, endMs: end, nowMs: nowMs(Date(), offset: offset)))
+                    glyph(start, end)
                 }
             }
         } else {
-            symbol("sun.max.fill")
+            DayGlyph(icons: icons, startMs: 1, endMs: 2, nowMs: 1, symbolFont: font, plantSize: plant, color: color)
         }
     }
 
-    private func symbol(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.text1)
+    private func glyph(_ start: Int, _ end: Int) -> some View {
+        DayGlyph(icons: icons, startMs: start, endMs: end, nowMs: nowMs(Date(), offset: offset),
+                 symbolFont: font, plantSize: plant, color: color)
     }
+
+    private var font: Font { .system(size: 11.5, weight: .semibold) }
+    private var plant: CGFloat { 15 }
+    private var color: Color { icons == .tree ? NT.grow : NT.text1 }
 }

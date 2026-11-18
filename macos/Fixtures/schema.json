@@ -36,6 +36,10 @@
       "dark",
       "theme"
     ],
+    "day_icons": [
+      "sun",
+      "tree"
+    ],
     "home_card": [
       "media",
       "day",

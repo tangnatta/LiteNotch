@@ -56,9 +56,12 @@ final class ClosedSpaceTests: XCTestCase {
         ]
     }
 
+    /// The wider of the two day icon styles (sun or plant).
     private func width<V: View>(_ view: V) -> CGFloat {
-        NSHostingController(rootView: view.fixedSize().environment(\.colorScheme, .dark))
-            .sizeThatFits(in: CGSize(width: 2000, height: 100)).width
+        DayIcons.allCases.map { icons in
+            NSHostingController(rootView: view.fixedSize().environment(\.colorScheme, .dark).environment(\.dayIcons, icons))
+                .sizeThatFits(in: CGSize(width: 2000, height: 100)).width
+        }.max() ?? 0
     }
 
     private func view(_ content: ClosedContent, _ layout: NotchLayout) -> ClosedActivityView {

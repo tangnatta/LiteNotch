@@ -148,9 +148,14 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   end, `total_secs` = length). The shell works out the percentage:
   `−12%` before the start, `37%`, `+19%` past the end
   (`Format.dayProgress`), and redraws only when the whole percent changes
-  (`DaySchedule`). The core wakes once at local midnight. The icon follows
-  the time of day (`Format.daySymbol`): horizon before the start, sun
-  until 3 h before the end, horizon, then moon. Home's big left card (Settings › Home,
+  (`DaySchedule`). The core wakes once at local midnight. Settings › Day
+  holds it all. The icon (`day.icons`) is Default, the time of day
+  (`Format.daySymbol`): horizon before the start, sun until 3 h before
+  the end, horizon, then moon; or Grow a tree (`GrowthIcon.swift`,
+  `Format.growthStage`): seed before the start, two leaves to 33 %,
+  sapling to 66 %, young tree, then a full tree after the end. It never
+  withers. With the tree the closed notch's icon and value are green
+  (`NT.grow`), the same all day; Home stays grey. Home's big left card (Settings › Home,
   `day.home_card`: Auto, Day, Music) shows the day instead of now
   playing; Auto gives way to music while it plays. The line under the
   number is one of `DAY_LINES`, one per day.

@@ -9,6 +9,8 @@ struct ClipboardTab: View {
     @State private var query = ""
     @State private var queryWork: DispatchWorkItem?
     @State private var copiedId: Int?
+    /// The row whose copy area the pointer is on.
+    @State private var hoverCopyId: Int?
     @FocusState private var focused: Bool
 
     private var items: [ClipView] { vm.clipboard.items }
@@ -188,14 +190,37 @@ struct ClipboardTab: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    // The time gives way to a "Copy" cue under the pointer; the
+                    // time stays in the layout (hidden) so the text does not reflow.
+                    let hovering = hoverCopyId == item.id && copiedId != item.id
                     Text(verbatim: Format.relative(from: item.createdMs, nowMs: now))
                         .nfont(.caption).foregroundStyle(NT.text3).lineLimit(1).fixedSize()
+                        .opacity(hovering ? 0 : 1)
+                        .overlay(alignment: .trailing) {
+                            if hovering {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "doc.on.doc").glyph(9, .semibold)
+                                    Text(verbatim: "Copy")
+                                }
+                                .nfont(.captionStrong).foregroundStyle(NT.accentText)
+                                .fixedSize()
+                            }
+                        }
                         .padding(.trailing, 4)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Copy")
+            .onHover { inside in
+                if inside {
+                    hoverCopyId = item.id
+                    NSCursor.pointingHand.push()
+                } else {
+                    if hoverCopyId == item.id { hoverCopyId = nil }
+                    NSCursor.pop()
+                }
+            }
+            .help("Click to copy")
             .accessibilityLabel(Text(verbatim: "Copy: \(item.preview)"))
             let actions = ClipActions.of(item, hasPreview: source != nil)
             if actions.contains(.copyPlain) {

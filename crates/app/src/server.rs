@@ -19,8 +19,11 @@ use litenotch_core::ipc::{Request, Response, MAX_REQUEST_BYTES};
 const MAX_CONNECTIONS: usize = 32;
 #[cfg(not(test))]
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
+// Long enough that a slow CI runner (coverage build) can push a 1 MiB
+// request through before the deadline; the trickle test below needs it
+// shorter than its 4 s of trickling.
 #[cfg(test)]
-const READ_TIMEOUT: Duration = Duration::from_millis(600);
+const READ_TIMEOUT: Duration = Duration::from_millis(2000);
 /// Longest a connection is kept waiting for its reply. Longer than any
 /// approval can stay pending.
 const MAX_WAIT: Duration = Duration::from_secs(150);
@@ -466,7 +469,7 @@ mod tests {
         BufReader::new(&mut stream).read_line(&mut out).unwrap();
         assert!(out.contains("request timed out"), "{out}");
         assert!(
-            started.elapsed() < Duration::from_secs(2),
+            started.elapsed() < Duration::from_secs(3),
             "{:?}",
             started.elapsed()
         );

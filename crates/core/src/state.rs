@@ -1206,7 +1206,10 @@ impl Core {
             }
             Command::ClipClear => {
                 self.clipboard.clear(true);
-                self.dirty |= self.settings.general.persist_clipboard;
+                // Picked colours are saved whether or not history is.
+                let had_colors = !self.colors.is_empty();
+                self.colors.clear();
+                self.dirty |= self.settings.general.persist_clipboard || had_colors;
             }
             Command::ClipQuery { query } => {
                 if self.clip_query.is_empty() && !query.is_empty() {
@@ -4160,6 +4163,22 @@ mod tests {
         );
         assert!(!c.view(T0 + 1).settings.media.progress_ring);
         assert!(!c.persisted().settings.media.progress_ring);
+    }
+
+    #[test]
+    fn clearing_the_clipboard_also_clears_picked_colours() {
+        let mut c = core();
+        cmd(
+            &mut c,
+            Command::ColorPicked {
+                hex: "#FF9E0A".into(),
+            },
+            T0,
+        );
+        assert_eq!(c.view(T0).colors.len(), 1);
+        cmd(&mut c, Command::ClipClear, T0 + 1);
+        assert!(c.view(T0 + 1).colors.is_empty());
+        assert!(c.persisted().colors.is_empty());
     }
 
     #[test]

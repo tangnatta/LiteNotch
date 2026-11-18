@@ -44,6 +44,7 @@ jobs:
         run: |
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           [ "v$VERSION" = "$TAG" ] || { echo "tag $TAG != Cargo.toml version $VERSION"; exit 1; }
+          grep -q "^## $VERSION\$" CHANGELOG.md || { echo "CHANGELOG.md has no '## $VERSION' section"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Rust tests
@@ -91,7 +92,17 @@ jobs:
           echo "SHA=$SHA" >> "$GITHUB_ENV"
           PRE=""
           case "$VERSION" in *-*) PRE="--prerelease" ;; esac
+          # What's new: the CHANGELOG.md section for this version, read from the
+          # tagged commit (the token has no checkout, only the API). A version
+          # without a section gets none.
+          CHANGES=$(gh api -H "Accept: application/vnd.github.raw" \
+            "repos/$GH_REPO/contents/CHANGELOG.md?ref=$TAG" 2>/dev/null \
+            | awk -v v="$VERSION" '/^## /{on = ($2 == v); next} on' || true)
           NOTES="LiteNotch $VERSION for Apple silicon Macs, macOS 14 or later.
+
+          ## What's new
+
+          ${CHANGES:-See the commit history for this release.}
 
           Install: download the zip, unzip, move LiteNotch to Applications. The app is
           ad-hoc signed and not notarized, so the first time, allow it under

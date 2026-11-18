@@ -16,6 +16,29 @@ if [ "${1:-}" = "--debug" ]; then
     SWIFT_CONFIG=debug
 fi
 
+# Liquid Glass is compiled in only with Swift 6.2+ (the macOS 26 SDK; see
+# Glass.swift). `xcode-select` often still points at old Command Line Tools
+# while a newer Xcode is installed, which silently builds an app without
+# Glass. Use that Xcode then, unless DEVELOPER_DIR was set on purpose.
+swift_version() {
+    swift --version 2>&1 | sed -n 's/.*Apple Swift version \([0-9]*\.[0-9]*\).*/\1/p' | head -1
+}
+swift_has_glass() {
+    V=$(swift_version)
+    [ -n "$V" ] || return 1
+    [ "${V%%.*}" -gt 6 ] || { [ "${V%%.*}" -eq 6 ] && [ "${V#*.}" -ge 2 ]; }
+}
+if [ -z "${DEVELOPER_DIR:-}" ] && ! swift_has_glass &&
+    [ -d /Applications/Xcode.app/Contents/Developer ]; then
+    OLD=$(swift_version)
+    export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+    echo "==> Using Xcode's Swift $(swift_version); the selected tools have Swift ${OLD:-unknown}"
+fi
+if ! swift_has_glass; then
+    echo "warning: Swift $(swift_version) is older than 6.2; this build will have no Liquid Glass." >&2
+    echo "         Install Xcode 26 or later, or run: sudo xcode-select -s /path/to/Xcode.app" >&2
+fi
+
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 APP=dist/LiteNotch.app
 

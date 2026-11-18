@@ -6,6 +6,7 @@ extension SettingsSection {
         case .general: return "General"
         case .notch: return "Notch"
         case .home: return "Home"
+        case .day: return "Day"
         case .timer: return "Timer"
         case .music: return "Music"
         case .notifications: return "Notifications"
@@ -22,6 +23,7 @@ extension SettingsSection {
         case .general: return "gearshape"
         case .notch: return "rectangle.topthird.inset.filled"
         case .home: return "house"
+        case .day: return "sun.horizon"
         case .timer: return "timer"
         case .music: return "music.note"
         case .notifications: return "bell"
@@ -130,7 +132,9 @@ struct SettingsTab: View {
         case .general: general
         case .notch: NotchPriorityPane(config: $draft.notch, island: draft.appearance.notchStyle == .island,
                                          hasNotch: model.hasNotch)
+            .environment(\.dayIcons, draft.day.icons)
         case .home: home
+        case .day: day
         case .timer: timer
         case .music: music
         case .notifications: notifications
@@ -356,7 +360,9 @@ struct SettingsTab: View {
                caption: "The closed notch shows a short line of encouragement when a break ends.")
         toggle("Remind me if I keep working on a break", $draft.peek.stillWorking,
                caption: "Checks a few times during a break whether the keyboard or mouse is in use.")
-        Hairline().padding(.vertical, 2)
+    }
+
+    @ViewBuilder private var day: some View {
         toggle("Day progress", $draft.day.enabled,
                caption: "How far through your office hours: \u{2212} before they start, + after they end.")
         if draft.day.enabled {
@@ -375,6 +381,12 @@ struct SettingsTab: View {
                             label: "Ends")
             }
             row("Days") { WeekdayPicker(days: $draft.day.days) }
+            wideRow("Icon", caption: draft.day.icons == .tree
+                    ? "A plant that grows through the day, green in the closed notch."
+                    : "Sun and moon by the time of day.") {
+                SegmentedPill(options: [(DayIcons.sun, "Default"), (.tree, "Grow a tree")],
+                              selection: $draft.day.icons, label: "Icon", height: 22)
+            }
         }
     }
 
@@ -387,9 +399,9 @@ struct SettingsTab: View {
         if !draft.day.enabled {
             row("Day progress is off", caption: "Until it is on, the big card is always Now playing.", tint: NT.text2) {
                 TextPill(title: "Turn on", tint: NT.text1, height: 22) {
-                    model.settingsSection = .timer
+                    model.settingsSection = .day
                 }
-                .help("Opens Settings \u{203A} Timer")
+                .help("Opens Settings \u{203A} Day")
             }
         }
     }

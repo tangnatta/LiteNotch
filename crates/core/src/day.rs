@@ -38,6 +38,17 @@ pub enum HomeCard {
     Auto,
 }
 
+/// How the day's icon looks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DayIcons {
+    /// Sun and moon by the time of day, in the usual text colour.
+    #[default]
+    Sun,
+    /// A plant growing through the day, green in the closed notch.
+    Tree,
+}
+
 /// Office hours.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -50,6 +61,7 @@ pub struct DayConfig {
     pub days: u8,
     /// Home's left card, while day progress is on.
     pub home_card: HomeCard,
+    pub icons: DayIcons,
 }
 
 impl Default for DayConfig {
@@ -60,6 +72,7 @@ impl Default for DayConfig {
             end_min: 18 * 60,
             days: 0b001_1111,
             home_card: HomeCard::Auto,
+            icons: DayIcons::Sun,
         }
     }
 }

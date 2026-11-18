@@ -452,7 +452,8 @@
       "start_min": 600,
       "end_min": 1080,
       "days": 31,
-      "home_card": "auto"
+      "home_card": "auto",
+      "icons": "sun"
     }
   }
 }

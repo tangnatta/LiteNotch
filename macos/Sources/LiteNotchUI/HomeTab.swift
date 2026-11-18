@@ -7,6 +7,8 @@ struct HomeTab: View {
     @ObservedObject var model: PanelState
     @Environment(\.clockOffsetMs) private var offset
 
+    private var icons: DayIcons { vm.settings.day.icons }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Group {
@@ -49,13 +51,12 @@ struct HomeTab: View {
                 let p = Format.dayPercent(startMs: d.startMs, endMs: d.endMs, nowMs: now)
                 VStack(spacing: 6) {
                     Spacer(minLength: 0)
-                    Image(systemName: Format.daySymbol(startMs: d.startMs, endMs: d.endMs, nowMs: now))
-                        .font(.system(size: 22, weight: .regular)).foregroundStyle(NT.text2)
-                        .accessibilityHidden(true)
-                    // The number large, the `%` at half size on its baseline.
+                    DayGlyph(icons: icons, startMs: d.startMs, endMs: d.endMs, nowMs: now,
+                             symbolFont: .system(size: 22, weight: .regular), plantSize: 28, color: NT.text2)
+                    // The number large and light, the `%` at half size on its baseline.
                     (Text(verbatim: String(Format.dayProgress(p).dropLast()))
-                        .font(.system(size: 52, weight: .regular)).monospacedDigit()
-                     + Text(verbatim: "%").font(.system(size: 26, weight: .regular)))
+                        .font(.system(size: 52, weight: .light)).monospacedDigit()
+                     + Text(verbatim: "%").font(.system(size: 26, weight: .light)))
                         .foregroundStyle(NT.text1).lineLimit(1).minimumScaleFactor(0.6)
                         .accessibilityLabel(Text(verbatim: Format.dayProgress(p)))
                     VText(d.line).nfont(.body).foregroundStyle(NT.text2)
@@ -237,7 +238,8 @@ struct HomeTab: View {
     private func dayRow(_ d: DayView) -> some View {
         EverySecond(interval: 60) { now in
             let p = Format.dayPercent(startMs: d.startMs, endMs: d.endMs, nowMs: now)
-            HomeRow(symbol: Format.daySymbol(startMs: d.startMs, endMs: d.endMs, nowMs: now), tint: NT.text2) {
+            HomeRow(symbol: Format.daySymbol(startMs: d.startMs, endMs: d.endMs, nowMs: now), tint: NT.text2,
+                    plant: icons == .tree ? Format.growthStage(startMs: d.startMs, endMs: d.endMs, nowMs: now) : nil) {
                 Text(verbatim: Format.dayProgress(p)).nfont(.emphasis).monospacedDigit()
                     .foregroundStyle(NT.text1).lineLimit(1)
                 VText(d.line).nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
@@ -245,7 +247,7 @@ struct HomeTab: View {
                 Chevron()
             }
             .opens("day settings", model) {
-                model.settingsSection = .timer
+                model.settingsSection = .day
                 model.selectTab(.settings)
             }
         }
@@ -364,14 +366,21 @@ private struct Chevron: View {
 private struct HomeRow<Lines: View, Trailing: View>: View {
     let symbol: String
     let tint: Color
+    /// Drawn instead of `symbol`: day progress with the plant chosen.
+    var plant: GrowthStage? = nil
     @ViewBuilder var lines: Lines
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: symbol)
-                .glyph(NGlyph.regular).foregroundStyle(tint)
-                .frame(width: 22)
+            Group {
+                if let plant {
+                    GrowthIcon(stage: plant, size: 16, color: tint)
+                } else {
+                    Image(systemName: symbol).glyph(NGlyph.regular).foregroundStyle(tint)
+                }
+            }
+            .frame(width: 22)
             VStack(alignment: .leading, spacing: 1) { lines }
                 .frame(maxWidth: .infinity, alignment: .leading)
             trailing

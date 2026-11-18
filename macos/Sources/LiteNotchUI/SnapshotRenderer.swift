@@ -99,8 +99,16 @@ public enum SnapshotRenderer {
                     try add("day-\(label)-closed", at, expanded: false)
                     try add("notchless-day-\(label)-closed", at, expanded: false, notchless: true)
                     try add("day-\(label)-expanded-home", at)
+                    var tree = at
+                    tree.settings.day.icons = .tree
+                    try add("day-tree-\(label)-closed", tree, expanded: false)
+                    try add("day-tree-\(label)-expanded-home", tree)
                 }
                 try add("day-expanded-settings-home", vm, tab: .settings, section: .home)
+                var treeSettings = vm
+                treeSettings.settings.day.enabled = true
+                treeSettings.settings.day.icons = .tree
+                try add("day-expanded-settings-day", treeSettings, tab: .settings, section: .day)
                 var music = vm
                 music.settings.day.homeCard = .media
                 try add("day-music-card-expanded-home", music)

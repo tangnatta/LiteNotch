@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use crate::agent::AgentStatus;
 use crate::caffeine::{AwakeMode, LidState};
 use crate::clipboard::ClipKind;
-use crate::day::HomeCard;
+use crate::day::{DayIcons, HomeCard};
 use crate::notify::Priority;
 use crate::pomodoro::{Phase, RunState};
 use crate::state::{
@@ -112,6 +112,7 @@ pub fn schema() -> Value {
             "shrink": variants!(Shrink: Off, WhenEmpty, Always),
             "material": variants!(Material: Solid, Glass),
             "home_card": variants!(HomeCard: Media, Day, Auto),
+            "day_icons": variants!(DayIcons: Sun, Tree),
             "priority": variants!(Priority: Low, Normal, High, Critical),
             "awake_mode": variants!(AwakeMode: Off, System, Display),
             "lid_state": variants!(LidState: Off, Pending, On),

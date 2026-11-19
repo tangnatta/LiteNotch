@@ -260,10 +260,13 @@ struct SettingsTab: View {
 
     /// Solid or Liquid Glass for the open panel. Shown everywhere so the
     /// choice is discoverable, disabled (with the reason) where glass cannot
-    /// be drawn; a saved Glass then draws as Solid.
+    /// be drawn; a saved Glass then draws as Solid. Without a notch the
+    /// caption says the closed notch follows when it matches the theme.
     private var materialRow: some View {
         let reason = GlassSupport.unavailableReason
-        return row("Panel", caption: reason.map { "Liquid Glass: \($0)" } ?? "") {
+        let caption = reason.map { "Liquid Glass: \($0)" }
+            ?? (model.hasNotch ? "" : "Glass also covers the closed notch when it matches the theme.")
+        return row("Panel", caption: caption) {
             SegmentedPill(options: [(MaterialChoice.solid, "Solid"), (MaterialChoice.glass, "Glass")],
                           selection: Binding(get: { draft.appearance.material == .glass && reason == nil ? .glass : .solid },
                                              set: { draft.appearance.material = $0 }),

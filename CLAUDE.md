@@ -219,8 +219,11 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   The preview once sized the shape by one rule and laid the content out
   by another, which put the icons outside the capsule.
   `appearance.material` (Settings → General → Panel): Solid (default) or
-  Glass, macOS 26 Liquid Glass for the open panel only; the closed notch
-  and toast stay black to blend with the hardware notch. Glass needs a
+  Glass, macOS 26 Liquid Glass for the open panel. The closed notch and
+  the toast are glass too only without a hardware notch and with Closed
+  notch: Match theme (`closedDrawsGlass`), and the glass then stays through
+  opening and closing; with a notch, or Always dark, they stay black to
+  blend with the camera housing, and the Shrink strip stays solid. Glass needs a
   build with the macOS 26 SDK (`#if compiler(>=6.2)`) and macOS 26 at run
   time (`GlassSupport`); otherwise the row is disabled with the reason and
   the panel draws Solid. `ImageRenderer` snapshots never show glass.
@@ -546,6 +549,7 @@ the physical memory footprint:
 | glass | the panel open on Home, drawn with Liquid Glass | ≤ 1.5 % | ≤ 40 MB |
 | calendar | an event about to start (the closed notch counts down to it) | ≤ 1.0 % | ≤ 30 MB |
 | pair | two countdowns side by side in the closed notch | ≤ 1.0 % | ≤ 30 MB |
+| closedglass | the closed notch drawn with glass (Island, Match theme, light) and a countdown; needs a display without a notch | ≤ 1.0 % | ≤ 30 MB |
 
 Bundle ≤ 15 MB; Rust line coverage ≥ 90 %. The app reads a few
 `LITENOTCH_BENCH_*` variables (start-up commands, open the panel, a stand-in

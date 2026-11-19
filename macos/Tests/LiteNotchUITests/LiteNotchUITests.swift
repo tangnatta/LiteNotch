@@ -1380,6 +1380,34 @@ final class NewCommandTests: XCTestCase {
         let inner = try JSONSerialization.jsonObject(with: encoder.encode(a)) as! NSDictionary
         XCTAssertEqual(inner["closed_notch"] as? String, "theme")
     }
+
+    func testClosedNotchIsGlassOnlyWhereItFollowsTheTheme() {
+        let glass = AppearanceConfig(theme: .light, accent: "#FF9E0A", notchStyle: .island,
+                                     closedNotch: .theme, material: .glass)
+        // Exactly when the open panel would be glass (needs the SDK and macOS 26).
+        XCTAssertEqual(glass.closedDrawsGlass(hardwareNotch: false, approvalPending: false, minimized: false),
+                       GlassSupport.available)
+        // A camera housing keeps it black.
+        XCTAssertFalse(glass.closedDrawsGlass(hardwareNotch: true, approvalPending: false, minimized: false))
+        // An approval is read on the solid colour.
+        XCTAssertFalse(glass.closedDrawsGlass(hardwareNotch: false, approvalPending: true, minimized: false))
+        // The Shrink strip stays solid.
+        XCTAssertFalse(glass.closedDrawsGlass(hardwareNotch: false, approvalPending: false, minimized: true))
+        // "Always dark" (and the default) stays black.
+        var dark = glass
+        dark.closedNotch = .dark
+        XCTAssertFalse(dark.closedDrawsGlass(hardwareNotch: false, approvalPending: false, minimized: false))
+        XCTAssertFalse(AppearanceConfig.default.closedDrawsGlass(hardwareNotch: false, approvalPending: false, minimized: false))
+        // Solid panel: nothing is glass.
+        var solid = glass
+        solid.material = .solid
+        XCTAssertFalse(solid.closedDrawsGlass(hardwareNotch: false, approvalPending: false, minimized: false))
+        // Attached without a notch follows the same rule as Island.
+        var attached = glass
+        attached.notchStyle = .attached
+        XCTAssertEqual(attached.closedDrawsGlass(hardwareNotch: false, approvalPending: false, minimized: false),
+                       GlassSupport.available)
+    }
 }
 
 final class ColorTests: XCTestCase {
@@ -2465,7 +2493,11 @@ final class AppearanceOptionsTests: XCTestCase {
         let src = try String(contentsOf: URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/LiteNotchUI/NotchRootView.swift"), encoding: .utf8)
-        XCTAssertTrue(src.contains("appearance.drawsGlass(approvalPending: !(model.view?.agents.pending.isEmpty ?? true))"))
+        XCTAssertTrue(src.contains("let approvalPending = !(model.view?.agents.pending.isEmpty ?? true)"))
+        XCTAssertTrue(src.contains("appearance.drawsGlass(approvalPending: approvalPending)"))
+        // The closed notch and the toast ask it too.
+        XCTAssertTrue(src.contains("approvalPending: approvalPending,"))
+        XCTAssertFalse(glass.closedDrawsGlass(hardwareNotch: false, approvalPending: true, minimized: false))
     }
 
     func testBarColoursAreResolvedForTheSchemeTheyAreDrawnIn() {

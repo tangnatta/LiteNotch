@@ -449,24 +449,8 @@ Tests: `cargo test --workspace` and `swift test --package-path macos`.
 
 ## Contributors
 
-<table>
-  <tr>
-    <td align="center" width="140">
-      <a href="https://github.com/tangnatta"><img src="https://github.com/tangnatta.png?size=96" width="72" alt="tangnatta"><br><sub><b>Nattavee Sunitsakul</b></sub></a><br><sub>Creator and maintainer</sub>
-    </td>
-    <td align="center" width="140">
-      <a href="https://github.com/defmylife"><img src="https://github.com/defmylife.png?size=96" width="72" alt="defmylife"><br><sub><b>kantaka s.</b></sub></a><br><sub>Focus tab, day progress, island style</sub>
-    </td>
-  </tr>
-</table>
-
-Thank you to everyone who has sent code, ideas or bug reports; the full list
-is on the [contributors page](https://github.com/tangnatta/LiteNotch/graphs/contributors).
-
-Contributions are welcome. `main` is protected, so changes come as a pull
-request that passes CI (`cargo test --workspace`, `swift test --package-path macos`,
-clippy and fmt; see [CLAUDE.md](CLAUDE.md) for the rules that are easy to break).
-Open an issue first for anything large.
+<a href="https://github.com/tangnatta"><img src="docs/contributors/tangnatta.png" width="64" height="64" alt="tangnatta" title="tangnatta"></a>
+<a href="https://github.com/defmylife"><img src="docs/contributors/defmylife.png" width="64" height="64" alt="defmylife" title="defmylife"></a>
 
 ## License
 

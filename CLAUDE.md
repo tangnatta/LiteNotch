@@ -20,7 +20,7 @@ cargo fmt --all
 scripts/coverage.sh                         # tests under coverage, fails < 90 % lines
 swift test --package-path macos             # shell tests
 scripts/build-app.sh                        # → dist/LiteNotch.app (release, ad-hoc signed)
-scripts/bench.sh                            # idle memory / CPU / bundle size vs budget (launches the app ~25 s)
+scripts/bench.sh                            # memory / CPU / bundle size vs budget (all scenarios side by side, ~35 s)
 open dist/LiteNotch.app
 ```
 
@@ -537,7 +537,10 @@ command after changing the core.
 
 `scripts/bench.sh` runs the app in fixed scenarios, each in its own empty
 data directory, measures CPU over a 20 s window after an 8 s settle, and
-the physical memory footprint:
+the physical memory footprint. The scenarios run side by side (one process
+each, CPU counted per process), so a full run takes about 35 s instead of
+about 5 minutes; a scenario that comes out over budget is measured again
+alone and only that result counts. `--serial` runs them one at a time:
 
 | Scenario | What runs | CPU | Memory |
 |---|---|---|---|
@@ -547,6 +550,7 @@ the physical memory footprint:
 | panel | the panel open on Home | ≤ 1.5 % | ≤ 40 MB |
 | island | the Island style with a countdown running | ≤ 1.0 % | ≤ 30 MB |
 | glass | the panel open on Home, drawn with Liquid Glass | ≤ 1.5 % | ≤ 40 MB |
+| glassisland | the panel open on Home in the Island style, drawn with Liquid Glass | ≤ 1.5 % | ≤ 40 MB |
 | calendar | an event about to start (the closed notch counts down to it) | ≤ 1.0 % | ≤ 30 MB |
 | pair | two countdowns side by side in the closed notch | ≤ 1.0 % | ≤ 30 MB |
 | closedglass | the closed notch drawn with glass (Island, Match theme, light) and a countdown; needs a display without a notch | ≤ 1.0 % | ≤ 30 MB |
@@ -561,7 +565,7 @@ Single runs occasionally show a short burst (an outside event such as a
 copy landing in the window); a real regression repeats. Measured Nov 2026
 on an M-series MacBook: idle 0.05–0.30 % and 15–16 MB, timer 0.15–0.35 %,
 music 0.45 %, panel 0.70 % and 22 MB, island 0.35 %, glass 0.25 % and
-28 MB, calendar 0.20–0.25 % and 16 MB, bundle 6.5 MB (EventKit added 0.2). (One run right after a build showed idle at 2.9 % and
+28 MB, glassisland 0.05–0.20 % and 25–27 MB, calendar 0.20–0.25 % and 16 MB, bundle 6.5 MB (EventKit added 0.2). (One run right after a build showed idle at 2.9 % and
 timer at 5.5 %; two repeats of each did not.) Glass is measured over a
 still desktop only, not over moving content.
 

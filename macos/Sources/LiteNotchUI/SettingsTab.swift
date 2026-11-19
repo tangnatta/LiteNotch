@@ -149,6 +149,7 @@ struct SettingsTab: View {
     @ViewBuilder private var general: some View {
         updateBlock
         Hairline().padding(.vertical, 2)
+        if let app = model.app { LaunchAtLoginRow(app: app) }
         toggle("Open on hover", $draft.general.hoverToExpand,
                caption: "Clicking the notch always opens it.")
         toggle("Show on every display", $draft.general.allScreens,
@@ -865,5 +866,34 @@ struct WeekdayPicker: View {
                 .accessibilityValue(Text(verbatim: on ? "Working day" : "Day off"))
             }
         }
+    }
+}
+
+/// "Launch at login". Its own view because it follows `AppModel` (the system's
+/// answer), not the settings draft, and re-reads that answer when it appears:
+/// the user may have changed it in System Settings meanwhile.
+struct LaunchAtLoginRow: View {
+    @ObservedObject var app: AppModel
+
+    var body: some View {
+        let status = app.launchAtLogin
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: LoginItemStatus.title).nfont(.body).foregroundStyle(NT.text1)
+                Text(verbatim: status.caption).nfont(.caption)
+                    .foregroundStyle(status == .off || status == .on ? NT.text3 : NT.text2)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 4)
+            if status == .needsApproval {
+                TextPill(title: "Open", tint: NT.text1, height: 22) { app.loginItem.openSystemSettings() }
+                    .help("Opens Login Items in System Settings")
+            }
+            NotchToggle(isOn: Binding(get: { status.isOn || status == .needsApproval },
+                                      set: { app.setLaunchAtLogin($0) }),
+                        label: LoginItemStatus.title)
+        }
+        .frame(minHeight: 22)
+        .onAppear { app.refreshLaunchAtLogin() }
     }
 }

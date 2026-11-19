@@ -25,7 +25,7 @@ the time and uses almost no battery.
 - [Using the notch](#using-the-notch): [Music](#music) · [Focus timer](#focus-timer) · [Meeting timer](#meeting-timer) · [Countdown](#countdown) · [Clipboard](#clipboard) · [Calendar](#calendar) · [Inbox](#inbox) · [Keep awake](#keep-awake) · [Day progress](#day-progress)
 - [Claude Code](#claude-code): [Set up](#set-up) · [Permission requests](#permission-requests) · [Questions](#questions-from-claude) · [Sessions and usage](#sessions-and-usage) · [Claude Desktop](#claude-desktop) · [Scripts](#post-from-scripts)
 - [Make it yours](#make-it-yours): [Closed notch](#what-the-closed-notch-shows) · [Heads-ups](#heads-ups-and-reminders) · [Island](#island) · [Appearance](#appearance) · [Settings](#settings) · [Updates](#updates)
-- [What macOS may ask for](#what-macos-may-ask-for) · [Privacy](#privacy) · [Known limits](#known-limits-of-this-beta) · [Build from source](#build-from-source) · [License](#license)
+- [What macOS may ask for](#what-macos-may-ask-for) · [Privacy](#privacy) · [Known limits](#known-limits-of-this-beta) · [Build from source](#build-from-source) · [Contributors](#contributors) · [License](#license)
 
 ## Install
 
@@ -446,6 +446,27 @@ open dist/LiteNotch.app
 Developers: [CLAUDE.md](CLAUDE.md) covers the architecture, commands,
 tests, performance budgets (`scripts/bench.sh`) and the release process.
 Tests: `cargo test --workspace` and `swift test --package-path macos`.
+
+## Contributors
+
+<table>
+  <tr>
+    <td align="center" width="140">
+      <a href="https://github.com/tangnatta"><img src="https://github.com/tangnatta.png?size=96" width="72" alt="tangnatta"><br><sub><b>Nattavee Sunitsakul</b></sub></a><br><sub>Creator and maintainer</sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/defmylife"><img src="https://github.com/defmylife.png?size=96" width="72" alt="defmylife"><br><sub><b>kantaka s.</b></sub></a><br><sub>Focus tab, day progress, island style</sub>
+    </td>
+  </tr>
+</table>
+
+Thank you to everyone who has sent code, ideas or bug reports; the full list
+is on the [contributors page](https://github.com/tangnatta/LiteNotch/graphs/contributors).
+
+Contributions are welcome. `main` is protected, so changes come as a pull
+request that passes CI (`cargo test --workspace`, `swift test --package-path macos`,
+clippy and fmt; see [CLAUDE.md](CLAUDE.md) for the rules that are easy to break).
+Open an issue first for anything large.
 
 ## License
 

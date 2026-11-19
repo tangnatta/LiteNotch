@@ -22,7 +22,7 @@ the time and uses almost no battery.
 ## Contents
 
 - [Install](#install)
-- [Using the notch](#using-the-notch): [Music](#music) · [Focus timer](#focus-timer) · [Meeting timer](#meeting-timer) · [Countdown](#countdown) · [Clipboard](#clipboard) · [Calendar](#calendar) · [Inbox](#inbox) · [Keep awake](#keep-awake)
+- [Using the notch](#using-the-notch): [Music](#music) · [Focus timer](#focus-timer) · [Meeting timer](#meeting-timer) · [Countdown](#countdown) · [Clipboard](#clipboard) · [Calendar](#calendar) · [Inbox](#inbox) · [Keep awake](#keep-awake) · [Day progress](#day-progress)
 - [Claude Code](#claude-code): [Set up](#set-up) · [Permission requests](#permission-requests) · [Questions](#questions-from-claude) · [Sessions and usage](#sessions-and-usage) · [Claude Desktop](#claude-desktop) · [Scripts](#post-from-scripts)
 - [Make it yours](#make-it-yours): [Closed notch](#what-the-closed-notch-shows) · [Heads-ups](#heads-ups-and-reminders) · [Island](#island) · [Appearance](#appearance) · [Settings](#settings) · [Updates](#updates)
 - [What macOS may ask for](#what-macos-may-ask-for) · [Privacy](#privacy) · [Known limits](#known-limits-of-this-beta) · [Build from source](#build-from-source) · [License](#license)
@@ -168,6 +168,25 @@ The **cup** keeps the Mac awake. In **Settings › Keep awake**:
 - **Stop keeping awake below** is one battery limit for every mode, lid open
   or closed. Set it to 0 % for no limit at all.
 - A timer for how long.
+
+### Day progress
+
+<img src="docs/preview/day.gif" width="680" alt="The closed notch showing how far through the working day it is as a percentage, with a sun and then a moon; then the same with a tree that grows from a seed to a full tree; Home with the day card; Settings › Day">
+
+Off by default. Turn it on in **Settings › Day** and set your office hours
+(10:00 to 18:00, Monday to Friday, until you change them). On a working day
+the closed notch can show how far through the day you are: `-12%` before it
+starts, `37%` during, `+19%` after the end. It sits last in the order, so
+anything more pressing comes first. On **Home** the big card shows the day
+too, with a short line under the number, and gives way to the music while
+something plays (**Settings › Home** can pin either one).
+
+The **Icon** choice is the sun and moon by the time of day, or a tree that
+grows through it: a seed before you start, two leaves, a sapling, a young
+tree, and at the end of the day a full tree. It never withers.
+
+It is only a number. There is no bar, no colour that turns red and no line
+that tells you to stop: what you do before and after work is your own.
 
 ## Claude Code
 

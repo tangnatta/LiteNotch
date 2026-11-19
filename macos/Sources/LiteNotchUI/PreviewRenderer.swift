@@ -75,6 +75,7 @@ public enum PreviewRenderer {
         let pair = try load("pair"), calendar = try load("calendar"), approval = try load("approval")
         let checking = try load("update-checking"), available = try load("update-available")
         let upToDate = try load("update-current")
+        let day = try load("day")
         let banner = try load("banner"), caffeine = try load("caffeine")
         let track = try load("peek-track"), warning = try load("peek-warning")
         let eye = try load("peek-eye-break"), move = try load("peek-move"), quote = try load("peek-quote")
@@ -142,6 +143,20 @@ public enum PreviewRenderer {
             v.settings.appearance.notchStyle = .island
             return v
         }
+        // An 8-hour day seen `hoursIn` hours after it starts (negative: before).
+        func dayAt(_ hoursIn: Double, tree: Bool = false) -> ViewModel {
+            var v = day
+            let start = now - Int(hoursIn * 3_600_000)
+            v.day?.startMs = start
+            v.day?.endMs = start + 8 * 3_600_000
+            v.compact.endsAtMs = start + 8 * 3_600_000
+            v.compact.totalSecs = 8 * 3600
+            if tree { v.settings.day.icons = .tree }
+            return v
+        }
+        var daySettings = day
+        daySettings.settings.day.icons = .tree
+
         var truncated = approval
         truncated.agents.pending[0].truncated = true
         truncated.agents.pending[0].detail = String(repeating: "rm -rf build && cargo build --release --target aarch64-apple-darwin && ", count: 8)
@@ -272,6 +287,21 @@ public enum PreviewRenderer {
             Scene(name: "inbox", shots: [
                 Shot(vm: banner, secs: 3, expanded: false),
                 Shot(vm: banner, secs: 3, tab: .inbox),
+            ]),
+            // Day progress: the sun and moon through the day, then the tree
+            // growing (seed, leaves, sapling, young tree, full tree).
+            Scene(name: "day", shots: [
+                Shot(vm: dayAt(-1.5), secs: 2, expanded: false),
+                Shot(vm: dayAt(3), secs: 2, expanded: false),
+                Shot(vm: dayAt(3), secs: 3),
+                Shot(vm: dayAt(10.5), secs: 2, expanded: false),
+                Shot(vm: dayAt(-1.5, tree: true), secs: 1, expanded: false),
+                Shot(vm: dayAt(1.5, tree: true), secs: 1, expanded: false),
+                Shot(vm: dayAt(4, tree: true), secs: 1, expanded: false),
+                Shot(vm: dayAt(6.5, tree: true), secs: 1, expanded: false),
+                Shot(vm: dayAt(9, tree: true), secs: 2, expanded: false),
+                Shot(vm: dayAt(4, tree: true), secs: 3),
+                Shot(vm: daySettings, secs: 3, tab: .settings, section: .day),
             ]),
             Scene(name: "keep-awake", shots: [
                 Shot(vm: caffeine, secs: 2, expanded: false),

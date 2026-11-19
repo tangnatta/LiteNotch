@@ -267,6 +267,24 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    /// Start at login (`SMAppService`); replaced in tests.
+    public var loginItem: LoginItemService = SystemLoginItem()
+    /// Read from the system, not the core: the user can change it in System
+    /// Settings, so Settings re-reads it whenever it appears.
+    @Published public private(set) var launchAtLogin: LoginItemStatus = .off
+
+    public func refreshLaunchAtLogin() {
+        let now = loginItem.status
+        if now != launchAtLogin { launchAtLogin = now }
+    }
+
+    /// Registers or removes the login item. A failure leaves whatever the
+    /// system reports, so the toggle never shows a state that is not real.
+    public func setLaunchAtLogin(_ enabled: Bool) {
+        try? loginItem.set(enabled)
+        refreshLaunchAtLogin()
+    }
+
     /// Monotonic seconds; replaced in tests. Panels read the same clock.
     var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     /// The newest banner and when it first showed; a panel opened soon

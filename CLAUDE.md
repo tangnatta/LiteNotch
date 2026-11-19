@@ -337,6 +337,17 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   LiteNotch may control the terminal. Other terminals have no such
   interface: there, and whenever the script fails or is not allowed, only
   the app is activated.
+- **Launch at login** (Settings › General, `LoginItem.swift`): the shell only,
+  through `SMAppService.mainApp`; the core and saved settings know nothing
+  of it, because the user can also change it in System Settings › Login
+  Items and macOS is the one source of truth. `AppModel.launchAtLogin` is
+  re-read whenever the row appears, and a failed register shows what the
+  system really reports. Off by default and never registered by the app on
+  its own (a benchmark run cannot enrol anything). `requiresApproval`
+  shows an Open button for Login Items. macOS may refuse a copy outside
+  /Applications (`.notFound`); not yet tried with a real login, and it is
+  tied to the app's path, so a Homebrew upgrade that replaces the bundle
+  in place keeps it.
 - **Accessibility and ad-hoc signing**: an ad-hoc signed app's identity is
   its cdhash, so every rebuild loses the Accessibility permission even
   though System Settings still shows it on. "Reset and ask again" runs

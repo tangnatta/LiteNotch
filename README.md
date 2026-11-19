@@ -91,7 +91,9 @@ springs open, the bars move with the music and long titles scroll.
 
 Artwork, progress and play / pause / skip for whatever is playing, in any
 app: Music, Spotify, or a browser tab. While something plays, the closed
-notch shows its artwork, and a new song shows its title for a moment.
+notch shows its artwork inside a ring that fills as the song plays (a rounded
+square, or a circle in the Island style; turn it off in **Settings › Music**),
+and a new song shows its title for a moment.
 
 ### Focus timer
 

@@ -36,6 +36,10 @@ brew install --cask tangnatta/litenotch/litenotch
 open -a LiteNotch
 ```
 
+To have it start when you log in, turn on **Settings › General › Launch at
+login**. It is off until you do, and macOS's own list in **System Settings ›
+General › Login Items** stays in charge: a change made there shows here too.
+
 To update to the latest release:
 
 ```sh
@@ -364,7 +368,7 @@ All under **Settings › General**. The defaults are the original look.
 | **Notch** | **Attached** hangs from the top edge in the notch's own shape. **Island** is a small capsule inside the menu bar, with notifications and the open panel hanging just below it; it suits a Mac or an external display without a notch (see [Island](#island)). Without a notch, both styles show what's running in one row across the middle, since there is no camera to leave room for. |
 | **Closed notch** | **Always dark**, or **Match theme** so the closed notch and notifications turn white in the light theme. Offered only on a display without a notch: around a real notch, which is always black, it stays dark. |
 | **Shrink** | On a Mac with a notch: **Always** keeps the sides of the notch clear while it is closed (peeks, notifications and permission requests still show). On a display without a notch: **Default** keeps the closed notch as it is. **When empty** shrinks it to a thin strip at the top edge while it has nothing to show. **Always** keeps it a strip whenever it is closed, except for the few seconds of a new song or a timer about to end. |
-| **Panel** | **Solid**, or **Glass** to draw the open panel with macOS 26's Liquid Glass. Approval requests are always shown on the solid panel so they stay readable. |
+| **Panel** | **Solid**, or **Glass** to draw the open panel with macOS 26's Liquid Glass. On a display without a notch, with **Closed notch: Match theme**, the closed notch and notifications are glass too. Approval requests are always shown on the solid panel so they stay readable. |
 
 ### Settings
 

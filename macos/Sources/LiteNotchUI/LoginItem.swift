@@ -35,6 +35,16 @@ public protocol LoginItemService {
     func openSystemSettings()
 }
 
+/// A login item that never asks the system: snapshots and the README's
+/// previews show the row as a new user sees it, not whatever macOS says
+/// about the process that draws them (which it cannot register).
+public struct FixedLoginItem: LoginItemService {
+    public let status: LoginItemStatus
+    public init(_ status: LoginItemStatus = .off) { self.status = status }
+    public func set(_ enabled: Bool) throws {}
+    public func openSystemSettings() {}
+}
+
 public struct SystemLoginItem: LoginItemService {
     public init() {}
 

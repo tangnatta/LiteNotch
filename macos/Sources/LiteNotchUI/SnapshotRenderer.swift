@@ -342,13 +342,22 @@ public enum SnapshotRenderer {
         return v
     }
 
+    /// The model every snapshot and preview draws from: a mock core, and a
+    /// login item that reads Off instead of asking macOS about this process.
+    @MainActor
+    static func model() -> AppModel {
+        let model = AppModel(bridge: MockBridge())
+        model.loginItem = FixedLoginItem(.off)
+        return model
+    }
+
     @MainActor
     static func write(_ vm: ViewModel, expanded: Bool, tab: Tab, section: SettingsSection = .general,
                       pane: AgentsPane = .sessions, timerPane: TimerPane = .focus, clipPreview: Int? = nil,
                       accessibilityNeeded: Bool = false, notchless: Bool = false,
                       nowMs: Int = snapshotNowMs, backdrop: Bool = false,
                       size: CGSize, to url: URL) throws -> URL? {
-        let model = AppModel(bridge: MockBridge())
+        let model = model()
         if notchless {
             model.primary.notch = NotchGeometry.fallbackSize
             model.primary.hasNotch = false

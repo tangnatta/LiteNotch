@@ -75,4 +75,16 @@ final class LoginItemTests: XCTestCase {
         XCTAssertFalse(m.launchAtLogin.isOn)
         XCTAssertTrue(m.launchAtLogin.caption.contains("Applications"))
     }
+
+    /// The 0.2.5-beta previews showed "macOS cannot register this copy" under
+    /// Launch at login: the renderer asked macOS about its own process.
+    @MainActor
+    func testSnapshotsShowTheRowOffWithoutAskingTheSystem() {
+        let m = SnapshotRenderer.model()
+        m.refreshLaunchAtLogin()
+        XCTAssertEqual(m.launchAtLogin, .off)
+        m.setLaunchAtLogin(true)
+        XCTAssertEqual(m.launchAtLogin, .off, "a snapshot must never register a login item")
+        XCTAssertTrue(m.launchAtLogin.caption.contains("Starts LiteNotch"))
+    }
 }

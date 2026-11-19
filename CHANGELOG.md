@@ -4,6 +4,27 @@ What changed in each release. The release workflow copies the section whose
 heading is the version (`## 0.2.4-beta`) into the GitHub release notes, so add
 the section in the pull request that bumps the version in `Cargo.toml`.
 
+## 0.2.5-beta
+
+### New
+- **Launch at login.** Settings › General › Launch at login starts LiteNotch
+  when you log in (off by default). macOS's own Login Items list stays in
+  charge: a change made there shows up here too, and if macOS wants your
+  approval the row offers a button to open Login Items.
+- **Glass for the closed notch on a display without a notch.** With Panel:
+  Glass and Closed notch: Match theme, the closed notch and the toast are
+  Liquid Glass too, and the glass stays through opening and closing instead
+  of fading out and back. With a hardware notch, Always dark or the default
+  settings nothing changes; an approval is still drawn on the solid colour,
+  and the Shrink strip stays solid.
+
+### Fixed and under the hood
+- The footprint benchmark covers two more cases (the closed notch in glass,
+  and the panel open in the Island style with glass) and runs its scenarios
+  side by side, so a full run takes about 35 s instead of about 5 minutes.
+- README: new previews for 0.2.4-beta, a Day progress section and a
+  Contributors section.
+
 ## 0.2.4-beta
 
 ### New

@@ -35,9 +35,8 @@ jobs:
         with:
           ref: ${{ env.TAG }}
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          toolchain: stable
+      - name: Rust toolchain (pinned in rust-toolchain.toml)
+        run: rustup toolchain install
 
       - name: Check the tag matches Cargo.toml
         id: version
@@ -57,6 +56,9 @@ jobs:
       - name: Shell tests
         run: LITENOTCH_RUST_LIB="$PWD/target/release" swift test --package-path macos
 
+      - name: Footprint budget
+        run: scripts/bench.sh --check
+
       - name: Package
         run: |
           VERSION=${{ steps.version.outputs.version }}
@@ -74,6 +76,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write # sign the build provenance
+      attestations: write
     env:
       VERSION: ${{ needs.build.outputs.version }}
       GH_TOKEN: ${{ github.token }}
@@ -83,6 +87,12 @@ jobs:
         with:
           name: release
           path: dist
+
+      # Proves the zip was built by this workflow from this tag: verify with
+      # `gh attestation verify <zip> --repo tangnatta/LiteNotch`.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/LiteNotch-*-arm64.zip
 
       - name: Publish the GitHub release
         run: |

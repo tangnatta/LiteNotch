@@ -395,12 +395,19 @@ scripts/         build-app.sh, bench.sh, coverage.sh
 
 ## Releasing
 
+- `rust-toolchain.toml` pins the compiler for local and CI builds (Dependabot
+  bumps it); `rust-version` in `Cargo.toml` is the oldest one that must build
+  (CI `msrv` job, `cargo check`). `deny.toml` configures `cargo deny` (CI job
+  `deny`, also weekly). The release zip gets a build-provenance attestation
+  (`gh attestation verify <zip> --repo tangnatta/LiteNotch`) and the build job
+  runs `scripts/bench.sh --check`.
+
 - `.github/workflows/ci.yml` runs on every push and pull request: fmt,
   clippy, tests under coverage, the app build, Swift tests, the footprint
   budget, and keeps the built app as an artifact for 14 days.
 - `.github/workflows/codeql.yml` is code scanning (Actions, C, Rust, Swift)
-  of `main`, weekly (Mondays) and on demand from the Actions tab; not on
-  pull requests, because the Swift scan takes about 18 minutes. Run it by
+  of `main`, weekly (Mondays) and on demand from the Actions tab; pull
+  requests get all but Swift, because the Swift scan takes about 18 minutes. Run it by
   hand before a release. It exists because GitHub's
   default CodeQL setup cannot build the Swift shell: that needs the Rust
   static library first, which this workflow builds before CodeQL starts
@@ -597,7 +604,8 @@ the plain animation.
   build), stop `LITENOTCH_DATA_DIR` from chmod-ing a folder LiteNotch did
   not create, downsample now-playing artwork and bound pasteboard text
   before converting it, Developer ID signing + notarization (then drop the
-  cask's quarantine removal), and `cargo audit` in CI.
+  cask's quarantine removal). (`cargo deny check` runs in CI and weekly and
+  covers RustSec advisories, so a separate `cargo audit` is not needed.)
 - Closed-lid mode asks for the password once per run of LiteNotch. Asking
   only once ever needs a launchd daemon via SMAppService, which needs a
   Developer ID; it would replace the prompt and the helper.

@@ -1,0 +1,22 @@
+# cargo-deny: advisories (RustSec), licenses, duplicate/unknown sources.
+# Run locally: cargo deny check
+
+[graph]
+targets = ["aarch64-apple-darwin"]
+
+[advisories]
+version = 2
+
+[licenses]
+version = 2
+# The project is GPL-3.0-only, so permissive licenses are all compatible.
+allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib", "GPL-3.0-only"]
+
+[bans]
+multiple-versions = "warn"
+# Workspace crates depend on each other by path (unpublished), which counts as a wildcard.
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

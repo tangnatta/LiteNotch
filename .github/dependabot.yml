@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # Actions are pinned to commit SHAs; this keeps the pins from going stale.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      rust-minor-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "rust-toolchain"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # No "swift" entry: macos/Package.swift has no external dependencies.

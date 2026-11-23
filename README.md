@@ -443,7 +443,7 @@ open dist/LiteNotch.app
 
 `scripts/previews.sh` redraws the previews on this page (needs `ffmpeg`).
 
-Developers: [CLAUDE.md](CLAUDE.md) covers the architecture, commands,
+Contributing: see [CONTRIBUTING.md](CONTRIBUTING.md). Developers: [CLAUDE.md](CLAUDE.md) covers the architecture, commands,
 tests, performance budgets (`scripts/bench.sh`) and the release process.
 Tests: `cargo test --workspace` and `swift test --package-path macos`.
 

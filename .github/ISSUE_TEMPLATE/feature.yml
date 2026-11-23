@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest an improvement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        LiteNotch deliberately has few features and a small memory/CPU budget
+        (see CLAUDE.md). Describing the problem you have helps more than
+        describing a solution.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to see?
+  - type: textarea
+    id: cost
+    attributes:
+      label: Would it need steady work (a timer, polling, animation) or a new permission?

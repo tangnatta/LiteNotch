@@ -14,6 +14,9 @@ name: CodeQL
 # by hand from the Actions tab (Run workflow) before a release or after a
 # change that deserves a look sooner.
 on:
+  # Pull requests: every language except Swift (too slow; see above).
+  pull_request:
+    branches: [main]
   schedule:
     - cron: "27 3 * * 1" # Mondays 03:27 UTC
   workflow_dispatch:
@@ -24,6 +27,7 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
+    if: github.event_name != 'pull_request' || matrix.language != 'swift'
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -55,10 +59,10 @@ jobs:
       # both halves are built for x86_64 here. (The app itself ships arm64;
       # the analysis reads the source either way.)
       - if: matrix.language == 'swift'
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          toolchain: stable
-          targets: x86_64-apple-darwin
+        name: Rust toolchain (pinned in rust-toolchain.toml) and the x86_64 target
+        run: |
+          rustup toolchain install
+          rustup target add x86_64-apple-darwin
       - if: matrix.language == 'swift'
         name: Build the Rust library the shell links against
         run: cargo build --locked --release --target x86_64-apple-darwin -p litenotch-app

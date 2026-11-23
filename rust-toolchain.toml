@@ -1,0 +1,8 @@
+# One pinned compiler for local builds and CI, so a new Clippy release cannot
+# break `-D warnings` on its own. Dependabot bumps this (see dependabot.yml).
+# The oldest supported compiler is `rust-version` in Cargo.toml, checked by
+# the `msrv` job in ci.yml.
+[toolchain]
+channel = "1.99.1"
+components = ["clippy", "rustfmt", "llvm-tools-preview"]
+profile = "minimal"

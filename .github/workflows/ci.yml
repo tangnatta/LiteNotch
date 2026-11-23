@@ -4,21 +4,28 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "41 4 * * 1" # Mondays: only `deny` runs
 
 permissions:
   contents: read
 
+# A newer push to the same pull request replaces the run in progress (macOS
+# minutes are the expensive ones). Runs on main always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   rust:
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          toolchain: stable
-          components: clippy, rustfmt, llvm-tools-preview
+      - name: Rust toolchain (pinned in rust-toolchain.toml)
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - run: cargo fmt --all --check
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
@@ -26,15 +33,42 @@ jobs:
       - name: Tests with coverage (fails under 90 % lines)
         run: scripts/coverage.sh
 
-  app:
+  # Cheap and fast: RustSec advisories, licences, unknown sources. Also weekly,
+  # because new advisories appear without any change here.
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Rust toolchain (pinned in rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: taiki-e/install-action@d5b78900754d505a5f5f996e23d5f039b418e2f3 # cargo-deny
+      - run: cargo deny check
+
+  # `rust-version` in Cargo.toml must really build. `cargo check` only.
+  msrv:
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - name: Oldest supported Rust
+        run: |
+          MSRV=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          rustup toolchain install "$MSRV" --profile minimal
+          cargo +"$MSRV" check --locked --workspace
+
+  app:
+    if: github.event_name != 'schedule'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          toolchain: stable
+          persist-credentials: false
+      - name: Rust toolchain (pinned in rust-toolchain.toml)
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Build the app bundle
         run: scripts/build-app.sh

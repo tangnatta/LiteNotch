@@ -6,7 +6,7 @@ members = ["crates/core", "crates/platform", "crates/files", "crates/app", "crat
 version = "0.2.5-beta"
 edition = "2021"
 license = "GPL-3.0-only"
-rust-version = "1.80"
+rust-version = "1.83"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import XCTest
+
 @testable import LiteNotchUI
 
 /// Reported: in the Island style the icon and time were drawn outside the
@@ -22,10 +23,16 @@ final class ClosedSpaceTests: XCTestCase {
         return [
             Machine(name: "notch, attached", layout: NotchLayout(style: .attached, notch: notch, hasNotch: true, menuBarHeight: 32)),
             Machine(name: "notch, island", layout: NotchLayout(style: .island, notch: notch, hasNotch: true, menuBarHeight: 32)),
-            Machine(name: "no notch, attached", layout: NotchLayout(style: .attached, notch: NotchGeometry.fallbackSize,
-                                                                    hasNotch: false, menuBarHeight: 24)),
-            Machine(name: "no notch, island", layout: NotchLayout(style: .island, notch: NotchGeometry.fallbackSize,
-                                                                    hasNotch: false, menuBarHeight: 24)),
+            Machine(
+                name: "no notch, attached",
+                layout: NotchLayout(
+                    style: .attached, notch: NotchGeometry.fallbackSize,
+                    hasNotch: false, menuBarHeight: 24)),
+            Machine(
+                name: "no notch, island",
+                layout: NotchLayout(
+                    style: .island, notch: NotchGeometry.fallbackSize,
+                    hasNotch: false, menuBarHeight: 24)),
         ]
     }
 
@@ -49,10 +56,12 @@ final class ClosedSpaceTests: XCTestCase {
             c(.caffeine, "Awake", "lid"),
             c(.agent, "api", "working", count: 3),
             // Midnight before a 10:00 start, and two hours over.
-            CompactView(kind: .day, title: "Day", value: "", endsAtMs: now + 18 * 3_600_000,
-                        totalSecs: 8 * 3600, count: 1),
-            CompactView(kind: .day, title: "Day", value: "", endsAtMs: now - 2 * 3_600_000,
-                        totalSecs: 8 * 3600, count: 1),
+            CompactView(
+                kind: .day, title: "Day", value: "", endsAtMs: now + 18 * 3_600_000,
+                totalSecs: 8 * 3600, count: 1),
+            CompactView(
+                kind: .day, title: "Day", value: "", endsAtMs: now - 2 * 3_600_000,
+                totalSecs: 8 * 3600, count: 1),
         ]
     }
 
@@ -66,15 +75,17 @@ final class ClosedSpaceTests: XCTestCase {
 
     private func view(_ content: ClosedContent, _ layout: NotchLayout) -> ClosedActivityView {
         if layout.island {
-            return ClosedActivityView(content: content, notchWidth: layout.centerWidth, ear: 0,
-                                      wing: layout.wingWidth(for: content),
-                                      edgePadding: NotchGeometry.islandWingPadding,
-                                      artworkSize: min(20, layout.capsuleHeight - 4),
-                                      artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
-                                      oneRow: layout.oneRow)
+            return ClosedActivityView(
+                content: content, notchWidth: layout.centerWidth, ear: 0,
+                wing: layout.wingWidth(for: content),
+                edgePadding: NotchGeometry.islandWingPadding,
+                artworkSize: min(20, layout.capsuleHeight - 4),
+                artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
+                oneRow: layout.oneRow)
         }
-        return ClosedActivityView(content: content, notchWidth: layout.notch.width, ear: 0,
-                                  wing: layout.wingWidth(for: content), oneRow: layout.oneRow)
+        return ClosedActivityView(
+            content: content, notchWidth: layout.notch.width, ear: 0,
+            wing: layout.wingWidth(for: content), oneRow: layout.oneRow)
     }
 
     /// Fails when what is drawn is wider than the room the layout gives it.
@@ -87,8 +98,9 @@ final class ClosedSpaceTests: XCTestCase {
             let wing = m.layout.wingWidth(for: content)
             XCTAssertLessThanOrEqual(width(v.left), wing + 0.5, "\(m.name): left side of \(what)")
             XCTAssertLessThanOrEqual(width(v.right), wing + 0.5, "\(m.name): right side of \(what)")
-            XCTAssertEqual(shape, m.layout.centerWidth + 2 * wing, accuracy: 0.5,
-                           "\(m.name): the shape is the middle plus both sides for \(what)")
+            XCTAssertEqual(
+                shape, m.layout.centerWidth + 2 * wing, accuracy: 0.5,
+                "\(m.name): the shape is the middle plus both sides for \(what)")
         }
     }
 
@@ -106,8 +118,9 @@ final class ClosedSpaceTests: XCTestCase {
         for m in machines {
             for a in activities {
                 for b in activities where a.kind != b.kind {
-                    check(ClosedContent(primary: a, secondary: b, waiting: true), on: m,
-                          "\(a.kind) \(a.value) + \(b.kind) \(b.value) with the dot")
+                    check(
+                        ClosedContent(primary: a, secondary: b, waiting: true), on: m,
+                        "\(a.kind) \(a.value) + \(b.kind) \(b.value) with the dot")
                 }
             }
         }
@@ -168,8 +181,9 @@ final class ClosedSpaceTests: XCTestCase {
             XCTAssertEqual(shrunk.size(for: .toast, content: busy), plain.size(for: .toast, content: busy))
         }
         // Without a housing it is still the thin strip.
-        let strip = NotchLayout(style: .attached, notch: NotchGeometry.fallbackSize, hasNotch: false, menuBarHeight: 24,
-                                minimized: true)
+        let strip = NotchLayout(
+            style: .attached, notch: NotchGeometry.fallbackSize, hasNotch: false, menuBarHeight: 24,
+            minimized: true)
         XCTAssertEqual(strip.size(for: .closed, content: busy), NotchGeometry.minimizedSize)
     }
 
@@ -206,8 +220,9 @@ final class ClosedSpaceTests: XCTestCase {
         var settings = try ViewModel.decode(Data(contentsOf: url)).settings
         XCTAssertEqual(settings.sound, .default, "what the core sends by default")
         settings.sound = SoundConfig(enabled: false, name: "Hero")
-        let sent = try XCTUnwrap(JSONSerialization.jsonObject(
-            with: Data(ShellCommand.setSettings(settings).encode().utf8)) as? [String: Any])
+        let sent = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(ShellCommand.setSettings(settings).encode().utf8)) as? [String: Any])
         let sound = try XCTUnwrap((sent["settings"] as? [String: Any])?["sound"] as? [String: Any])
         XCTAssertEqual(sound as NSDictionary, ["enabled": false, "name": "Hero"] as NSDictionary)
     }

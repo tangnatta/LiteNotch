@@ -1,12 +1,14 @@
 import AppKit
 import SwiftUI
 import XCTest
+
 @testable import LiteNotchUI
 
 final class ProgressRingTests: XCTestCase {
     private func track(playing: Bool = true, position: Int = 60_000, duration: Int = 240_000, at: Int = 1_000_000) -> MediaView {
-        MediaView(app: "Music", title: "t", artist: "a", album: "", playing: playing,
-                  durationMs: duration, positionMs: position, positionAtMs: at, controllable: true, artworkPath: nil)
+        MediaView(
+            app: "Music", title: "t", artist: "a", album: "", playing: playing,
+            durationMs: duration, positionMs: position, positionAtMs: at, controllable: true, artworkPath: nil)
     }
 
     func testTheRingIsOnUnlessSwitchedOffAndOldFilesKeepIt() throws {
@@ -45,11 +47,13 @@ final class ProgressRingTests: XCTestCase {
         XCTAssertEqual(a?.duration ?? 0, 180, accuracy: 0.01, "three minutes left")
         // A redraw of the notch with the same facts leaves the animation alone.
         view.configure(media: track(), nowMs: 1_050_000, radius: 6, line: 1.5, fill: color, track: color)
-        XCTAssertEqual((view.fillLayer.animation(forKey: "progress") as? CABasicAnimation)?.fromValue as? Double ?? -1,
-                       0.25, accuracy: 1e-9)
+        XCTAssertEqual(
+            (view.fillLayer.animation(forKey: "progress") as? CABasicAnimation)?.fromValue as? Double ?? -1,
+            0.25, accuracy: 1e-9)
         // Paused: no animation, the ring stays where the song is.
-        view.configure(media: track(playing: false, position: 120_000), nowMs: 1_050_000,
-                       radius: 6, line: 1.5, fill: color, track: color)
+        view.configure(
+            media: track(playing: false, position: 120_000), nowMs: 1_050_000,
+            radius: 6, line: 1.5, fill: color, track: color)
         XCTAssertNil(view.fillLayer.animation(forKey: "progress"))
         XCTAssertEqual(Double(view.fillLayer.strokeEnd), 0.5, accuracy: 1e-6)
     }

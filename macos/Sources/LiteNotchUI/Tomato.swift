@@ -25,8 +25,9 @@ private func scaled(_ rect: CGRect, _ build: (inout Path) -> Void) -> Path {
     var p = Path()
     build(&p)
     let k = min(rect.width, rect.height) / 24
-    return p.applying(CGAffineTransform(scaleX: k, y: k)
-        .concatenating(CGAffineTransform(translationX: rect.minX, y: rect.minY)))
+    return p.applying(
+        CGAffineTransform(scaleX: k, y: k)
+            .concatenating(CGAffineTransform(translationX: rect.minX, y: rect.minY)))
 }
 
 private struct TomatoBody: Shape {
@@ -40,15 +41,18 @@ private struct TomatoLeaves: Shape {
         scaled(rect) { p in
             let c = CGPoint(x: 12, y: 7.2)
             p.move(to: c)
-            p.addCurve(to: CGPoint(x: 5.6, y: 8.2), control1: CGPoint(x: 9.6, y: 5.2),
-                       control2: CGPoint(x: 6.6, y: 5.8))
+            p.addCurve(
+                to: CGPoint(x: 5.6, y: 8.2), control1: CGPoint(x: 9.6, y: 5.2),
+                control2: CGPoint(x: 6.6, y: 5.8))
             p.addCurve(to: c, control1: CGPoint(x: 8.2, y: 7.8), control2: CGPoint(x: 10.4, y: 8.0))
             p.move(to: c)
-            p.addCurve(to: CGPoint(x: 18.4, y: 8.2), control1: CGPoint(x: 14.4, y: 5.2),
-                       control2: CGPoint(x: 17.4, y: 5.8))
+            p.addCurve(
+                to: CGPoint(x: 18.4, y: 8.2), control1: CGPoint(x: 14.4, y: 5.2),
+                control2: CGPoint(x: 17.4, y: 5.8))
             p.addCurve(to: c, control1: CGPoint(x: 15.8, y: 7.8), control2: CGPoint(x: 13.6, y: 8.0))
-            p.addRoundedRect(in: CGRect(x: 11.1, y: 1.8, width: 1.8, height: 5.6),
-                             cornerSize: CGSize(width: 0.9, height: 0.9))
+            p.addRoundedRect(
+                in: CGRect(x: 11.1, y: 1.8, width: 1.8, height: 5.6),
+                cornerSize: CGSize(width: 0.9, height: 0.9))
         }
     }
 }

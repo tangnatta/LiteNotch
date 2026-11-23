@@ -44,13 +44,16 @@ public final class AgentAttentionObserver {
     private var observer: NSObjectProtocol?
 
     public convenience init(model: AppModel) {
-        self.init(model: model,
-                  frontmost: { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
-                  frontTTY: TerminalWindow.frontTTY(bundleId:done:))
+        self.init(
+            model: model,
+            frontmost: { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
+            frontTTY: TerminalWindow.frontTTY(bundleId:done:))
     }
 
-    init(model: AppModel, frontmost: @escaping () -> String?,
-         frontTTY: @escaping (String, @escaping (String?) -> Void) -> Void) {
+    init(
+        model: AppModel, frontmost: @escaping () -> String?,
+        frontTTY: @escaping (String, @escaping (String?) -> Void) -> Void
+    ) {
         self.model = model
         self.frontmost = frontmost
         self.frontTTY = frontTTY

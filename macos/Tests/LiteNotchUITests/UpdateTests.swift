@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LiteNotchUI
 
 private func fixture(_ name: String) throws -> ViewModel {
@@ -39,19 +40,23 @@ final class UpdateTests: XCTestCase {
         let base = UpdateText.releasesPage
         XCTAssertNotNil(UpdateText.releasePage("\(base)/tag/v0.3.0-beta"))
         XCTAssertNotNil(UpdateText.releasePage(base))
-        for bad in [nil, "", "http://github.com/tangnatta/LiteNotch/releases/tag/v1",
-                    "https://github.com.evil.example/tangnatta/LiteNotch/releases",
-                    "https://github.com/tangnatta/LiteNotchEvil",
-                    "\(base)/tag/v1?x=1", "\(base)/tag/v1 && open", "\(base)/../../x@evil", "file:///etc/passwd",
-                    "x-apple.systempreferences:", String(repeating: "a", count: 400)] as [String?] {
+        for bad in [
+            nil, "", "http://github.com/tangnatta/LiteNotch/releases/tag/v1",
+            "https://github.com.evil.example/tangnatta/LiteNotch/releases",
+            "https://github.com/tangnatta/LiteNotchEvil",
+            "\(base)/tag/v1?x=1", "\(base)/tag/v1 && open", "\(base)/../../x@evil", "file:///etc/passwd",
+            "x-apple.systempreferences:", String(repeating: "a", count: 400),
+        ] as [String?] {
             XCTAssertNil(UpdateText.releasePage(bad), "\(bad ?? "nil")")
         }
     }
 
     func testTheAutomaticCheckIsOffUnlessTurnedOn() throws {
         XCTAssertFalse(try fixture("idle").settings.general.checkUpdates)
-        let old = try JSONDecoder().decode(GeneralSettings.self, from: Data(
-            #"{"persistClipboard":false,"hoverToExpand":true,"usageAlerts":true}"#.utf8))
+        let old = try JSONDecoder().decode(
+            GeneralSettings.self,
+            from: Data(
+                #"{"persistClipboard":false,"hoverToExpand":true,"usageAlerts":true}"#.utf8))
         XCTAssertFalse(old.checkUpdates, "settings saved before it existed")
     }
 }

@@ -49,11 +49,12 @@ public struct NotchRootView: View {
         // Attached: the notch silhouette with concave ears. Island: all
         // four corners rounded, `top` below the top of the screen.
         // Shrunk: a thin strip flush with the top edge, in either style.
-        let shape = layout.minimized && !layout.hasNotch
+        let shape =
+            layout.minimized && !layout.hasNotch
             ? NotchShape(topRadius: NotchGeometry.minimizedEar, bottomRadius: NotchGeometry.minimizedBottomRadius)
             : layout.island
-            ? NotchShape(topRadius: 0, bottomRadius: bottom, topCorner: bottom, topInset: top)
-            : NotchShape(topRadius: ear, bottomRadius: bottom)
+                ? NotchShape(topRadius: 0, bottomRadius: bottom, topCorner: bottom, topInset: top)
+                : NotchShape(topRadius: ear, bottomRadius: bottom)
 
         ZStack(alignment: .top) {
             // Closed and as a toast the shape is black by default, so it reads
@@ -67,9 +68,10 @@ public struct NotchRootView: View {
             // and the toast are glass as well (`closedDrawsGlass`), and the
             // glass stays through opening and closing instead of fading out.
             let approvalPending = !(model.view?.agents.pending.isEmpty ?? true)
-            let glassClosed = appearance.closedDrawsGlass(hardwareNotch: model.hasNotch,
-                                                          approvalPending: approvalPending,
-                                                          minimized: layout.minimized)
+            let glassClosed = appearance.closedDrawsGlass(
+                hardwareNotch: model.hasNotch,
+                approvalPending: approvalPending,
+                minimized: layout.minimized)
             if appearance.drawsGlass(approvalPending: approvalPending) {
                 shape.fill(appearance.closedFollowsTheme(hardwareNotch: model.hasNotch) ? NT.panel : Color.black)
                     .opacity(mode == .expanded || glassClosed ? 0 : 1)
@@ -85,37 +87,42 @@ public struct NotchRootView: View {
                 if !content.isEmpty && !layout.minimized {
                     Group {
                         if layout.island {
-                            ClosedActivityView(content: content, notchWidth: layout.centerWidth, ear: 0,
-                                               wing: layout.wingWidth(for: content),
-                                               edgePadding: NotchGeometry.islandWingPadding,
-                                               artworkSize: min(20, layout.capsuleHeight - 4),
-                                               artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
-                                               artworkPath: model.view?.media?.artworkPath,
-                                               ring: ringMedia,
-                                               oneRow: layout.oneRow)
-                                .frame(height: layout.capsuleHeight)
-                                .padding(.top, top)
+                            ClosedActivityView(
+                                content: content, notchWidth: layout.centerWidth, ear: 0,
+                                wing: layout.wingWidth(for: content),
+                                edgePadding: NotchGeometry.islandWingPadding,
+                                artworkSize: min(20, layout.capsuleHeight - 4),
+                                artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
+                                artworkPath: model.view?.media?.artworkPath,
+                                ring: ringMedia,
+                                oneRow: layout.oneRow
+                            )
+                            .frame(height: layout.capsuleHeight)
+                            .padding(.top, top)
                         } else {
-                            ClosedActivityView(content: content, notchWidth: model.notch.width, ear: ear,
-                                               wing: layout.wingWidth(for: content),
-                                               artworkPath: model.view?.media?.artworkPath,
-                                               ring: ringMedia,
-                                               oneRow: layout.oneRow)
+                            ClosedActivityView(
+                                content: content, notchWidth: model.notch.width, ear: ear,
+                                wing: layout.wingWidth(for: content),
+                                artworkPath: model.view?.media?.artworkPath,
+                                ring: ringMedia,
+                                oneRow: layout.oneRow)
                         }
                     }
-                        .environment(\.colorScheme, closedScheme)
-                        .environment(\.dayIcons, model.view?.settings.day.icons ?? .sun)
-                        .transition(.opacity)
+                    .environment(\.colorScheme, closedScheme)
+                    .environment(\.dayIcons, model.view?.settings.day.icons ?? .sun)
+                    .transition(.opacity)
                 }
             case .toast:
                 if let b = model.view?.inbox.banner {
-                    ToastView(banner: b, top: layout.island ? top : model.notch.height,
-                              rowHeight: NotchGeometry.toastExtraHeight - (layout.island ? 0 : 6), ear: ear,
-                              open: { model.openNotification(b, isBanner: true) },
-                              dismiss: { model.send(.notifyDismissBanner) },
-                              act: { model.banner(b, perform: $0) })
-                        .environment(\.colorScheme, closedScheme)
-                        .transition(.opacity)
+                    ToastView(
+                        banner: b, top: layout.island ? top : model.notch.height,
+                        rowHeight: NotchGeometry.toastExtraHeight - (layout.island ? 0 : 6), ear: ear,
+                        open: { model.openNotification(b, isBanner: true) },
+                        dismiss: { model.send(.notifyDismissBanner) },
+                        act: { model.banner(b, perform: $0) }
+                    )
+                    .environment(\.colorScheme, closedScheme)
+                    .transition(.opacity)
                 }
             case .expanded:
                 ExpandedView(model: model, ear: ear)
@@ -487,12 +494,15 @@ final class MarqueeNSView: NSView {
     }
 
     private func rebuild() {
-        let str = NSAttributedString(string: text, attributes: [
-            .font: Self.font,
-            .foregroundColor: NSColor(cgColor: color) ?? .white,
-        ])
+        let str = NSAttributedString(
+            string: text,
+            attributes: [
+                .font: Self.font,
+                .foregroundColor: NSColor(cgColor: color) ?? .white,
+            ])
         let size = str.size()
-        let w = ceil(size.width), h = ceil(size.height)
+        let w = ceil(size.width)
+        let h = ceil(size.height)
         let y = ((bounds.height - h) / 2).rounded()
         let scale = window?.backingScaleFactor ?? 2
         CATransaction.begin()
@@ -532,8 +542,8 @@ final class MarqueeNSView: NSView {
     }
 }
 
-private extension Text {
-    func wingText(mono: Bool, tint: Color = NT.text1) -> some View {
+extension Text {
+    fileprivate func wingText(mono: Bool, tint: Color = NT.text1) -> some View {
         self.font(NType.emphasis.font)
             .monospacedDigit()
             .foregroundStyle(tint)
@@ -694,10 +704,12 @@ final class BlinkingFaceNSView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for (i, layer) in faces.enumerated() {
-            let str = NSAttributedString(string: i == 0 ? BlinkingFace.face : BlinkingFace.shut, attributes: [
-                .font: Self.font,
-                .foregroundColor: NSColor(cgColor: color ?? .white) ?? .white,
-            ])
+            let str = NSAttributedString(
+                string: i == 0 ? BlinkingFace.face : BlinkingFace.shut,
+                attributes: [
+                    .font: Self.font,
+                    .foregroundColor: NSColor(cgColor: color ?? .white) ?? .white,
+                ])
             let size = str.size()
             layer.string = str
             layer.alignmentMode = .center
@@ -921,7 +933,9 @@ struct TabBar: View {
 
     /// Closes the panel and samples a colour from the screen.
     private var pickerButton: some View {
-        Button { model.pickColor() } label: {
+        Button {
+            model.pickColor()
+        } label: {
             Image(systemName: "eyedropper")
                 .glyph(13)
                 .foregroundStyle(NT.text3)
@@ -949,7 +963,9 @@ struct TabBar: View {
     }
 
     private func keepAwakeButton(on: Bool, help: String) -> some View {
-        Button { model.send(.caffeineToggle) } label: {
+        Button {
+            model.send(.caffeineToggle)
+        } label: {
             Image(systemName: on ? "cup.and.heat.waves.fill" : "cup.and.heat.waves")
                 .glyph(13)
                 .foregroundStyle(on ? NT.accentText : NT.text3)
@@ -968,7 +984,9 @@ struct TabBar: View {
     private func tabButton(_ t: Tab) -> some View {
         let selected = model.tab == t
         let count = badge(for: t)
-        return Button { model.selectTab(t) } label: {
+        return Button {
+            model.selectTab(t)
+        } label: {
             Image(systemName: t.symbol).glyph(13)
                 .foregroundStyle(selected ? NT.text1 : NT.text3)
                 .frame(width: 30, height: 24)
@@ -1038,11 +1056,12 @@ struct DaySchedule: TimelineSchedule {
 
     func entries(from startDate: Date, mode: TimelineScheduleMode) -> AnySequence<Date> {
         let (s, e, off) = (startMs, endMs, offsetMs)
-        return AnySequence(sequence(first: startDate) { date in
-            let now = nowMs(date, offset: off)
-            let next = Format.nextDayPercentMs(startMs: s, endMs: e, nowMs: now)
-            return date.addingTimeInterval(Double(next - now) / 1000)
-        })
+        return AnySequence(
+            sequence(first: startDate) { date in
+                let now = nowMs(date, offset: off)
+                let next = Format.nextDayPercentMs(startMs: s, endMs: e, nowMs: now)
+                return date.addingTimeInterval(Double(next - now) / 1000)
+            })
     }
 }
 
@@ -1060,7 +1079,8 @@ struct DayIcon: View {
             if snapshot {
                 glyph(start, end)
             } else {
-                let changes = icons == .tree
+                let changes =
+                    icons == .tree
                     ? Format.growthStageChanges(startMs: start, endMs: end)
                     : Format.daySymbolChanges(startMs: start, endMs: end)
                 let dates = changes.map { Date(timeIntervalSince1970: Double($0 + 1 - offset) / 1000) }
@@ -1076,8 +1096,9 @@ struct DayIcon: View {
     }
 
     private func glyph(_ start: Int, _ end: Int) -> some View {
-        DayGlyph(icons: icons, startMs: start, endMs: end, nowMs: nowMs(Date(), offset: offset),
-                 symbolFont: font, plantSize: plant, color: color)
+        DayGlyph(
+            icons: icons, startMs: start, endMs: end, nowMs: nowMs(Date(), offset: offset),
+            symbolFont: font, plantSize: plant, color: color)
     }
 
     private var font: Font { .system(size: 11.5, weight: .semibold) }

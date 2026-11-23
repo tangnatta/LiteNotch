@@ -56,8 +56,12 @@ enum NT {
         for step in stride(from: 0.0, through: 0.8, by: 0.05) {
             let k = 1 - step
             light = NSColor(srgbRed: c.r * k, green: c.g * k, blue: c.b * k, alpha: 1)
-            if ColorMath.contrast(ColorMath.RGB(r: c.r * k, g: c.g * k, b: c.b * k),
-                                  ColorMath.RGB(r: 0.965, g: 0.965, b: 0.965)) >= 4.5 { break }
+            if ColorMath.contrast(
+                ColorMath.RGB(r: c.r * k, g: c.g * k, b: c.b * k),
+                ColorMath.RGB(r: 0.965, g: 0.965, b: 0.965)) >= 4.5
+            {
+                break
+            }
         }
         return dynamic(dark: base, light: light)
     }
@@ -74,14 +78,18 @@ enum NT {
     /// Warnings that need the user (a missing permission, a password
     /// prompt): the system's amber, darkened on the light panel to stay
     /// readable. Kept apart from the accent, which means "act here".
-    static let warningRGB = (dark: ColorMath.RGB(r: 1.0, g: 0.72, b: 0.25),
-                             light: ColorMath.RGB(r: 0.55, g: 0.31, b: 0.0))
+    static let warningRGB = (
+        dark: ColorMath.RGB(r: 1.0, g: 0.72, b: 0.25),
+        light: ColorMath.RGB(r: 0.55, g: 0.31, b: 0.0)
+    )
     static let warning = dynamic(
         dark: NSColor(srgbRed: warningRGB.dark.r, green: warningRGB.dark.g, blue: warningRGB.dark.b, alpha: 1),
         light: NSColor(srgbRed: warningRGB.light.r, green: warningRGB.light.g, blue: warningRGB.light.b, alpha: 1))
     /// Over-time and destructive text; `denyRGB` is what the test checks.
-    static let denyRGB = (dark: ColorMath.RGB(r: 1.0, g: 0.40, b: 0.36),
-                          light: ColorMath.RGB(r: 0.80, g: 0.13, b: 0.10))
+    static let denyRGB = (
+        dark: ColorMath.RGB(r: 1.0, g: 0.40, b: 0.36),
+        light: ColorMath.RGB(r: 0.80, g: 0.13, b: 0.10)
+    )
 
     /// Primary text: titles, values.
     static let text1 = dynamic(.text1)
@@ -142,15 +150,18 @@ enum NT {
     }
 
     private static func dynamic(_ t: Tone) -> Color {
-        let d = t.value(dark: true), l = t.value(dark: false)
-        return dynamic(dark: NSColor(srgbRed: d.white, green: d.white, blue: d.white, alpha: d.alpha),
-                       light: NSColor(srgbRed: l.white, green: l.white, blue: l.white, alpha: l.alpha))
+        let d = t.value(dark: true)
+        let l = t.value(dark: false)
+        return dynamic(
+            dark: NSColor(srgbRed: d.white, green: d.white, blue: d.white, alpha: d.alpha),
+            light: NSColor(srgbRed: l.white, green: l.white, blue: l.white, alpha: l.alpha))
     }
 
     private static func dynamic(dark: NSColor, light: NSColor) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua ? light : dark
-        })
+        Color(
+            nsColor: NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua ? light : dark
+            })
     }
 }
 
@@ -310,17 +321,21 @@ struct NotchShape: Shape {
         // of the two while animating.
         var p = Path()
         p.move(to: CGPoint(x: r.minX + c, y: r.minY))
-        p.addQuadCurve(to: CGPoint(x: r.minX + t, y: r.minY + t + c),
-                       control: CGPoint(x: r.minX + t, y: r.minY))
+        p.addQuadCurve(
+            to: CGPoint(x: r.minX + t, y: r.minY + t + c),
+            control: CGPoint(x: r.minX + t, y: r.minY))
         p.addLine(to: CGPoint(x: r.minX + t, y: r.maxY - b))
-        p.addQuadCurve(to: CGPoint(x: r.minX + t + b, y: r.maxY),
-                       control: CGPoint(x: r.minX + t, y: r.maxY))
+        p.addQuadCurve(
+            to: CGPoint(x: r.minX + t + b, y: r.maxY),
+            control: CGPoint(x: r.minX + t, y: r.maxY))
         p.addLine(to: CGPoint(x: r.maxX - t - b, y: r.maxY))
-        p.addQuadCurve(to: CGPoint(x: r.maxX - t, y: r.maxY - b),
-                       control: CGPoint(x: r.maxX - t, y: r.maxY))
+        p.addQuadCurve(
+            to: CGPoint(x: r.maxX - t, y: r.maxY - b),
+            control: CGPoint(x: r.maxX - t, y: r.maxY))
         p.addLine(to: CGPoint(x: r.maxX - t, y: r.minY + t + c))
-        p.addQuadCurve(to: CGPoint(x: r.maxX - c, y: r.minY),
-                       control: CGPoint(x: r.maxX - t, y: r.minY))
+        p.addQuadCurve(
+            to: CGPoint(x: r.maxX - c, y: r.minY),
+            control: CGPoint(x: r.maxX - t, y: r.minY))
         p.closeSubpath()
         return p
     }
@@ -459,7 +474,9 @@ struct NotchToggle: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Button { isOn.toggle() } label: {
+        Button {
+            isOn.toggle()
+        } label: {
             ZStack(alignment: isOn ? .trailing : .leading) {
                 Capsule().fill(isOn ? NT.accent : NT.fillHi)
                 Circle().fill(isOn ? NT.onAccent : NT.knob)
@@ -527,28 +544,34 @@ struct MiniStepper: View {
 
     @ViewBuilder private var number: some View {
         if typed != nil {
-            TextField("", text: Binding(get: { typed ?? "" },
-                                        set: { typed = Self.edited($0, typing: typed) }))
-                .textFieldStyle(.plain)
-                .multilineTextAlignment(.center)
-                .font(NType.bodyMedium.font)
-                .monospacedDigit()
-                .foregroundStyle(NT.text1)
-                .frame(width: 34, height: 22)
-                .background(GeometryReader { g in
+            TextField(
+                "",
+                text: Binding(
+                    get: { typed ?? "" },
+                    set: { typed = Self.edited($0, typing: typed) })
+            )
+            .textFieldStyle(.plain)
+            .multilineTextAlignment(.center)
+            .font(NType.bodyMedium.font)
+            .monospacedDigit()
+            .foregroundStyle(NT.text1)
+            .frame(width: 34, height: 22)
+            .background(
+                GeometryReader { g in
                     Color.clear
                         .onAppear { fieldFrame = g.frame(in: .global) }
                         .onChange(of: g.frame(in: .global)) { _, f in fieldFrame = f }
-                })
-                .focused($focused)
-                .onSubmit(finish)
-                .onExitCommand(perform: revert)
-                .onChange(of: typed) { _, text in apply(text) }
-                .onChange(of: focused) { _, f in
-                    if f { hadFocus = true }
-                    if Self.endsTyping(focused: f, hadFocus: hadFocus) { finish() }
                 }
-                .accessibilityLabel(Text(verbatim: label))
+            )
+            .focused($focused)
+            .onSubmit(finish)
+            .onExitCommand(perform: revert)
+            .onChange(of: typed) { _, text in apply(text) }
+            .onChange(of: focused) { _, f in
+                if f { hadFocus = true }
+                if Self.endsTyping(focused: f, hadFocus: hadFocus) { finish() }
+            }
+            .accessibilityLabel(Text(verbatim: label))
         } else {
             Button(action: begin) {
                 Text(verbatim: "\(value)")
@@ -870,7 +893,9 @@ struct SegmentedPill<Value: Hashable>: View {
         HStack(spacing: 2) {
             ForEach(Array(options.enumerated()), id: \.offset) { _, o in
                 let on = o.value == selection
-                Button { selection = o.value } label: {
+                Button {
+                    selection = o.value
+                } label: {
                     Text(verbatim: o.title)
                         .nfont(on ? .emphasis : .bodyMedium)
                         .foregroundStyle(on ? NT.text1 : NT.text2)

@@ -115,14 +115,18 @@ struct QuestionForm: View {
     /// README previews only: a half-answered form to draw instead of an empty one.
     @MainActor static var previewDraft: QuestionDraft?
 
-    @MainActor init(request: PermissionRequest, armed: Bool, send: @escaping (ShellCommand) -> Void,
-         keyboard: @escaping (Bool) -> Void = { _ in }) {
-        self.request = request; self.armed = armed; self.send = send; self.keyboard = keyboard
+    @MainActor init(
+        request: PermissionRequest, armed: Bool, send: @escaping (ShellCommand) -> Void,
+        keyboard: @escaping (Bool) -> Void = { _ in }
+    ) {
+        self.request = request
+        self.armed = armed
+        self.send = send
+        self.keyboard = keyboard
         _draft = State(initialValue: Self.previewDraft ?? QuestionDraft(request.questions))
     }
 
     private var live: Bool { armed || snapshot }
-
 
     var body: some View {
         let q = draft.step
@@ -149,12 +153,16 @@ struct QuestionForm: View {
                 }
                 if !draft.answersOnClick {
                     if draft.isLast {
-                        button(sendTitle, fg: .black, bg: NT.allow,
-                               enabled: draft.isComplete && live) { submit() }
-                            .help("Send these answers to Claude Code")
+                        button(
+                            sendTitle, fg: .black, bg: NT.allow,
+                            enabled: draft.isComplete && live
+                        ) { submit() }
+                        .help("Send these answers to Claude Code")
                     } else {
-                        button("Next", fg: .black, bg: NT.allow,
-                               enabled: draft.currentAnswered) { draft.next() }
+                        button(
+                            "Next", fg: .black, bg: NT.allow,
+                            enabled: draft.currentAnswered
+                        ) { draft.next() }
                     }
                 }
             }
@@ -189,7 +197,8 @@ struct QuestionForm: View {
     /// single choice and open questions) it goes on, like the button.
     private func returnPressed(_ q: Int) {
         if draft.isMulti(q), !draft.typed[q].trimmingCharacters(in: .whitespaces).isEmpty {
-            draft.commit(q); return
+            draft.commit(q)
+            return
         }
         guard live, draft.currentAnswered else { return }
         focus = nil
@@ -249,7 +258,8 @@ struct QuestionForm: View {
 
     private func optionRow(_ q: Int, _ question: AgentQuestion, _ option: QuestionOption) -> some View {
         let on = draft.picked[q].contains(option.label)
-        let symbol = question.multiSelect
+        let symbol =
+            question.multiSelect
             ? (on ? "checkmark.square.fill" : "square")
             : (on ? "largecircle.fill.circle" : "circle")
         let clickMoves = draft.movesOnClick(q)
@@ -263,7 +273,7 @@ struct QuestionForm: View {
                 // Label and its note share a line (and wrap together): a
                 // list of choices has to fit the panel without scrolling.
                 (VText(ApprovalPresentation.visible(option.label)).font(NType.bodyMedium.font).foregroundColor(NT.text1)
-                 + VText(option.description.isEmpty ? "" : "  " + ApprovalPresentation.visible(option.description))
+                    + VText(option.description.isEmpty ? "" : "  " + ApprovalPresentation.visible(option.description))
                     .font(NType.caption.font).foregroundColor(NT.text2))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -271,8 +281,10 @@ struct QuestionForm: View {
             }
             .padding(.vertical, 3).padding(.horizontal, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(on ? NT.fillHi : Color.clear,
-                        in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
+            .background(
+                on ? NT.fillHi : Color.clear,
+                in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous)
+            )
             .contentShape(Rectangle())
             .controlHover(RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
         }
@@ -296,15 +308,17 @@ struct QuestionForm: View {
                     .nfont(.body).foregroundStyle(NT.text3)
                 Spacer(minLength: 0)
             } else {
-                TextField("", text: binding,
-                          prompt: Text(verbatim: prompt).foregroundColor(NT.text3),
-                          axis: .vertical)
-                    .lineLimit(roomy ? 3...4 : 1...1)
-                    .textFieldStyle(.plain).font(NType.body.font).foregroundStyle(NT.text1)
-                    .focused($focus, equals: q)
-                    .onChange(of: focus) { _, f in keyboard(f != nil) }
-                    .onSubmit { returnPressed(q) }
-                    .accessibilityLabel(Text(verbatim: roomy ? "Your answer" : "Another answer"))
+                TextField(
+                    "", text: binding,
+                    prompt: Text(verbatim: prompt).foregroundColor(NT.text3),
+                    axis: .vertical
+                )
+                .lineLimit(roomy ? 3...4 : 1...1)
+                .textFieldStyle(.plain).font(NType.body.font).foregroundStyle(NT.text1)
+                .focused($focus, equals: q)
+                .onChange(of: focus) { _, f in keyboard(f != nil) }
+                .onSubmit { returnPressed(q) }
+                .accessibilityLabel(Text(verbatim: roomy ? "Your answer" : "Another answer"))
             }
         }
         .overlay(alignment: .trailing) {
@@ -320,8 +334,10 @@ struct QuestionForm: View {
         .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
     }
 
-    private func button(_ title: String, fg: Color, bg: Color, enabled: Bool,
-                        action: @escaping () -> Void) -> some View {
+    private func button(
+        _ title: String, fg: Color, bg: Color, enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Text(verbatim: title).nfont(.emphasis).foregroundStyle(fg)
                 .frame(maxWidth: .infinity).frame(height: 34)

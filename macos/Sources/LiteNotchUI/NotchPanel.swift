@@ -8,9 +8,10 @@ final class NotchPanel: NSPanel {
     var allowsKey = false
 
     init(contentRect: NSRect) {
-        super.init(contentRect: contentRect,
-                   styleMask: [.borderless, .nonactivatingPanel],
-                   backing: .buffered, defer: false)
+        super.init(
+            contentRect: contentRect,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered, defer: false)
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
@@ -115,9 +116,11 @@ public final class NotchPanelController {
     }
 
     private func observe() {
-        observers.append(NotificationCenter.default.addObserver(
-            forName: NSApplication.didChangeScreenParametersNotification,
-            object: nil, queue: .main) { [weak self] _ in self?.rebuild() })
+        observers.append(
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didChangeScreenParametersNotification,
+                object: nil, queue: .main
+            ) { [weak self] _ in self?.rebuild() })
         model.$view
             .map { $0?.settings.general.allScreens ?? false }
             .removeDuplicates()

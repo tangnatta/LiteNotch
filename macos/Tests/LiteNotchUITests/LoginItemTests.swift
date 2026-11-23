@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LiteNotchUI
 
 private final class FakeLogin: LoginItemService {

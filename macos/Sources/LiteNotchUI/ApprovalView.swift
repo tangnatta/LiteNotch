@@ -19,15 +19,19 @@ struct ApprovalHeader: View {
             Spacer(minLength: gap)
             if total > 1 {
                 HStack(spacing: 0) {
-                    IconButton(symbol: "chevron.left", label: "Previous request", size: NGlyph.small,
-                               tint: index > 1 ? NT.text1 : NT.text3) { step(-1) }
-                        .disabled(index <= 1)
+                    IconButton(
+                        symbol: "chevron.left", label: "Previous request", size: NGlyph.small,
+                        tint: index > 1 ? NT.text1 : NT.text3
+                    ) { step(-1) }
+                    .disabled(index <= 1)
                     Text(verbatim: "\(index) of \(total)")
                         .nfont(.bodyMedium).monospacedDigit().foregroundStyle(NT.text2)
                         .accessibilityLabel(Text(verbatim: "Request \(index) of \(total)"))
-                    IconButton(symbol: "chevron.right", label: "Next request", size: NGlyph.small,
-                               tint: index < total ? NT.text1 : NT.text3) { step(1) }
-                        .disabled(index >= total)
+                    IconButton(
+                        symbol: "chevron.right", label: "Next request", size: NGlyph.small,
+                        tint: index < total ? NT.text1 : NT.text3
+                    ) { step(1) }
+                    .disabled(index >= total)
                 }
             }
         }
@@ -73,32 +77,32 @@ struct ApprovalView: View {
             if p.isQuestion {
                 QuestionForm(request: request, armed: armed, send: send, keyboard: keyboard)
             } else {
-            NotchScroll {
-                VText(p.detail)
-                    .font(.system(size: NType.body.size, design: .monospaced))
-                    .foregroundStyle(NT.text1)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .padding(10)
-            }
-            .frame(maxWidth: .infinity, minHeight: 36, maxHeight: .infinity)
-            .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous))
-            .clipShape(RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous))
-
-            if p.showTruncatedNotice {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill").glyph(11, .regular)
-                    Text(verbatim: ApprovalPresentation.truncatedNotice).nfont(.bodyMedium)
-                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                NotchScroll {
+                    VText(p.detail)
+                        .font(.system(size: NType.body.size, design: .monospaced))
+                        .foregroundStyle(NT.text1)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .padding(10)
                 }
-                .foregroundStyle(NT.warning)
-            }
+                .frame(maxWidth: .infinity, minHeight: 36, maxHeight: .infinity)
+                .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous))
 
-            HStack(spacing: 8) {
-                ForEach(p.offeredDecisions, id: \.self) { d in
-                    decisionButton(d)
+                if p.showTruncatedNotice {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill").glyph(11, .regular)
+                        Text(verbatim: ApprovalPresentation.truncatedNotice).nfont(.bodyMedium)
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .foregroundStyle(NT.warning)
                 }
-            }
+
+                HStack(spacing: 8) {
+                    ForEach(p.offeredDecisions, id: \.self) { d in
+                        decisionButton(d)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

@@ -17,15 +17,22 @@ public enum Format {
             let n = parts.compactMap { $0 }
             switch n.count {
             case 1: total = n[0] * 60
-            case 2: guard n[1] < 60 else { return nil }; total = n[0] * 60 + n[1]
-            case 3: guard n[1] < 60, n[2] < 60 else { return nil }; total = n[0] * 3600 + n[1] * 60 + n[2]
+            case 2:
+                guard n[1] < 60 else { return nil }
+                total = n[0] * 60 + n[1]
+            case 3:
+                guard n[1] < 60, n[2] < 60 else { return nil }
+                total = n[0] * 3600 + n[1] * 60 + n[2]
             default: return nil
             }
         } else {
             var number = ""
             var seen = Set<Character>()
             for c in s {
-                if c.isNumber { number.append(c); continue }
+                if c.isNumber {
+                    number.append(c)
+                    continue
+                }
                 guard let value = Int(number), "hms".contains(c), !seen.contains(c) else { return nil }
                 seen.insert(c)
                 total += value * (c == "h" ? 3600 : c == "m" ? 60 : 1)
@@ -42,7 +49,8 @@ public enum Format {
 
     /// `1 min`, `30 min`, `1 h`, `1 h 30 min`.
     public static func timerPreset(_ secs: Int) -> String {
-        let h = secs / 3600, m = secs / 60 % 60
+        let h = secs / 3600
+        let m = secs / 60 % 60
         if h == 0 { return secs >= 60 ? "\(m) min" : "\(secs) s" }
         return m == 0 ? "\(h) h" : "\(h) h \(m) min"
     }
@@ -89,22 +97,29 @@ public enum Format {
             let m = minutes % 60
             return m == 0 ? "in \(hours)h" : "in \(hours)h \(m)m"
         }
-        let d = hours / 24, h = hours % 24
+        let d = hours / 24
+        let h = hours % 24
         return h == 0 ? "in \(d)d" : "in \(d)d \(h)h"
     }
 
     /// An event's clock times in the user's format, `14:00 - 14:30` with an
     /// en dash, with `Tomorrow` or the weekday in front when it is not today.
-    public static func eventTime(startMs: Int, endMs: Int, nowMs: Int,
-                                 calendar: Calendar = .current, locale: Locale = .current) -> String {
+    public static func eventTime(
+        startMs: Int, endMs: Int, nowMs: Int,
+        calendar: Calendar = .current, locale: Locale = .current
+    ) -> String {
         let start = Date(timeIntervalSince1970: Double(startMs) / 1000)
         let end = Date(timeIntervalSince1970: Double(endMs) / 1000)
         let now = Date(timeIntervalSince1970: Double(nowMs) / 1000)
-        let time = Date.FormatStyle(date: .omitted, time: .shortened, locale: locale,
-                                    calendar: calendar, timeZone: calendar.timeZone)
+        let time = Date.FormatStyle(
+            date: .omitted, time: .shortened, locale: locale,
+            calendar: calendar, timeZone: calendar.timeZone)
         let range = "\(start.formatted(time)) \u{2013} \(end.formatted(time))"
-        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
-                                           to: calendar.startOfDay(for: start)).day ?? 0
+        let days =
+            calendar.dateComponents(
+                [.day], from: calendar.startOfDay(for: now),
+                to: calendar.startOfDay(for: start)
+            ).day ?? 0
         switch days {
         case ...0: return range
         case 1: return "Tomorrow \(range)"
@@ -126,7 +141,8 @@ public enum Format {
             let m = minutes % 60
             return m == 0 ? "resets in \(hours)h" : "resets in \(hours)h \(m)m"
         }
-        let d = hours / 24, h = hours % 24
+        let d = hours / 24
+        let h = hours % 24
         return h == 0 ? "resets in \(d)d" : "resets in \(d)d \(h)h"
     }
 
@@ -319,8 +335,10 @@ public enum Format {
     /// `25 min focus · 5 min break` and `15 min long break every 4 rounds`.
     public static func scheduleLines(_ p: PomodoroConfig) -> [String] {
         let rounds = p.roundsBeforeLong == 1 ? "every round" : "every \(p.roundsBeforeLong) rounds"
-        return ["\(p.focusSecs / 60) min focus \u{00B7} \(p.shortBreakSecs / 60) min break",
-                "\(p.longBreakSecs / 60) min long break \(rounds)"]
+        return [
+            "\(p.focusSecs / 60) min focus \u{00B7} \(p.shortBreakSecs / 60) min break",
+            "\(p.longBreakSecs / 60) min long break \(rounds)",
+        ]
     }
 
     /// `1:05 over` once a time box has run out, else the time left.

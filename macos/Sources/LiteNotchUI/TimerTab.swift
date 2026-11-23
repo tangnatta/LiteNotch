@@ -36,9 +36,10 @@ struct TimerTab: View {
     /// Today's totals; the captions say what they count, so no label.
     private var today: some View {
         HStack(alignment: .top, spacing: 0) {
-            stat("\(vm.pomodoro.completedToday)",
-                 vm.pomodoro.completedToday == 1 ? "focus session today" : "focus sessions today",
-                 tomato: true)
+            stat(
+                "\(vm.pomodoro.completedToday)",
+                vm.pomodoro.completedToday == 1 ? "focus session today" : "focus sessions today",
+                tomato: true)
             stat(Format.duration(secs: vm.pomodoro.focusSecsToday), "focused today")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -82,12 +83,16 @@ struct TimerHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            SegmentedPill(options: [(TimerPane.focus, "Focus"), (TimerPane.meeting, "Meeting"),
-                                    (TimerPane.countdown, "Timer")],
-                          selection: $model.timerPane, label: "Timer view")
+            SegmentedPill(
+                options: [
+                    (TimerPane.focus, "Focus"), (TimerPane.meeting, "Meeting"),
+                    (TimerPane.countdown, "Timer"),
+                ],
+                selection: $model.timerPane, label: "Timer view")
             Spacer(minLength: 4)
             if model.timerPane == .meeting
-                && (vm.meeting.runState == .stopped || vm.meeting.runState == .unknown) {
+                && (vm.meeting.runState == .stopped || vm.meeting.runState == .unknown)
+            {
                 MeetingPresets(m: vm.meeting, send: model.send)
             }
         }
@@ -116,7 +121,8 @@ struct PomodoroCard: View {
 
     private var ring: some View {
         EverySecond { now in
-            let left = p.runState == .running && p.endsAtMs != nil
+            let left =
+                p.runState == .running && p.endsAtMs != nil
                 ? Format.secondsLeft(until: p.endsAtMs ?? now, nowMs: now) : p.remainingSecs
             let progress = p.phase == .idle || p.totalSecs <= 0 ? 0 : 1 - Double(left) / Double(p.totalSecs)
             ZStack {
@@ -143,8 +149,9 @@ struct PomodoroCard: View {
         // accent, the rest are grey: how far it is to the long break.
         HStack(spacing: 4) {
             ForEach(0..<max(1, min(p.roundsBeforeLong, 12)), id: \.self) { i in
-                TomatoIcon(size: 14,
-                           tint: i < p.round ? nil : (i == p.round && p.phase == .focus ? NT.accent : NT.fillHi))
+                TomatoIcon(
+                    size: 14,
+                    tint: i < p.round ? nil : (i == p.round && p.phase == .focus ? NT.accent : NT.fillHi))
             }
         }
         .accessibilityElement(children: .ignore)
@@ -156,17 +163,21 @@ struct PomodoroCard: View {
             circleButton("arrow.counterclockwise", label: "Reset", size: 28, fill: NT.fill, tint: NT.text2) {
                 send(.pomodoroReset)
             }
-            circleButton(p.runState == .running ? "pause.fill" : "play.fill",
-                         label: p.runState == .running ? "Pause" : "Start",
-                         size: 36, fill: NT.accent, tint: NT.onAccent) { send(.pomodoroToggle) }
+            circleButton(
+                p.runState == .running ? "pause.fill" : "play.fill",
+                label: p.runState == .running ? "Pause" : "Start",
+                size: 36, fill: NT.accent, tint: NT.onAccent
+            ) { send(.pomodoroToggle) }
             circleButton("forward.end.fill", label: "Skip to the next phase", size: 28, fill: NT.fill, tint: NT.text2) {
                 send(.pomodoroSkip)
             }
         }
     }
 
-    private func circleButton(_ symbol: String, label: String, size: CGFloat, fill: Color,
-                              tint: Color, action: @escaping () -> Void) -> some View {
+    private func circleButton(
+        _ symbol: String, label: String, size: CGFloat, fill: Color,
+        tint: Color, action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .glyph(size * 0.38, .bold)
@@ -256,8 +267,10 @@ struct CountdownPane: View {
                                 .accessibilityLabel(Text(verbatim: "Set the time"))
                             }
                             Text(verbatim: typed != nil ? typingHint : status).nfont(.caption)
-                                .foregroundStyle(typed != nil && invalid ? NT.deny
-                                                 : (t.runState == .done ? NT.accentText : NT.text2))
+                                .foregroundStyle(
+                                    typed != nil && invalid
+                                        ? NT.deny
+                                        : (t.runState == .done ? NT.accentText : NT.text2))
                         }
                     }
                     .frame(width: 104, height: 104)
@@ -266,11 +279,15 @@ struct CountdownPane: View {
                 }
                 HStack(spacing: 10) {
                     round("arrow.counterclockwise", "Reset", 28, NT.fill, NT.text2) { send(.timerReset) }
-                    round(t.runState == .running ? "pause.fill" : "play.fill",
-                          t.runState == .running ? "Pause" : "Start", 36, NT.accent, NT.onAccent) {
+                    round(
+                        t.runState == .running ? "pause.fill" : "play.fill",
+                        t.runState == .running ? "Pause" : "Start", 36, NT.accent, NT.onAccent
+                    ) {
                         send(.timerToggle)
                     }
-                    Button { send(.timerAdd(secs: 60)) } label: {
+                    Button {
+                        send(.timerAdd(secs: 60))
+                    } label: {
                         Text(verbatim: "+1m").nfont(.captionStrong).foregroundStyle(NT.text2)
                             .frame(width: 28, height: 28)
                             .background(NT.fill, in: Circle())
@@ -295,17 +312,19 @@ struct CountdownPane: View {
     private var typingHint: String { invalid ? "e.g. 25 or 1:30" : "Return to set" }
 
     private var timeField: some View {
-        TextField("", text: Binding(get: { typed ?? "" }, set: { typed = $0 }),
-                  prompt: Text(verbatim: Format.countdown(seconds: t.durationSecs)))
-            .textFieldStyle(.plain)
-            .multilineTextAlignment(.center)
-            .font(NType.display.font)
-            .foregroundStyle(invalid ? NT.deny : NT.text1)
-            .frame(width: 90)
-            .focused($focused)
-            .onSubmit(commitTyping)
-            .onExitCommand(perform: cancelTyping)
-            .onChange(of: focused) { _, f in if !f { cancelTyping() } }
+        TextField(
+            "", text: Binding(get: { typed ?? "" }, set: { typed = $0 }),
+            prompt: Text(verbatim: Format.countdown(seconds: t.durationSecs))
+        )
+        .textFieldStyle(.plain)
+        .multilineTextAlignment(.center)
+        .font(NType.display.font)
+        .foregroundStyle(invalid ? NT.deny : NT.text1)
+        .frame(width: 90)
+        .focused($focused)
+        .onSubmit(commitTyping)
+        .onExitCommand(perform: cancelTyping)
+        .onChange(of: focused) { _, f in if !f { cancelTyping() } }
     }
 
     private func beginTyping() {
@@ -344,7 +363,9 @@ struct CountdownPane: View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
             ForEach(t.presets, id: \.self) { secs in
                 let selected = secs == t.durationSecs
-                Button { send(.timerSet(secs: secs)) } label: {
+                Button {
+                    send(.timerSet(secs: secs))
+                } label: {
                     Text(verbatim: Format.timerPreset(secs))
                         .nfont(selected ? .emphasis : .bodyMedium)
                         .foregroundStyle(selected ? NT.text1 : NT.text2)
@@ -371,14 +392,18 @@ struct CountdownPane: View {
                     .nfont(.caption).foregroundStyle(NT.text3).lineLimit(1)
             }
             Spacer(minLength: 4)
-            MiniStepper(value: Binding(get: { max(1, t.durationSecs / 60) },
-                                       set: { send(.timerSet(secs: $0 * 60)) }),
-                        range: 1...240, label: "Timer minutes")
+            MiniStepper(
+                value: Binding(
+                    get: { max(1, t.durationSecs / 60) },
+                    set: { send(.timerSet(secs: $0 * 60)) }),
+                range: 1...240, label: "Timer minutes")
         }
     }
 
-    private func round(_ symbol: String, _ label: String, _ size: CGFloat, _ fill: Color, _ tint: Color,
-                       action: @escaping () -> Void) -> some View {
+    private func round(
+        _ symbol: String, _ label: String, _ size: CGFloat, _ fill: Color, _ tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .glyph(size * 0.38, .bold)

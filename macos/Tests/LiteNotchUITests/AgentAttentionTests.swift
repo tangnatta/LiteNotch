@@ -1,5 +1,6 @@
 import AppKit
 import XCTest
+
 @testable import LiteNotchUI
 
 private func fixture(_ name: String) throws -> ViewModel {
@@ -15,19 +16,23 @@ private let ghostty = "com.mitchellh.ghostty"
 /// Reported: the waiting dot stayed after clicking the session it was for,
 /// and after going to that session's terminal window by hand.
 final class AgentAttentionTests: XCTestCase {
-    private func session(_ id: String, _ status: AgentStatus = .waitingInput, app: String? = terminal,
-                         tty: String? = nil) -> AgentSession {
+    private func session(
+        _ id: String, _ status: AgentStatus = .waitingInput, app: String? = terminal,
+        tty: String? = nil
+    ) -> AgentSession {
         AgentSession(id: id, project: id, cwd: "/work/\(id)", status: status, lastEventMs: 0, app: app, tty: tty)
     }
 
     private func notice(_ id: Int, source: String = "agent", group: String?, read: Bool = false) -> NotificationItem {
-        NotificationItem(id: id, source: source, title: "t", body: "b", priority: .normal, group: group,
-                         ttlSecs: nil, createdMs: 0, read: read, open: .app(bundleId: terminal))
+        NotificationItem(
+            id: id, source: source, title: "t", body: "b", priority: .normal, group: group,
+            ttlSecs: nil, createdMs: 0, read: read, open: .app(bundleId: terminal))
     }
 
     /// A model showing `sessions`, the dot on, and the commands it sends.
     private func make(_ sessions: [AgentSession], history: [NotificationItem] = [], waiting: Bool = true)
-        throws -> (AppModel, MockBridge) {
+        throws -> (AppModel, MockBridge)
+    {
         let bridge = MockBridge()
         let model = AppModel(bridge: bridge)
         var vm = try fixture("idle")
@@ -75,20 +80,26 @@ final class AgentAttentionTests: XCTestCase {
     // MARK: Going to the terminal by hand
 
     func testWithTheFrontTabKnownOnlyTheSessionOnItCounts() {
-        let a = session("a", tty: "ttys001"), b = session("b", tty: "ttys002"), c = session("c", tty: nil)
+        let a = session("a", tty: "ttys001")
+        let b = session("b", tty: "ttys002")
+        let c = session("c", tty: nil)
         XCTAssertEqual(AgentAttention.attended([a, b, c], frontTTY: "ttys002").map(\.id), ["b", "c"])
         XCTAssertEqual(AgentAttention.attended([a, b], frontTTY: "ttys009").map(\.id), [])
-        XCTAssertEqual(AgentAttention.attended([a, b, c], frontTTY: nil).map(\.id), ["a", "b", "c"],
-                       "not known: the app being in front is all that can be told")
+        XCTAssertEqual(
+            AgentAttention.attended([a, b, c], frontTTY: nil).map(\.id), ["a", "b", "c"],
+            "not known: the app being in front is all that can be told")
     }
 
     private func observer(_ model: AppModel, front: String? = nil, tty: String?? = .none)
-        -> (AgentAttentionObserver, () -> [String]) {
+        -> (AgentAttentionObserver, () -> [String])
+    {
         var asked: [String] = []
-        let o = AgentAttentionObserver(model: model, frontmost: { front }, frontTTY: { app, done in
-            asked.append(app)
-            if case .some(let answer) = tty { done(answer) }
-        })
+        let o = AgentAttentionObserver(
+            model: model, frontmost: { front },
+            frontTTY: { app, done in
+                asked.append(app)
+                if case .some(let answer) = tty { done(answer) }
+            })
         return (o, { asked })
     }
 
@@ -166,14 +177,18 @@ final class AgentAttentionTests: XCTestCase {
     /// LiteNotch. Settings says so and offers to remove them.
     func testOtherCopiesOfLiteNotchAreReportedInSettings() throws {
         XCTAssertNil(AgentsText.otherCopies(found: 0, missing: 0))
-        XCTAssertEqual(AgentsText.otherCopies(found: 1, missing: 0),
-                       "1 other copy of LiteNotch also runs on every Claude Code event.")
-        XCTAssertEqual(AgentsText.otherCopies(found: 1, missing: 1),
-                       "1 other copy of LiteNotch also runs on every Claude Code event. It no longer exists.")
-        XCTAssertEqual(AgentsText.otherCopies(found: 4, missing: 2),
-                       "4 other copies of LiteNotch also run on every Claude Code event. 2 of them no longer exist.")
-        XCTAssertEqual(AgentsText.otherCopies(found: 3, missing: 3),
-                       "3 other copies of LiteNotch also run on every Claude Code event. None of them exist any more.")
+        XCTAssertEqual(
+            AgentsText.otherCopies(found: 1, missing: 0),
+            "1 other copy of LiteNotch also runs on every Claude Code event.")
+        XCTAssertEqual(
+            AgentsText.otherCopies(found: 1, missing: 1),
+            "1 other copy of LiteNotch also runs on every Claude Code event. It no longer exists.")
+        XCTAssertEqual(
+            AgentsText.otherCopies(found: 4, missing: 2),
+            "4 other copies of LiteNotch also run on every Claude Code event. 2 of them no longer exist.")
+        XCTAssertEqual(
+            AgentsText.otherCopies(found: 3, missing: 3),
+            "3 other copies of LiteNotch also run on every Claude Code event. None of them exist any more.")
         XCTAssertEqual(AgentsText.otherCopies(found: 2, missing: 9), AgentsText.otherCopies(found: 2, missing: 2))
 
         XCTAssertEqual(ShellCommand.hooksClean.encode(), #"{"cmd":"hooks_clean"}"#)
@@ -184,8 +199,10 @@ final class AgentAttentionTests: XCTestCase {
         d.keyDecodingStrategy = .convertFromSnakeCase
         let older = try d.decode(AgentsView.self, from: Data(#"{"sessions":[],"pending":[],"hooks_installed":true}"#.utf8))
         XCTAssertNil(older.otherCopies, "a core from before the check")
-        let found = try d.decode(AgentsView.self, from: Data(
-            #"{"sessions":[],"pending":[],"hooks_installed":true,"other_copies":4,"other_copies_missing":2}"#.utf8))
+        let found = try d.decode(
+            AgentsView.self,
+            from: Data(
+                #"{"sessions":[],"pending":[],"hooks_installed":true,"other_copies":4,"other_copies_missing":2}"#.utf8))
         XCTAssertEqual(found.otherCopies, 4)
         XCTAssertEqual(found.otherCopiesMissing, 2)
     }

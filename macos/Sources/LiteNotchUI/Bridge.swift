@@ -1,6 +1,6 @@
+import AppKit
 import Combine
 import Foundation
-import AppKit
 import SwiftUI
 
 /// The shell's only way to reach the core. The app's `main` implements this on
@@ -18,12 +18,14 @@ public final class MockBridge: CoreBridge {
     public init() {}
 
     public func send(_ commandJSON: String) {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         storage.append(commandJSON)
     }
 
     public var sent: [String] {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         return storage
     }
 
@@ -39,7 +41,10 @@ public final class MockBridge: CoreBridge {
 public struct AgendaLine: Equatable {
     public var name: String
     public var minutes: Int
-    public init(name: String, minutes: Int) { self.name = name; self.minutes = minutes }
+    public init(name: String, minutes: Int) {
+        self.name = name
+        self.minutes = minutes
+    }
 }
 
 /// Every command the UI sends, typed. `encode()` produces the exact JSON the
@@ -158,8 +163,12 @@ public enum ShellCommand: Equatable {
         case .screenAway(let away): return c("screen_away", ["away": away])
         case .meetingLoad(let id): return c("meeting_load", ["preset": id])
         case .meetingSet(let title, let items):
-            return c("meeting_set", ["title": title,
-                                     "items": items.map { ["name": $0.name, "minutes": $0.minutes] as [String: Any] }])
+            return c(
+                "meeting_set",
+                [
+                    "title": title,
+                    "items": items.map { ["name": $0.name, "minutes": $0.minutes] as [String: Any] },
+                ])
         case .meetingToggle: return c("meeting_toggle")
         case .meetingNext: return c("meeting_next")
         case .meetingReset: return c("meeting_reset")
@@ -174,7 +183,8 @@ public enum ShellCommand: Equatable {
 
     public func encode() -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
-              let s = String(data: data, encoding: .utf8) else { return "{}" }
+            let s = String(data: data, encoding: .utf8)
+        else { return "{}" }
         return s
     }
 }
@@ -324,12 +334,16 @@ public final class AppModel: ObservableObject {
 
     /// True for an app bundle in /Applications, /System/Applications or
     /// ~/Applications (symlinks resolved, no `..` tricks).
-    public static func mayLaunch(_ url: URL,
-                                 home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Bool {
+    public static func mayLaunch(
+        _ url: URL,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> Bool {
         guard url.isFileURL else { return false }
         let path = url.standardizedFileURL.resolvingSymlinksInPath().path
-        let roots = ["/Applications", "/System/Applications",
-                     home.standardizedFileURL.resolvingSymlinksInPath().appendingPathComponent("Applications").path]
+        let roots = [
+            "/Applications", "/System/Applications",
+            home.standardizedFileURL.resolvingSymlinksInPath().appendingPathComponent("Applications").path,
+        ]
         return roots.contains { path.hasPrefix($0 + "/") } && path.hasSuffix(".app")
     }
 
@@ -436,10 +450,12 @@ public final class AppModel: ObservableObject {
     }
 
     // Snapshot support.
-    func setForSnapshot(_ vm: ViewModel, expanded: Bool, tab: Tab,
-                        section: SettingsSection = .general, pane: AgentsPane = .sessions,
-                        timerPane: TimerPane = .focus, clipPreview: Int? = nil,
-                        accessibilityNeeded: Bool = false) {
+    func setForSnapshot(
+        _ vm: ViewModel, expanded: Bool, tab: Tab,
+        section: SettingsSection = .general, pane: AgentsPane = .sessions,
+        timerPane: TimerPane = .focus, clipPreview: Int? = nil,
+        accessibilityNeeded: Bool = false
+    ) {
         NT.setAccent(vm.settings.appearance.accent)
         view = vm
         let p = primary
@@ -524,11 +540,15 @@ public final class PanelState: ObservableObject {
 
     public var layout: NotchLayout {
         let style = view?.settings.appearance.notchStyle ?? .attached
-        let shrunk = mode == .closed && NotchLayout.shrinks(view?.settings.appearance.shrink ?? .off,
-                                                            content: ClosedContent(view: view),
-                                                            peek: view?.compact.peek != nil, hasNotch: hasNotch)
-        return NotchLayout(style: style == .island ? .island : .attached,
-                           notch: notch, hasNotch: hasNotch, menuBarHeight: menuBarHeight, minimized: shrunk)
+        let shrunk =
+            mode == .closed
+            && NotchLayout.shrinks(
+                view?.settings.appearance.shrink ?? .off,
+                content: ClosedContent(view: view),
+                peek: view?.compact.peek != nil, hasNotch: hasNotch)
+        return NotchLayout(
+            style: style == .island ? .island : .attached,
+            notch: notch, hasNotch: hasNotch, menuBarHeight: menuBarHeight, minimized: shrunk)
     }
 
     /// Target size of the current shape (not animated); used for hit testing.
@@ -731,7 +751,10 @@ public final class PanelState: ObservableObject {
 
     /// Click on the open panel's top strip (not on one of its buttons).
     public func stripClicked() {
-        guard expanded else { open(); return }
+        guard expanded else {
+            open()
+            return
+        }
         // An approval keeps the panel open until it is answered.
         guard view?.agents.pending.isEmpty ?? true else { return }
         if let t = hoverOpenedAt, uptime() - t < Self.clickGrace { return }

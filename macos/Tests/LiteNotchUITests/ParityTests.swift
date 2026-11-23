@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LiteNotchUI
 
 /// The shell shows and edits what the core holds. These tests hold the two to
@@ -24,13 +25,16 @@ final class ParityTests: XCTestCase {
 
     // MARK: Enums
 
-    private func check<E: CaseIterable & RawRepresentable>(_ name: String, _ type: E.Type,
-                                                           file: StaticString = #filePath, line: UInt = #line) throws
-        where E.RawValue == String {
+    private func check<E: CaseIterable & RawRepresentable>(
+        _ name: String, _ type: E.Type,
+        file: StaticString = #filePath, line: UInt = #line
+    ) throws
+    where E.RawValue == String {
         let core = try XCTUnwrap(try json("schema")["enums"] as? [String: [String]])[name]
         let shell = E.allCases.map(\.rawValue).filter { $0 != "unknown" }
-        XCTAssertEqual(Set(shell), Set(try XCTUnwrap(core, name)), "\(name): shell and core list different values",
-                       file: file, line: line)
+        XCTAssertEqual(
+            Set(shell), Set(try XCTUnwrap(core, name)), "\(name): shell and core list different values",
+            file: file, line: line)
         XCTAssertEqual(shell.count, core?.count, "\(name): a value is listed twice", file: file, line: line)
     }
 
@@ -72,19 +76,23 @@ final class ParityTests: XCTestCase {
         return pair[0]...pair[1]
     }
 
-    private func within(_ ui: ClosedRange<Int>, _ path: String, scale: Int = 1,
-                        file: StaticString = #filePath, line: UInt = #line) throws {
+    private func within(
+        _ ui: ClosedRange<Int>, _ path: String, scale: Int = 1,
+        file: StaticString = #filePath, line: UInt = #line
+    ) throws {
         let core = try limit(path)
-        XCTAssertTrue(core.contains(ui.lowerBound * scale) && core.contains(ui.upperBound * scale),
-                      "\(path): the control offers \(ui.lowerBound * scale)...\(ui.upperBound * scale), the core keeps \(core)",
-                      file: file, line: line)
+        XCTAssertTrue(
+            core.contains(ui.lowerBound * scale) && core.contains(ui.upperBound * scale),
+            "\(path): the control offers \(ui.lowerBound * scale)...\(ui.upperBound * scale), the core keeps \(core)",
+            file: file, line: line)
     }
 
     private func choices(_ values: [Int], _ path: String, file: StaticString = #filePath, line: UInt = #line) throws {
         let core = try limit(path)
         for v in values where v != 0 {
-            XCTAssertTrue(core.contains(v), "\(path): the control offers \(v), the core keeps \(core)",
-                          file: file, line: line)
+            XCTAssertTrue(
+                core.contains(v), "\(path): the control offers \(v), the core keeps \(core)",
+                file: file, line: line)
         }
         XCTAssertTrue(values.contains(0), "\(path): 0 (off) is offered", file: file, line: line)
     }
@@ -117,16 +125,19 @@ final class ParityTests: XCTestCase {
 
     private func same(_ a: Any, _ b: Any, _ path: String, _ problems: inout [String]) {
         switch (a, b) {
-        case let (x as [String: Any], y as [String: Any]):
+        case (let x as [String: Any], let y as [String: Any]):
             for key in Set(x.keys).union(y.keys).sorted() {
                 switch (x[key], y[key]) {
-                case let (l?, r?): same(l, r, "\(path).\(key)", &problems)
+                case (let l?, let r?): same(l, r, "\(path).\(key)", &problems)
                 case (nil, _): problems.append("\(path).\(key): the core has a setting the shell drops")
                 case (_, nil): problems.append("\(path).\(key): the shell writes a setting the core does not have")
                 }
             }
-        case let (x as [Any], y as [Any]):
-            if x.count != y.count { problems.append("\(path): \(x.count) items against \(y.count)"); return }
+        case (let x as [Any], let y as [Any]):
+            if x.count != y.count {
+                problems.append("\(path): \(x.count) items against \(y.count)")
+                return
+            }
             for (i, pair) in zip(x, y).enumerated() { same(pair.0, pair.1, "\(path)[\(i)]", &problems) }
         default:
             if !(a as AnyObject).isEqual(b) { problems.append("\(path): shell \(a), core \(b)") }
@@ -137,7 +148,8 @@ final class ParityTests: XCTestCase {
         for name in try fixtureNames() {
             let vm = try json(name)
             let core = try XCTUnwrap(vm["settings"] as? [String: Any], name)
-            let settings = try JSONDecoder.snake.decode(Settings.self,
+            let settings = try JSONDecoder.snake.decode(
+                Settings.self,
                 from: JSONSerialization.data(withJSONObject: core))
             let back = try JSONSerialization.jsonObject(with: JSONEncoder.snake.encode(settings))
             var problems: [String] = []
@@ -147,10 +159,13 @@ final class ParityTests: XCTestCase {
     }
 
     func testEveryTopLevelFieldOfTheViewModelIsKnownToTheShell() throws {
-        let known = Set(Mirror(reflecting: try ViewModel.decode(
-            Data(contentsOf: Self.dir.appendingPathComponent("idle.json")))).children
-            .compactMap { $0.label }
-            .map { label in label.reduce(into: "") { $0 += $1.isUppercase ? "_\($1.lowercased())" : String($1) } })
+        let known = Set(
+            Mirror(
+                reflecting: try ViewModel.decode(
+                    Data(contentsOf: Self.dir.appendingPathComponent("idle.json")))
+            ).children
+                .compactMap { $0.label }
+                .map { label in label.reduce(into: "") { $0 += $1.isUppercase ? "_\($1.lowercased())" : String($1) } })
         for name in try fixtureNames() {
             let keys = Set(try json(name).keys)
             XCTAssertEqual(keys.subtracting(known), [], "\(name).json: sent by the core, unknown to the shell")
@@ -174,9 +189,10 @@ final class ParityTests: XCTestCase {
 
     func testEverySettingHasAControlOrAStatedReason() throws {
         let src = try ["SettingsTab", "NotchPriority"].map {
-            try String(contentsOf: URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-                .appendingPathComponent("Sources/LiteNotchUI/\($0).swift"))
+            try String(
+                contentsOf: URL(fileURLWithPath: #filePath)
+                    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                    .appendingPathComponent("Sources/LiteNotchUI/\($0).swift"))
         }.joined()
         func camel(_ s: String) -> String {
             let p = s.split(separator: "_").map(String.init)
@@ -189,12 +205,15 @@ final class ParityTests: XCTestCase {
                 let path = "\(group).\(key)"
                 found.insert(path)
                 // The notch group is edited by its own pane, through `config`.
-                let shown = src.contains("\(camel(group)).\(camel(key))")
+                let shown =
+                    src.contains("\(camel(group)).\(camel(key))")
                     || (group == "notch" && src.contains("config.\(camel(key))"))
-                XCTAssertTrue(shown || Self.withoutControl[path] != nil,
-                              "\(path) is a core setting with no control in Settings and no reason listed")
-                XCTAssertFalse(shown && Self.withoutControl[path] != nil,
-                               "\(path) has a control now: take it off the list")
+                XCTAssertTrue(
+                    shown || Self.withoutControl[path] != nil,
+                    "\(path) is a core setting with no control in Settings and no reason listed")
+                XCTAssertFalse(
+                    shown && Self.withoutControl[path] != nil,
+                    "\(path) has a control now: take it off the list")
             }
         }
         for path in Self.withoutControl.keys {
@@ -203,13 +222,17 @@ final class ParityTests: XCTestCase {
     }
 }
 
-private extension JSONDecoder {
-    static var snake: JSONDecoder {
-        let d = JSONDecoder(); d.keyDecodingStrategy = .convertFromSnakeCase; return d
+extension JSONDecoder {
+    fileprivate static var snake: JSONDecoder {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        return d
     }
 }
-private extension JSONEncoder {
-    static var snake: JSONEncoder {
-        let e = JSONEncoder(); e.keyEncodingStrategy = .convertToSnakeCase; return e
+extension JSONEncoder {
+    fileprivate static var snake: JSONEncoder {
+        let e = JSONEncoder()
+        e.keyEncodingStrategy = .convertToSnakeCase
+        return e
     }
 }

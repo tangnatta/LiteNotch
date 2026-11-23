@@ -19,6 +19,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 scripts/coverage.sh                         # tests under coverage, fails < 90 % lines
 swift test --package-path macos             # shell tests
+swift format --in-place --recursive macos/Sources macos/Tests   # style: macos/../.swift-format; CI lints with --strict
 scripts/build-app.sh                        # → dist/LiteNotch.app (release, ad-hoc signed)
 scripts/bench.sh                            # memory / CPU / bundle size vs budget (all scenarios side by side, ~35 s)
 open dist/LiteNotch.app

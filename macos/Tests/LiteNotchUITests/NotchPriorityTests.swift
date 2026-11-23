@@ -1,5 +1,6 @@
 import AppKit
 import XCTest
+
 @testable import LiteNotchUI
 
 private func fixture(_ name: String) throws -> ViewModel {
@@ -50,11 +51,16 @@ final class NotchPriorityTests: XCTestCase {
     func testNotchSettingsAndThePauseCommandHaveTheCoresWireFormat() throws {
         var settings = try fixture("idle").settings
         settings.notch = NotchConfig(order: [.pomodoro, .media], hidden: [.agent], twoPlaces: false, waitingDot: false)
-        let sent = try XCTUnwrap(JSONSerialization.jsonObject(
-            with: Data(ShellCommand.setSettings(settings).encode().utf8)) as? [String: Any])
+        let sent = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(ShellCommand.setSettings(settings).encode().utf8)) as? [String: Any])
         let notch = try XCTUnwrap((sent["settings"] as? [String: Any])?["notch"] as? [String: Any])
-        XCTAssertEqual(notch as NSDictionary, ["order": ["pomodoro", "media"], "hidden": ["agent"],
-                                               "two_places": false, "waiting_dot": false] as NSDictionary)
+        XCTAssertEqual(
+            notch as NSDictionary,
+            [
+                "order": ["pomodoro", "media"], "hidden": ["agent"],
+                "two_places": false, "waiting_dot": false,
+            ] as NSDictionary)
         XCTAssertEqual(ShellCommand.pomodoroPause.encode(), #"{"cmd":"pomodoro_pause"}"#)
     }
 
@@ -65,14 +71,17 @@ final class NotchPriorityTests: XCTestCase {
             for kind in [ActivityKind.pomodoro, .timer, .media, .caffeine, .meeting, .agent, .calendar] {
                 let c = compact(kind)
                 let before = island ? NotchGeometry.islandWingWidth(for: c) : NotchGeometry.wingWidth(for: c)
-                XCTAssertEqual(NotchGeometry.wingWidth(for: ClosedContent(primary: c), island: island), before,
-                               "\(kind) alone looks as it always did")
-                XCTAssertEqual(NotchGeometry.wingWidth(for: ClosedContent(primary: c, waiting: true), island: island),
-                               before + NotchGeometry.waitingDotSpace)
+                XCTAssertEqual(
+                    NotchGeometry.wingWidth(for: ClosedContent(primary: c), island: island), before,
+                    "\(kind) alone looks as it always did")
+                XCTAssertEqual(
+                    NotchGeometry.wingWidth(for: ClosedContent(primary: c, waiting: true), island: island),
+                    before + NotchGeometry.waitingDotSpace)
             }
             XCTAssertEqual(NotchGeometry.wingWidth(for: ClosedContent(primary: nil), island: island), 0)
-            XCTAssertGreaterThan(NotchGeometry.wingWidth(for: ClosedContent(primary: nil, waiting: true), island: island),
-                                 NotchGeometry.waitingDot, "room for the dot beside a bare notch")
+            XCTAssertGreaterThan(
+                NotchGeometry.wingWidth(for: ClosedContent(primary: nil, waiting: true), island: island),
+                NotchGeometry.waitingDot, "room for the dot beside a bare notch")
         }
     }
 
@@ -86,8 +95,10 @@ final class NotchPriorityTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(clear, 14, "space between the housing and the dot")
         XCTAssertGreaterThanOrEqual(clear, outerPadding)
         // With an activity the dot is at the far end of a full wing already.
-        XCTAssertGreaterThan(NotchGeometry.wingWidth(for: ClosedContent(primary: compact(.pomodoro), waiting: true),
-                                                     island: false), wing)
+        XCTAssertGreaterThan(
+            NotchGeometry.wingWidth(
+                for: ClosedContent(primary: compact(.pomodoro), waiting: true),
+                island: false), wing)
     }
 
     func testTwoActivitiesFitIconAndTimeOnEachSideWithinABound() {
@@ -101,8 +112,10 @@ final class NotchPriorityTests: XCTestCase {
                     XCTAssertLessThanOrEqual(w, island ? 90 : 104, "\(a)+\(b)")
                     // Both wings are the same width, so the notch stays centred;
                     // each must hold its own side.
-                    let need = 16 + (NotchGeometry.pairValueWidth(compact(a, count: 3)) > 0
-                        ? NotchGeometry.pairGap + NotchGeometry.pairValueWidth(compact(a, count: 3)) : 0)
+                    let need =
+                        16
+                        + (NotchGeometry.pairValueWidth(compact(a, count: 3)) > 0
+                            ? NotchGeometry.pairGap + NotchGeometry.pairValueWidth(compact(a, count: 3)) : 0)
                     XCTAssertGreaterThanOrEqual(w, need, "\(a) fits on the left")
                 }
             }
@@ -120,8 +133,9 @@ final class NotchPriorityTests: XCTestCase {
         let two = ClosedContent(primary: compact(.calendar), secondary: compact(.pomodoro))
         XCTAssertEqual(attached.size(for: .closed, content: one), attached.size(for: .closed, compact: compact(.pomodoro)))
         // Without a notch (this island layout) the closed notch is one row.
-        XCTAssertEqual(island.size(for: .closed, content: one).width,
-                       max(island.centerWidth, NotchGeometry.rowWidth(for: one, island: true)))
+        XCTAssertEqual(
+            island.size(for: .closed, content: one).width,
+            max(island.centerWidth, NotchGeometry.rowWidth(for: one, island: true)))
         XCTAssertGreaterThan(attached.size(for: .closed, content: two).width, attached.size(for: .closed, content: one).width)
         XCTAssertEqual(attached.size(for: .closed, content: two).height, 32)
         XCTAssertEqual(island.size(for: .closed, content: two).height, 21)
@@ -136,9 +150,12 @@ final class NotchPriorityTests: XCTestCase {
         XCTAssertNil(c.secondary)
         XCTAssertTrue(c.isEmpty)
         XCTAssertFalse(ClosedContent(primary: compact(.idle), waiting: true).isEmpty, "the dot alone is drawn")
-        XCTAssertEqual(ClosedActivityView.spoken(ClosedContent(primary: compact(.calendar), secondary: compact(.pomodoro),
-                                                                waiting: true)),
-                       "t v. t v. An agent is waiting for you")
+        XCTAssertEqual(
+            ClosedActivityView.spoken(
+                ClosedContent(
+                    primary: compact(.calendar), secondary: compact(.pomodoro),
+                    waiting: true)),
+            "t v. t v. An agent is waiting for you")
     }
 
     // MARK: Settings preview
@@ -185,8 +202,9 @@ final class NotchPriorityTests: XCTestCase {
             XCTAssertFalse(NotchPriority.explanation(for: s, config: .default).isEmpty)
         }
         let meeting = NotchPriority.situations[0]
-        XCTAssertEqual(NotchPriority.explanation(for: meeting, config: .default),
-                       "Event about to start first, focus session beside it.")
+        XCTAssertEqual(
+            NotchPriority.explanation(for: meeting, config: .default),
+            "Event about to start first, focus session beside it.")
         let busy = NotchPriority.situations[3]
         var off = NotchConfig.default
         off.waitingDot = false
@@ -205,14 +223,15 @@ final class NotchPriorityTests: XCTestCase {
 
     func testTheStartingBannersButtonPausesFocusAndAnswersTheBanner() throws {
         let json = #"""
-        {"id":7,"source":"calendar","title":"Design review","body":"Starting now","priority":"high",
-         "group":"calendar-1-e1","ttl_secs":null,"created_ms":0,"read":false,"open":null,"action":"pause_focus"}
-        """#
+            {"id":7,"source":"calendar","title":"Design review","body":"Starting now","priority":"high",
+             "group":"calendar-1-e1","ttl_secs":null,"created_ms":0,"read":false,"open":null,"action":"pause_focus"}
+            """#
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
         let banner = try d.decode(NotificationItem.self, from: Data(json.utf8))
         XCTAssertEqual(banner.action, .pauseFocus)
-        let plain = try d.decode(NotificationItem.self, from: Data(json.replacingOccurrences(of: #","action":"pause_focus""#, with: "").utf8))
+        let plain = try d.decode(
+            NotificationItem.self, from: Data(json.replacingOccurrences(of: #","action":"pause_focus""#, with: "").utf8))
         XCTAssertNil(plain.action)
         let newer = try d.decode(NotificationItem.self, from: Data(json.replacingOccurrences(of: "pause_focus", with: "snooze").utf8))
         XCTAssertEqual(newer.action, .unknown)
@@ -220,8 +239,9 @@ final class NotchPriorityTests: XCTestCase {
         let bridge = MockBridge()
         let model = AppModel(bridge: bridge)
         model.primary.banner(banner, perform: .pauseFocus)
-        XCTAssertEqual(bridge.sentObjects.compactMap { $0["cmd"] as? String },
-                       ["pomodoro_pause", "notify_opened", "notify_dismiss_banner"])
+        XCTAssertEqual(
+            bridge.sentObjects.compactMap { $0["cmd"] as? String },
+            ["pomodoro_pause", "notify_opened", "notify_dismiss_banner"])
         model.primary.banner(newer, perform: .unknown)
         XCTAssertEqual(bridge.sent.count, 3, "an action this version does not know does nothing")
     }

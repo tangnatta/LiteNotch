@@ -27,7 +27,6 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    if: github.event_name != 'pull_request' || matrix.language != 'swift'
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -35,19 +34,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - language: actions
-            build-mode: none
-            os: ubuntu-latest
-          - language: c-cpp
-            build-mode: none
-            os: ubuntu-latest
-          - language: rust
-            build-mode: none
-            os: ubuntu-latest
-          - language: swift
-            build-mode: manual
-            os: macos-latest
+        # Swift is left out of pull requests (the `matrix` context cannot be
+        # used in a job-level `if`, so the list itself depends on the event).
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"language":"actions","build-mode":"none","os":"ubuntu-latest"},{"language":"c-cpp","build-mode":"none","os":"ubuntu-latest"},{"language":"rust","build-mode":"none","os":"ubuntu-latest"}]' || '[{"language":"actions","build-mode":"none","os":"ubuntu-latest"},{"language":"c-cpp","build-mode":"none","os":"ubuntu-latest"},{"language":"rust","build-mode":"none","os":"ubuntu-latest"},{"language":"swift","build-mode":"manual","os":"macos-latest"}]') }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

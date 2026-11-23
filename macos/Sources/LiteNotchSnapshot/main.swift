@@ -11,9 +11,11 @@ guard args.count == 3 else {
 }
 do {
     let written = try MainActor.assumeIsolated {
-        let fixtures = URL(fileURLWithPath: args[1]), out = URL(fileURLWithPath: args[2])
-        return previews ? try PreviewRenderer.renderAll(fixturesDir: fixtures, outDir: out)
-                        : try SnapshotRenderer.renderAll(fixturesDir: fixtures, outDir: out)
+        let fixtures = URL(fileURLWithPath: args[1])
+        let out = URL(fileURLWithPath: args[2])
+        return previews
+            ? try PreviewRenderer.renderAll(fixturesDir: fixtures, outDir: out)
+            : try SnapshotRenderer.renderAll(fixturesDir: fixtures, outDir: out)
     }
     for u in written { print(u.path) }
     print("rendered \(written.count) images")

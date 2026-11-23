@@ -29,15 +29,25 @@ public struct CalendarEventInput: Equatable {
     public var color: String?
     public var location: String
 
-    public init(id: String, title: String, startMs: Int, endMs: Int, allDay: Bool = false,
-                calendar: String = "", color: String? = nil, location: String = "") {
-        self.id = id; self.title = title; self.startMs = startMs; self.endMs = endMs
-        self.allDay = allDay; self.calendar = calendar; self.color = color; self.location = location
+    public init(
+        id: String, title: String, startMs: Int, endMs: Int, allDay: Bool = false,
+        calendar: String = "", color: String? = nil, location: String = ""
+    ) {
+        self.id = id
+        self.title = title
+        self.startMs = startMs
+        self.endMs = endMs
+        self.allDay = allDay
+        self.calendar = calendar
+        self.color = color
+        self.location = location
     }
 
     var object: [String: Any] {
-        ["id": id, "title": title, "start_ms": startMs, "end_ms": endMs, "all_day": allDay,
-         "calendar": calendar, "color": color.map { $0 as Any } ?? NSNull(), "location": location]
+        [
+            "id": id, "title": title, "start_ms": startMs, "end_ms": endMs, "all_day": allDay,
+            "calendar": calendar, "color": color.map { $0 as Any } ?? NSNull(), "location": location,
+        ]
     }
 }
 
@@ -104,7 +114,8 @@ final class EventKitSource: CalendarSource {
     /// events and invitations the user declined.
     static func input(_ e: EKEvent) -> CalendarEventInput? {
         guard !e.isAllDay, e.status != .canceled, let start = e.startDate, let end = e.endDate,
-              let id = e.eventIdentifier else { return nil }
+            let id = e.eventIdentifier
+        else { return nil }
         if let me = e.attendees?.first(where: \.isCurrentUser), me.participantStatus == .declined {
             return nil
         }
@@ -167,11 +178,13 @@ public final class CalendarObserver {
             .sink { [weak self] _ in self?.accessMayHaveChanged() }
             .store(in: &cancellables)
         let day = NotificationCenter.default.addObserver(
-            forName: .NSCalendarDayChanged, object: nil, queue: .main) { [weak self] _ in self?.changed() }
+            forName: .NSCalendarDayChanged, object: nil, queue: .main
+        ) { [weak self] _ in self?.changed() }
         observers.append((NotificationCenter.default, day))
         let workspace = NSWorkspace.shared.notificationCenter
         let wake = workspace.addObserver(
-            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.changed() }
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.changed() }
         observers.append((workspace, wake))
     }
 

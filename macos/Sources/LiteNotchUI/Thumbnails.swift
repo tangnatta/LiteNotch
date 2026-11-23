@@ -38,9 +38,10 @@ enum Thumbnails {
     static func file(at path: String, px: Int) async -> NSImage? {
         if let hit = await MainActor.run(body: { cached(path, px: px) }) { return hit }
         let side = CGFloat(px) / 2
-        let request = QLThumbnailGenerator.Request(fileAt: URL(fileURLWithPath: path),
-                                                   size: CGSize(width: side, height: side),
-                                                   scale: 2, representationTypes: .thumbnail)
+        let request = QLThumbnailGenerator.Request(
+            fileAt: URL(fileURLWithPath: path),
+            size: CGSize(width: side, height: side),
+            scale: 2, representationTypes: .thumbnail)
         guard let rep = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request) else {
             return nil
         }
@@ -53,9 +54,10 @@ enum Thumbnails {
     static func pixelSize(at path: String) async -> CGSize? {
         await Task.detached(priority: .utility) { () -> CGSize? in
             guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
-                  let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
-                  let w = props[kCGImagePropertyPixelWidth] as? Int,
-                  let h = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
+                let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+                let w = props[kCGImagePropertyPixelWidth] as? Int,
+                let h = props[kCGImagePropertyPixelHeight] as? Int
+            else { return nil }
             return CGSize(width: w, height: h)
         }.value
     }
@@ -68,9 +70,10 @@ enum Thumbnails {
         guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, opts) else { return nil }
         if let limit = maxSourceSide {
             guard let props = CGImageSourceCopyPropertiesAtIndex(src, 0, opts) as? [CFString: Any],
-                  let w = props[kCGImagePropertyPixelWidth] as? Int,
-                  let h = props[kCGImagePropertyPixelHeight] as? Int,
-                  w > 0, h > 0, w <= limit, h <= limit else { return nil }
+                let w = props[kCGImagePropertyPixelWidth] as? Int,
+                let h = props[kCGImagePropertyPixelHeight] as? Int,
+                w > 0, h > 0, w <= limit, h <= limit
+            else { return nil }
         }
         let thumb: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -135,7 +138,10 @@ struct ClipThumb: View {
         .overlay(fit ? nil : shape.strokeBorder(NT.hairline, lineWidth: 0.5))
         .task(id: "\(px)|\(source.path)") {
             guard !snapshot else { return }
-            if let hit = Thumbnails.cached(source.path, px: px) { image = hit; return }
+            if let hit = Thumbnails.cached(source.path, px: px) {
+                image = hit
+                return
+            }
             image = nil
             image = await Thumbnails.load(source, px: px)
         }
@@ -172,8 +178,9 @@ struct ClipPreview: View {
                 .accessibilityLabel(Text(verbatim: "Back to the list"))
                 VText(caption).nfont(.body).foregroundStyle(NT.text2).lineLimit(1).truncationMode(.middle)
                     .frame(maxWidth: .infinity)
-                TextPill(title: "Copy", tint: NT.onAccent, background: NT.accent, height: 24, weight: .semibold,
-                         action: copy)
+                TextPill(
+                    title: "Copy", tint: NT.onAccent, background: NT.accent, height: 24, weight: .semibold,
+                    action: copy)
             }
             ZStack {
                 RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous).fill(NT.fill)

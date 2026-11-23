@@ -1,5 +1,6 @@
 import AppKit
 import XCTest
+
 @testable import LiteNotchUI
 
 private func fixture(_ name: String) throws -> ViewModel {
@@ -71,28 +72,33 @@ final class CalendarTests: XCTestCase {
 
     func testCalendarEventsAreSentInTheShapeTheCoreReads() throws {
         let command = ShellCommand.calendarEvents([
-            CalendarEventInput(id: "e1", title: "Stand-up", startMs: 10, endMs: 20, calendar: "Work",
-                               color: "#FF3B30", location: "Room 3"),
+            CalendarEventInput(
+                id: "e1", title: "Stand-up", startMs: 10, endMs: 20, calendar: "Work",
+                color: "#FF3B30", location: "Room 3"),
             CalendarEventInput(id: "e2", title: "Lunch", startMs: 30, endMs: 40),
         ])
         let sent = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(command.encode().utf8)) as? [String: Any])
         XCTAssertEqual(sent["cmd"] as? String, "calendar_events")
         let events = try XCTUnwrap(sent["events"] as? [[String: Any]])
-        XCTAssertEqual(events[0] as NSDictionary, [
-            "id": "e1", "title": "Stand-up", "start_ms": 10, "end_ms": 20, "all_day": false,
-            "calendar": "Work", "color": "#FF3B30", "location": "Room 3",
-        ] as NSDictionary)
+        XCTAssertEqual(
+            events[0] as NSDictionary,
+            [
+                "id": "e1", "title": "Stand-up", "start_ms": 10, "end_ms": 20, "all_day": false,
+                "calendar": "Work", "color": "#FF3B30", "location": "Room 3",
+            ] as NSDictionary)
         XCTAssertTrue(events[1]["color"] is NSNull)
     }
 
     func testCalendarSettingsRoundTripInSnakeCase() throws {
         var settings = try fixture("idle").settings
         settings.calendar = CalendarConfig(enabled: true, alertMinutes: 15, alertAtStart: false)
-        let sent = try XCTUnwrap(JSONSerialization.jsonObject(
-            with: Data(ShellCommand.setSettings(settings).encode().utf8)) as? [String: Any])
+        let sent = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(ShellCommand.setSettings(settings).encode().utf8)) as? [String: Any])
         let calendar = try XCTUnwrap((sent["settings"] as? [String: Any])?["calendar"] as? [String: Any])
-        XCTAssertEqual(calendar as NSDictionary,
-                       ["enabled": true, "alert_minutes": 15, "alert_at_start": false] as NSDictionary)
+        XCTAssertEqual(
+            calendar as NSDictionary,
+            ["enabled": true, "alert_minutes": 15, "alert_at_start": false] as NSDictionary)
     }
 
     // MARK: Text
@@ -118,18 +124,21 @@ final class CalendarTests: XCTestCase {
         let now = 1_794_477_600_000 + 2 * 3_600_000
         func time(startHours: Int, minutes: Int) -> String {
             let start = now + startHours * 3_600_000
-            return Format.eventTime(startMs: start, endMs: start + minutes * 60_000, nowMs: now,
-                                    calendar: utc, locale: locale)
+            return Format.eventTime(
+                startMs: start, endMs: start + minutes * 60_000, nowMs: now,
+                calendar: utc, locale: locale)
         }
         XCTAssertEqual(time(startHours: 2, minutes: 30), "14:00 \u{2013} 14:30")
         XCTAssertEqual(time(startHours: -1, minutes: 90), "11:00 \u{2013} 12:30", "one that is running")
         XCTAssertEqual(time(startHours: 23, minutes: 60), "Tomorrow 11:00 \u{2013} 12:00")
         XCTAssertEqual(time(startHours: 47, minutes: 60), "Sat 11:00 \u{2013} 12:00")
 
-        let event = CalendarEvent(id: "e", title: "Review", startMs: now + 2 * 3_600_000,
-                                  endMs: now + 3 * 3_600_000, location: "Room 3")
-        XCTAssertEqual(CalendarText.detail(event, nowMs: now, calendar: utc, locale: locale),
-                       "14:00 \u{2013} 15:00 \u{b7} Room 3")
+        let event = CalendarEvent(
+            id: "e", title: "Review", startMs: now + 2 * 3_600_000,
+            endMs: now + 3 * 3_600_000, location: "Room 3")
+        XCTAssertEqual(
+            CalendarText.detail(event, nowMs: now, calendar: utc, locale: locale),
+            "14:00 \u{2013} 15:00 \u{b7} Room 3")
     }
 
     func testHomeShowsTheFirstEventThatHasNotEnded() {
@@ -159,7 +168,8 @@ final class CalendarTests: XCTestCase {
     }
 
     private func make(access: CalendarAccess, enabled: Bool) throws
-        -> (AppModel, MockBridge, FakeCalendar, CalendarObserver) {
+        -> (AppModel, MockBridge, FakeCalendar, CalendarObserver)
+    {
         let bridge = MockBridge()
         let model = AppModel(bridge: bridge)
         let source = FakeCalendar(access: access)
@@ -234,7 +244,10 @@ final class CalendarTests: XCTestCase {
     func testAChangedCalendarIsSentAgainAndAnUnchangedOneIsNot() throws {
         // The observer holds the model weakly, as the app delegate owns both.
         let (model, bridge, source, observer) = try make(access: .granted, enabled: true)
-        defer { observer.stop(); _ = model }
+        defer {
+            observer.stop()
+            _ = model
+        }
         XCTAssertEqual(eventLists(bridge), [["e1"]])
 
         source.onChange?()

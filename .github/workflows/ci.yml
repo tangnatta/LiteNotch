@@ -38,6 +38,8 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Build the app bundle
         run: scripts/build-app.sh
+      - name: Swift format
+        run: swift format lint --strict --recursive macos/Sources macos/Tests
       - name: Shell tests
         run: swift test --package-path macos
       - name: Footprint budget

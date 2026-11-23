@@ -60,11 +60,13 @@ struct MusicTab: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(verbatim: off ? "Now playing is off" : "Nothing playing")
                     .nfont(.heading).foregroundStyle(NT.text2)
-                Text(verbatim: off
-                     ? "Turn it on to see and control what\u{2019}s playing."
-                     : "Play something in Music, Spotify or a browser and it shows up here.")
-                    .nfont(.body).foregroundStyle(NT.text3)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    verbatim: off
+                        ? "Turn it on to see and control what\u{2019}s playing."
+                        : "Play something in Music, Spotify or a browser and it shows up here."
+                )
+                .nfont(.body).foregroundStyle(NT.text3)
+                .fixedSize(horizontal: false, vertical: true)
                 if off {
                     TextPill(title: "Turn on in Settings", height: 24) { model.openSettings(.music) }
                         .padding(.top, 4)

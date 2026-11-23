@@ -5,7 +5,11 @@ import SwiftUI
 public enum ColorMath {
     public struct RGB: Equatable {
         public var r: Double, g: Double, b: Double
-        public init(r: Double, g: Double, b: Double) { self.r = r; self.g = g; self.b = b }
+        public init(r: Double, g: Double, b: Double) {
+            self.r = r
+            self.g = g
+            self.b = b
+        }
     }
 
     /// `#rrggbb` or `rrggbb` (any case, surrounding spaces allowed); nil otherwise.
@@ -123,7 +127,9 @@ extension ColorMath {
 
     /// Where on the hue strip a colour sits, 0..<1; 0 for a grey.
     public static func hue(of c: RGB) -> Double {
-        let hi = max(c.r, c.g, c.b), lo = min(c.r, c.g, c.b), d = hi - lo
+        let hi = max(c.r, c.g, c.b)
+        let lo = min(c.r, c.g, c.b)
+        let d = hi - lo
         guard d > 1e-9 else { return 0 }
         var h: Double
         if hi == c.r {

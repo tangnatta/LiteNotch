@@ -18,10 +18,16 @@ public struct AXNode: Equatable {
     public var description: String
     public var children: [AXNode]
 
-    public init(role: String = "", subrole: String = "", identifier: String = "", value: String = "",
-                description: String = "", children: [AXNode] = []) {
-        self.role = role; self.subrole = subrole; self.identifier = identifier
-        self.value = value; self.description = description; self.children = children
+    public init(
+        role: String = "", subrole: String = "", identifier: String = "", value: String = "",
+        description: String = "", children: [AXNode] = []
+    ) {
+        self.role = role
+        self.subrole = subrole
+        self.identifier = identifier
+        self.value = value
+        self.description = description
+        self.children = children
     }
 }
 
@@ -76,13 +82,18 @@ public enum BannerParser {
             body = texts.dropFirst().map(\.value).joined(separator: " ")
         }
         guard !title.isEmpty || !body.isEmpty else { return nil }
-        if title.isEmpty { title = body; body = "" }
+        if title.isEmpty {
+            title = body
+            body = ""
+        }
 
-        let name = banner.description.split(separator: ",", maxSplits: 1, omittingEmptySubsequences: false)
+        let name =
+            banner.description.split(separator: ",", maxSplits: 1, omittingEmptySubsequences: false)
             .first.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
-        return CapturedNotification(app: name.isEmpty ? "Notification" : String(name.prefix(60)),
-                                    title: String(title.prefix(maxTitle)),
-                                    body: String(body.prefix(maxBody)))
+        return CapturedNotification(
+            app: name.isEmpty ? "Notification" : String(name.prefix(60)),
+            title: String(title.prefix(maxTitle)),
+            body: String(body.prefix(maxBody)))
     }
 }
 
@@ -119,7 +130,7 @@ protocol BannerSource: AnyObject {
 /// tells the model when permission is missing.
 public final class SystemNotificationObserver {
     static let recheckInterval: TimeInterval = 2
-    static let maxRechecks = 60 // two minutes
+    static let maxRechecks = 60  // two minutes
 
     private weak var model: AppModel?
     private let source: BannerSource
@@ -146,17 +157,20 @@ public final class SystemNotificationObserver {
     private(set) var rechecksLeft = 0
 
     public convenience init(model: AppModel) {
-        self.init(model: model, source: AXBannerSource(),
-                  isTrusted: { AXIsProcessTrusted() },
-                  promptForTrust: {
-                      let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-                      _ = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
-                  },
-                  nowMs: { Int(Date().timeIntervalSince1970 * 1000) })
+        self.init(
+            model: model, source: AXBannerSource(),
+            isTrusted: { AXIsProcessTrusted() },
+            promptForTrust: {
+                let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+                _ = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
+            },
+            nowMs: { Int(Date().timeIntervalSince1970 * 1000) })
     }
 
-    init(model: AppModel, source: BannerSource, isTrusted: @escaping () -> Bool,
-         promptForTrust: @escaping () -> Void, nowMs: @escaping () -> Int) {
+    init(
+        model: AppModel, source: BannerSource, isTrusted: @escaping () -> Bool,
+        promptForTrust: @escaping () -> Void, nowMs: @escaping () -> Int
+    ) {
         self.model = model
         self.source = source
         self.isTrusted = isTrusted
@@ -230,7 +244,10 @@ public final class SystemNotificationObserver {
 
     /// One step of the bounded wait for permission.
     func recheck() {
-        guard rechecksLeft > 0 else { stopTimer(); return }
+        guard rechecksLeft > 0 else {
+            stopTimer()
+            return
+        }
         rechecksLeft -= 1
         refresh()
         if rechecksLeft == 0 { stopTimer() }
@@ -362,7 +379,8 @@ final class AXBannerSource: BannerSource {
         guard let appElement, let onChange else { return }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
-              let windows = value as? [AXUIElement] else { return }
+            let windows = value as? [AXUIElement]
+        else { return }
         var budget = Self.maxNodes
         var roots: [AXNode] = []
         for w in windows {
@@ -372,8 +390,11 @@ final class AXBannerSource: BannerSource {
         if !roots.isEmpty { onChange(roots) }
     }
 
-    private static let attributes = [kAXRoleAttribute, kAXSubroleAttribute, kAXIdentifierAttribute,
-                                     kAXValueAttribute, kAXDescriptionAttribute, kAXChildrenAttribute] as CFArray
+    private static let attributes =
+        [
+            kAXRoleAttribute, kAXSubroleAttribute, kAXIdentifierAttribute,
+            kAXValueAttribute, kAXDescriptionAttribute, kAXChildrenAttribute,
+        ] as CFArray
 
     /// Copies one element and (within the depth and node limits) its subtree.
     /// One round trip per element.
@@ -382,7 +403,8 @@ final class AXBannerSource: BannerSource {
         budget -= 1
         var raw: CFArray?
         guard AXUIElementCopyMultipleAttributeValues(element, attributes, AXCopyMultipleAttributeOptions(), &raw) == .success,
-              let values = raw as? [Any], values.count == 6 else { return AXNode() }
+            let values = raw as? [Any], values.count == 6
+        else { return AXNode() }
         func text(_ i: Int) -> String { values[i] as? String ?? "" }
         var n = AXNode(role: text(0), subrole: text(1), identifier: text(2), value: text(3), description: text(4))
         if depth < maxDepth, let kids = values[5] as? [AXUIElement] {

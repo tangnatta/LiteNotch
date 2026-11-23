@@ -100,8 +100,9 @@ public enum NotchPriority {
     /// What the preview draws for a situation.
     public static func content(for situation: Situation, config: NotchConfig) -> ClosedContent {
         let (first, second) = resolve(situation.running, config: config)
-        return ClosedContent(primary: first.map(sample), secondary: second.map(sample),
-                             waiting: situation.waiting && config.waitingDot)
+        return ClosedContent(
+            primary: first.map(sample), secondary: second.map(sample),
+            waiting: situation.waiting && config.waitingDot)
     }
 
     /// One line saying what the preview shows and what it leaves out.
@@ -132,13 +133,17 @@ struct NotchPriorityPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            NotchPreview(content: NotchPriority.content(for: situation, config: config), island: island,
-                         hasNotch: hasNotch)
-            SegmentedPill(options: NotchPriority.situations.map { (value: $0.id, title: $0.title) },
-                          selection: Binding(get: { situation.id },
-                                             set: { id in situation = NotchPriority.situations.first { $0.id == id } ?? situation }),
-                          label: "Situation to preview", height: 22)
-                .frame(maxWidth: .infinity)
+            NotchPreview(
+                content: NotchPriority.content(for: situation, config: config), island: island,
+                hasNotch: hasNotch)
+            SegmentedPill(
+                options: NotchPriority.situations.map { (value: $0.id, title: $0.title) },
+                selection: Binding(
+                    get: { situation.id },
+                    set: { id in situation = NotchPriority.situations.first { $0.id == id } ?? situation }),
+                label: "Situation to preview", height: 22
+            )
+            .frame(maxWidth: .infinity)
             Text(verbatim: NotchPriority.explanation(for: situation, config: config))
                 .nfont(.caption).foregroundStyle(NT.text2)
                 .lineLimit(2).fixedSize(horizontal: false, vertical: true)
@@ -197,12 +202,14 @@ struct NotchPriorityPane: View {
             arrow("chevron.down", "Move \(name) down", enabled: index < order.count - 1) {
                 config.order = NotchPriority.move(kind, by: 1, in: config.order)
             }
-            NotchToggle(isOn: Binding(get: { shown },
-                                      set: { on in
-                                          config.hidden.removeAll { $0 == kind }
-                                          if !on { config.hidden.append(kind) }
-                                      }),
-                        label: "Show \(name) in the notch")
+            NotchToggle(
+                isOn: Binding(
+                    get: { shown },
+                    set: { on in
+                        config.hidden.removeAll { $0 == kind }
+                        if !on { config.hidden.append(kind) }
+                    }),
+                label: "Show \(name) in the notch")
         }
         .padding(.leading, 2)
         .frame(height: 26)
@@ -240,9 +247,10 @@ struct NotchPreview: View {
 
     /// The layout the preview is drawn with.
     static func layout(island: Bool, hasNotch: Bool) -> NotchLayout {
-        NotchLayout(style: island ? .island : .attached,
-                    notch: CGSize(width: hasNotch ? notchWidth : NotchGeometry.fallbackSize.width, height: bar),
-                    hasNotch: hasNotch, menuBarHeight: bar)
+        NotchLayout(
+            style: island ? .island : .attached,
+            notch: CGSize(width: hasNotch ? notchWidth : NotchGeometry.fallbackSize.width, height: bar),
+            hasNotch: hasNotch, menuBarHeight: bar)
     }
 
     /// Width of the black shape: exactly what the layout gives the content.
@@ -258,20 +266,26 @@ struct NotchPreview: View {
             RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous).fill(NT.fillHi)
             Group {
                 if island {
-                    ClosedActivityView(content: content, notchWidth: layout.centerWidth, ear: 0,
-                                       wing: layout.wingWidth(for: content),
-                                       edgePadding: NotchGeometry.islandWingPadding,
-                                       artworkSize: min(20, layout.capsuleHeight - 4),
-                                       artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
-                                       oneRow: layout.oneRow)
-                        .frame(width: width, height: layout.capsuleHeight)
-                        .background(Color.black, in: Capsule())
-                        .padding(.top, NotchGeometry.islandMargin)
+                    ClosedActivityView(
+                        content: content, notchWidth: layout.centerWidth, ear: 0,
+                        wing: layout.wingWidth(for: content),
+                        edgePadding: NotchGeometry.islandWingPadding,
+                        artworkSize: min(20, layout.capsuleHeight - 4),
+                        artworkInset: (layout.capsuleHeight - min(20, layout.capsuleHeight - 4)) / 2,
+                        oneRow: layout.oneRow
+                    )
+                    .frame(width: width, height: layout.capsuleHeight)
+                    .background(Color.black, in: Capsule())
+                    .padding(.top, NotchGeometry.islandMargin)
                 } else {
-                    ClosedActivityView(content: content, notchWidth: layout.notch.width, ear: 0,
-                                       wing: layout.wingWidth(for: content), oneRow: layout.oneRow)
-                        .frame(width: width, height: Self.bar)
-                        .background(Color.black, in: UnevenRoundedRectangle(
+                    ClosedActivityView(
+                        content: content, notchWidth: layout.notch.width, ear: 0,
+                        wing: layout.wingWidth(for: content), oneRow: layout.oneRow
+                    )
+                    .frame(width: width, height: Self.bar)
+                    .background(
+                        Color.black,
+                        in: UnevenRoundedRectangle(
                             bottomLeadingRadius: NotchGeometry.closedBottomRadius,
                             bottomTrailingRadius: NotchGeometry.closedBottomRadius, style: .continuous))
                 }

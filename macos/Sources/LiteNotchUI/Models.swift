@@ -240,9 +240,11 @@ public struct AppearanceConfig: Codable, Equatable {
     public static let defaultAccent = "#FF9E0A"
     public static let `default` = AppearanceConfig(theme: .system, accent: defaultAccent)
 
-    public init(theme: ThemeChoice, accent: String, notchStyle: NotchStyle = .attached,
-                closedNotch: ClosedNotchChoice = .dark, material: MaterialChoice = .solid,
-                shrink: ShrinkChoice = .off) {
+    public init(
+        theme: ThemeChoice, accent: String, notchStyle: NotchStyle = .attached,
+        closedNotch: ClosedNotchChoice = .dark, material: MaterialChoice = .solid,
+        shrink: ShrinkChoice = .off
+    ) {
         self.theme = theme
         self.accent = accent
         self.notchStyle = notchStyle
@@ -314,7 +316,8 @@ public struct MediaConfig: Codable, Equatable {
 
     // The ring is newer than the rest.
     public init(enabled: Bool, progressRing: Bool = true) {
-        self.enabled = enabled; self.progressRing = progressRing
+        self.enabled = enabled
+        self.progressRing = progressRing
     }
 
     public init(from decoder: Decoder) throws {
@@ -399,12 +402,17 @@ public struct SoundConfig: Codable, Equatable {
     public var name: String
 
     /// The system alert sounds; mirrors `state::SOUNDS`.
-    public static let sounds = ["Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero", "Morse", "Ping", "Pop",
-                                "Purr", "Sosumi", "Submarine", "Tink"]
+    public static let sounds = [
+        "Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero", "Morse", "Ping", "Pop",
+        "Purr", "Sosumi", "Submarine", "Tink",
+    ]
     public static let defaultName = "Glass"
     public static let `default` = SoundConfig(enabled: true, name: defaultName)
 
-    public init(enabled: Bool, name: String) { self.enabled = enabled; self.name = name }
+    public init(enabled: Bool, name: String) {
+        self.enabled = enabled
+        self.name = name
+    }
 }
 
 /// Mirrors `state::NotchConfig`: what the closed notch shows when several
@@ -424,7 +432,10 @@ public struct NotchConfig: Codable, Equatable {
     public static let `default` = NotchConfig(order: liveOrder, hidden: [], twoPlaces: true, waitingDot: true)
 
     public init(order: [ActivityKind], hidden: [ActivityKind], twoPlaces: Bool, waitingDot: Bool) {
-        self.order = order; self.hidden = hidden; self.twoPlaces = twoPlaces; self.waitingDot = waitingDot
+        self.order = order
+        self.hidden = hidden
+        self.twoPlaces = twoPlaces
+        self.waitingDot = waitingDot
     }
 }
 
@@ -498,7 +509,9 @@ public struct DayView: Codable, Equatable {
     public var line: String
 
     public init(startMs: Int, endMs: Int, line: String) {
-        self.startMs = startMs; self.endMs = endMs; self.line = line
+        self.startMs = startMs
+        self.endMs = endMs
+        self.line = line
     }
 }
 
@@ -551,8 +564,10 @@ public struct CompactView: Codable, Equatable {
     /// Set while this is shown for a moment only.
     public var peek: PeekKind?
 
-    public init(kind: ActivityKind, title: String, value: String, endsAtMs: Int?, totalSecs: Int?,
-                count: Int, peek: PeekKind? = nil) {
+    public init(
+        kind: ActivityKind, title: String, value: String, endsAtMs: Int?, totalSecs: Int?,
+        count: Int, peek: PeekKind? = nil
+    ) {
         self.kind = kind
         self.title = title
         self.value = value
@@ -603,10 +618,18 @@ public struct ClipView: Codable, Equatable, Identifiable {
     /// Text copied with formatting; "copy as plain text" leaves it out.
     public var rich: Bool
 
-    public init(id: Int, kind: ClipKind, preview: String, sourceApp: String?, createdMs: Int,
-                pinned: Bool, imagePath: String? = nil, files: [String] = [], rich: Bool = false) {
-        self.id = id; self.kind = kind; self.preview = preview; self.sourceApp = sourceApp
-        self.createdMs = createdMs; self.pinned = pinned; self.imagePath = imagePath; self.files = files
+    public init(
+        id: Int, kind: ClipKind, preview: String, sourceApp: String?, createdMs: Int,
+        pinned: Bool, imagePath: String? = nil, files: [String] = [], rich: Bool = false
+    ) {
+        self.id = id
+        self.kind = kind
+        self.preview = preview
+        self.sourceApp = sourceApp
+        self.createdMs = createdMs
+        self.pinned = pinned
+        self.imagePath = imagePath
+        self.files = files
         self.rich = rich
     }
 
@@ -667,11 +690,15 @@ public enum OpenTarget: Codable, Equatable {
         var c = encoder.container(keyedBy: Keys.self)
         switch self {
         case .app(let id, let tty):
-            try c.encode("app", forKey: .kind); try c.encode(id, forKey: .bundleId)
+            try c.encode("app", forKey: .kind)
+            try c.encode(id, forKey: .bundleId)
             try c.encodeIfPresent(tty, forKey: .tty)
-        case .appNamed(let n): try c.encode("app_named", forKey: .kind); try c.encode(n, forKey: .name)
+        case .appNamed(let n):
+            try c.encode("app_named", forKey: .kind)
+            try c.encode(n, forKey: .name)
         case .tab(let t, let p):
-            try c.encode("tab", forKey: .kind); try c.encode(t.rawValue, forKey: .tab)
+            try c.encode("tab", forKey: .kind)
+            try c.encode(t.rawValue, forKey: .tab)
             try c.encodeIfPresent(p, forKey: .pane)
         }
     }
@@ -692,11 +719,21 @@ public struct NotificationItem: Codable, Equatable, Identifiable {
     /// A button the banner offers.
     public var action: BannerAction?
 
-    public init(id: Int, source: String, title: String, body: String, priority: Priority, group: String?,
-                ttlSecs: Int?, createdMs: Int, read: Bool, open: OpenTarget? = nil,
-                action: BannerAction? = nil) {
-        self.id = id; self.source = source; self.title = title; self.body = body; self.priority = priority
-        self.group = group; self.ttlSecs = ttlSecs; self.createdMs = createdMs; self.read = read; self.open = open
+    public init(
+        id: Int, source: String, title: String, body: String, priority: Priority, group: String?,
+        ttlSecs: Int?, createdMs: Int, read: Bool, open: OpenTarget? = nil,
+        action: BannerAction? = nil
+    ) {
+        self.id = id
+        self.source = source
+        self.title = title
+        self.body = body
+        self.priority = priority
+        self.group = group
+        self.ttlSecs = ttlSecs
+        self.createdMs = createdMs
+        self.read = read
+        self.open = open
         self.action = action
     }
 
@@ -736,17 +773,28 @@ public struct AgentSession: Codable, Equatable, Identifiable {
     /// The terminal device it runs on (`ttys003`), when known.
     public var tty: String?
 
-    public init(id: String, project: String, cwd: String, status: AgentStatus, lastEventMs: Int,
-                lastMessage: String? = nil, app: String? = nil, tty: String? = nil) {
-        self.id = id; self.project = project; self.cwd = cwd; self.status = status
-        self.lastEventMs = lastEventMs; self.lastMessage = lastMessage; self.app = app; self.tty = tty
+    public init(
+        id: String, project: String, cwd: String, status: AgentStatus, lastEventMs: Int,
+        lastMessage: String? = nil, app: String? = nil, tty: String? = nil
+    ) {
+        self.id = id
+        self.project = project
+        self.cwd = cwd
+        self.status = status
+        self.lastEventMs = lastEventMs
+        self.lastMessage = lastMessage
+        self.app = app
+        self.tty = tty
     }
 }
 
 public struct QuestionOption: Codable, Equatable {
     public var label: String
     public var description: String
-    public init(label: String, description: String = "") { self.label = label; self.description = description }
+    public init(label: String, description: String = "") {
+        self.label = label
+        self.description = description
+    }
 }
 
 /// One question of Claude Code's `AskUserQuestion`, as the core cleaned it.
@@ -756,7 +804,10 @@ public struct AgentQuestion: Codable, Equatable {
     public var multiSelect: Bool
     public var options: [QuestionOption]
     public init(header: String, question: String, multiSelect: Bool = false, options: [QuestionOption]) {
-        self.header = header; self.question = question; self.multiSelect = multiSelect; self.options = options
+        self.header = header
+        self.question = question
+        self.multiSelect = multiSelect
+        self.options = options
     }
 }
 
@@ -773,13 +824,21 @@ public struct PermissionRequest: Codable, Equatable, Identifiable {
     /// Not empty for a question: the prompt shows choices instead of Allow / Deny.
     public var questions: [AgentQuestion]
 
-    public init(id: String, sessionId: String, project: String, toolName: String,
-                summary: String, detail: String, truncated: Bool = false,
-                createdMs: Int, expiresMs: Int, questions: [AgentQuestion] = []) {
+    public init(
+        id: String, sessionId: String, project: String, toolName: String,
+        summary: String, detail: String, truncated: Bool = false,
+        createdMs: Int, expiresMs: Int, questions: [AgentQuestion] = []
+    ) {
         self.questions = questions
-        self.id = id; self.sessionId = sessionId; self.project = project
-        self.toolName = toolName; self.summary = summary; self.detail = detail
-        self.truncated = truncated; self.createdMs = createdMs; self.expiresMs = expiresMs
+        self.id = id
+        self.sessionId = sessionId
+        self.project = project
+        self.toolName = toolName
+        self.summary = summary
+        self.detail = detail
+        self.truncated = truncated
+        self.createdMs = createdMs
+        self.expiresMs = expiresMs
     }
 
     // `truncated` has a serde default on the Rust side, so tolerate its absence.
@@ -907,7 +966,10 @@ public struct MeetingItem: Codable, Equatable {
     public var state: MeetingItemState
 
     public init(name: String, plannedSecs: Int, elapsedSecs: Int = 0, state: MeetingItemState = .pending) {
-        self.name = name; self.plannedSecs = plannedSecs; self.elapsedSecs = elapsedSecs; self.state = state
+        self.name = name
+        self.plannedSecs = plannedSecs
+        self.elapsedSecs = elapsedSecs
+        self.state = state
     }
 }
 
@@ -933,10 +995,17 @@ public struct CalendarEvent: Codable, Equatable, Identifiable {
     public var color: String?
     public var location: String
 
-    public init(id: String, title: String, startMs: Int, endMs: Int, calendar: String = "",
-                color: String? = nil, location: String = "") {
-        self.id = id; self.title = title; self.startMs = startMs; self.endMs = endMs
-        self.calendar = calendar; self.color = color; self.location = location
+    public init(
+        id: String, title: String, startMs: Int, endMs: Int, calendar: String = "",
+        color: String? = nil, location: String = ""
+    ) {
+        self.id = id
+        self.title = title
+        self.startMs = startMs
+        self.endMs = endMs
+        self.calendar = calendar
+        self.color = color
+        self.location = location
     }
 }
 
@@ -961,12 +1030,16 @@ public struct CountdownView: Codable, Equatable {
     public var remainingSecs: Int
     public var presets: [Int]
 
-    public static let empty = CountdownView(durationSecs: 300, runState: .stopped, endsAtMs: nil,
-                                            remainingSecs: 300, presets: [60, 180, 300, 600, 900, 1800])
+    public static let empty = CountdownView(
+        durationSecs: 300, runState: .stopped, endsAtMs: nil,
+        remainingSecs: 300, presets: [60, 180, 300, 600, 900, 1800])
 
     public init(durationSecs: Int, runState: TimerRunState, endsAtMs: Int?, remainingSecs: Int, presets: [Int]) {
-        self.durationSecs = durationSecs; self.runState = runState; self.endsAtMs = endsAtMs
-        self.remainingSecs = remainingSecs; self.presets = presets
+        self.durationSecs = durationSecs
+        self.runState = runState
+        self.endsAtMs = endsAtMs
+        self.remainingSecs = remainingSecs
+        self.presets = presets
     }
 
     public var isActive: Bool { runState == .running || runState == .paused }
@@ -988,16 +1061,25 @@ public struct MeetingView: Codable, Equatable {
     public var totalElapsedSecs: Int
     public var presets: [MeetingPreset]
 
-    public static let empty = MeetingView(title: "", items: [], current: nil, runState: .stopped,
-                                          endsAtMs: nil, runningSinceMs: nil, remainingSecs: 0,
-                                          totalPlannedSecs: 0, totalElapsedSecs: 0, presets: [])
+    public static let empty = MeetingView(
+        title: "", items: [], current: nil, runState: .stopped,
+        endsAtMs: nil, runningSinceMs: nil, remainingSecs: 0,
+        totalPlannedSecs: 0, totalElapsedSecs: 0, presets: [])
 
-    public init(title: String, items: [MeetingItem], current: Int?, runState: MeetingRunState,
-                endsAtMs: Int?, runningSinceMs: Int?, remainingSecs: Int, totalPlannedSecs: Int,
-                totalElapsedSecs: Int, presets: [MeetingPreset]) {
-        self.title = title; self.items = items; self.current = current; self.runState = runState
-        self.endsAtMs = endsAtMs; self.runningSinceMs = runningSinceMs; self.remainingSecs = remainingSecs
-        self.totalPlannedSecs = totalPlannedSecs; self.totalElapsedSecs = totalElapsedSecs
+    public init(
+        title: String, items: [MeetingItem], current: Int?, runState: MeetingRunState,
+        endsAtMs: Int?, runningSinceMs: Int?, remainingSecs: Int, totalPlannedSecs: Int,
+        totalElapsedSecs: Int, presets: [MeetingPreset]
+    ) {
+        self.title = title
+        self.items = items
+        self.current = current
+        self.runState = runState
+        self.endsAtMs = endsAtMs
+        self.runningSinceMs = runningSinceMs
+        self.remainingSecs = remainingSecs
+        self.totalPlannedSecs = totalPlannedSecs
+        self.totalElapsedSecs = totalElapsedSecs
         self.presets = presets
     }
 
@@ -1041,8 +1123,9 @@ public struct UpdateView: Codable, Equatable {
     /// What to run to update a Homebrew install (fixed text from the core).
     public var command: String
 
-    public static let none = UpdateView(current: "", status: .idle, latest: nil, url: nil,
-                                        checkedMs: nil, command: "")
+    public static let none = UpdateView(
+        current: "", status: .idle, latest: nil, url: nil,
+        checkedMs: nil, command: "")
 }
 
 public struct ViewModel: Codable, Equatable {

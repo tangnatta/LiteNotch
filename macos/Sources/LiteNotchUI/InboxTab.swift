@@ -9,7 +9,10 @@ struct InboxTab: View {
 
     private var rows: [NotificationItem] {
         var r = vm.inbox.history
-        if let b = vm.inbox.banner { r.removeAll { $0.id == b.id }; r.insert(b, at: 0) }
+        if let b = vm.inbox.banner {
+            r.removeAll { $0.id == b.id }
+            r.insert(b, at: 0)
+        }
         return r
     }
 
@@ -29,18 +32,21 @@ struct InboxTab: View {
                 if vm.inbox.unread > 0 {
                     TextPill(title: "Mark all read", height: 24) { send(.notifyMarkRead) }
                 }
-                ConfirmPill(title: "Clear inbox", question: ConfirmGate.question(count: rows.count),
-                            help: "Remove every notification", enabled: !rows.isEmpty) {
+                ConfirmPill(
+                    title: "Clear inbox", question: ConfirmGate.question(count: rows.count),
+                    help: "Remove every notification", enabled: !rows.isEmpty
+                ) {
                     send(.notifyClear)
                 }
             }
             .frame(height: 24)
             systemRow
             if rows.isEmpty {
-                EmptyState(symbol: "bell", title: "No notifications",
-                           hint: vm.settings.notify.system
-                               ? "Notifications from LiteNotch, Claude Code and other apps appear here."
-                               : "Notifications from LiteNotch and Claude Code appear here.")
+                EmptyState(
+                    symbol: "bell", title: "No notifications",
+                    hint: vm.settings.notify.system
+                        ? "Notifications from LiteNotch, Claude Code and other apps appear here."
+                        : "Notifications from LiteNotch and Claude Code appear here.")
             } else {
                 NotchScroll {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, n in
@@ -57,28 +63,36 @@ struct InboxTab: View {
     /// Offers other apps' notifications, or says what is still missing.
     @ViewBuilder private var systemRow: some View {
         if !vm.settings.notify.system {
-            notice(symbol: "app.badge", text: "Also show notifications from other apps", action: "Turn on",
-                   help: "LiteNotch reads other apps\u{2019} banners through Accessibility") {
+            notice(
+                symbol: "app.badge", text: "Also show notifications from other apps", action: "Turn on",
+                help: "LiteNotch reads other apps\u{2019} banners through Accessibility"
+            ) {
                 var s = vm.settings
                 s.notify.system = true
                 send(.setSettings(s))
             }
         } else if model.accessibilityNeeded {
-            notice(symbol: "exclamationmark.triangle.fill",
-                   text: "Allow LiteNotch to read other apps\u{2019} notifications in System Settings",
-                   action: "Open Settings", warning: true,
-                   help: "Opens Privacy & Security \u{203A} Accessibility") { model.app?.onOpenAccessibilitySettings() }
-            notice(symbol: "arrow.clockwise",
-                   text: "Already allowed it?",
-                   action: "Reset and ask again", primary: false,
-                   help: "macOS forgets the permission when LiteNotch is updated") { model.app?.onResetAccessibility() }
+            notice(
+                symbol: "exclamationmark.triangle.fill",
+                text: "Allow LiteNotch to read other apps\u{2019} notifications in System Settings",
+                action: "Open Settings", warning: true,
+                help: "Opens Privacy & Security \u{203A} Accessibility"
+            ) { model.app?.onOpenAccessibilitySettings() }
+            notice(
+                symbol: "arrow.clockwise",
+                text: "Already allowed it?",
+                action: "Reset and ask again", primary: false,
+                help: "macOS forgets the permission when LiteNotch is updated"
+            ) { model.app?.onResetAccessibility() }
         }
     }
 
     /// One line with one button. Only the `primary` one is filled with the
     /// accent, so a screen has one call to action.
-    private func notice(symbol: String, text: String, action: String, primary: Bool = true,
-                        warning: Bool = false, help: String, run: @escaping () -> Void) -> some View {
+    private func notice(
+        symbol: String, text: String, action: String, primary: Bool = true,
+        warning: Bool = false, help: String, run: @escaping () -> Void
+    ) -> some View {
         HStack(spacing: 8) {
             Image(systemName: symbol).glyph(11)
                 .foregroundStyle(warning ? NT.warning : (primary ? NT.accentText : NT.text3))
@@ -87,9 +101,11 @@ struct InboxTab: View {
                 .lineLimit(1).minimumScaleFactor(0.85)
             Spacer(minLength: 4)
             if primary {
-                TextPill(title: action, tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold,
-                         action: run)
-                    .help(help)
+                TextPill(
+                    title: action, tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold,
+                    action: run
+                )
+                .help(help)
             } else {
                 TextPill(title: action, tint: NT.text1, height: 22, action: run)
                     .help(help)
@@ -104,9 +120,13 @@ struct InboxTab: View {
         HStack(alignment: .top, spacing: 9) {
             Circle().fill(n.read ? Color.clear : NT.accent).frame(width: 7, height: 7).padding(.top, 5)
                 .accessibilityLabel(Text(verbatim: n.read ? "Read" : "Unread"))
-            Button { model.openNotification(n, isBanner: isBanner) } label: { content(n, now: now) }
-                .buttonStyle(.plain)
-                .help(Format.openHelp(n.open))
+            Button {
+                model.openNotification(n, isBanner: isBanner)
+            } label: {
+                content(n, now: now)
+            }
+            .buttonStyle(.plain)
+            .help(Format.openHelp(n.open))
             IconButton(symbol: "xmark", label: "Dismiss", size: NGlyph.small, tint: NT.text3) {
                 send(isBanner ? .notifyDismissBanner : .notifyDismiss(id: n.id))
             }

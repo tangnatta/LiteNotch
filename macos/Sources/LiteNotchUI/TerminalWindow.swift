@@ -37,46 +37,46 @@ public enum TerminalWindow {
     }
 
     static let terminalScript = """
-    on run argv
-        set target to item 1 of argv
-        tell application id "com.apple.Terminal"
-            repeat with w in windows
-                repeat with t in tabs of w
-                    if tty of t is target then
-                        if miniaturized of w then set miniaturized of w to false
-                        set selected tab of w to t
-                        set index of w to 1
-                        activate
-                        return "ok"
-                    end if
-                end repeat
-            end repeat
-        end tell
-        return "none"
-    end run
-    """
-
-    static let iTermScript = """
-    on run argv
-        set target to item 1 of argv
-        tell application id "com.googlecode.iterm2"
-            repeat with w in windows
-                repeat with t in tabs of w
-                    repeat with s in sessions of t
-                        if tty of s is target then
-                            tell w to select
-                            tell t to select
-                            tell s to select
+        on run argv
+            set target to item 1 of argv
+            tell application id "com.apple.Terminal"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        if tty of t is target then
+                            if miniaturized of w then set miniaturized of w to false
+                            set selected tab of w to t
+                            set index of w to 1
                             activate
                             return "ok"
                         end if
                     end repeat
                 end repeat
-            end repeat
-        end tell
-        return "none"
-    end run
-    """
+            end tell
+            return "none"
+        end run
+        """
+
+    static let iTermScript = """
+        on run argv
+            set target to item 1 of argv
+            tell application id "com.googlecode.iterm2"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        repeat with s in sessions of t
+                            if tty of s is target then
+                                tell w to select
+                                tell t to select
+                                tell s to select
+                                activate
+                                return "ok"
+                            end if
+                        end repeat
+                    end repeat
+                end repeat
+            end tell
+            return "none"
+        end run
+        """
 
     // MARK: Which tab is in front
 
@@ -91,18 +91,18 @@ public enum TerminalWindow {
     }
 
     static let terminalFrontScript = """
-    tell application id "com.apple.Terminal"
-        if (count of windows) is 0 then return "none"
-        return tty of selected tab of front window
-    end tell
-    """
+        tell application id "com.apple.Terminal"
+            if (count of windows) is 0 then return "none"
+            return tty of selected tab of front window
+        end tell
+        """
 
     static let iTermFrontScript = """
-    tell application id "com.googlecode.iterm2"
-        if (count of windows) is 0 then return "none"
-        return tty of current session of current window
-    end tell
-    """
+        tell application id "com.googlecode.iterm2"
+            if (count of windows) is 0 then return "none"
+            return tty of current session of current window
+        end tell
+        """
 
     /// `ttys003` from what a front script printed; nil for anything else.
     public static func ttyName(fromOutput output: String) -> String? {
@@ -175,7 +175,8 @@ public enum TerminalWindow {
         let once = Once()
         process.terminationHandler = { p in
             let data = out.fileHandleForReading.readDataToEndOfFile()
-            let found = p.terminationStatus == 0
+            let found =
+                p.terminationStatus == 0
                 && String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) == "ok"
             // Either this result or the wait below decides, whichever is first.
             if once.claim(), !found { DispatchQueue.main.async(execute: fallback) }
@@ -201,7 +202,8 @@ private final class Once: @unchecked Sendable {
     private var claimed = false
 
     func claim() -> Bool {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         if claimed { return false }
         claimed = true
         return true

@@ -18,7 +18,8 @@ struct ClipboardTab: View {
 
     var body: some View {
         if let id = model.clipPreview, let item = items.first(where: { $0.id == id }),
-           let source = Thumbnails.source(of: item) {
+            let source = Thumbnails.source(of: item)
+        {
             ClipPreview(item: item, source: source, copy: { copy(item) }, close: { model.clipPreview = nil })
         } else {
             list
@@ -29,8 +30,10 @@ struct ClipboardTab: View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 searchField
-                ConfirmPill(title: "Clear history", question: ConfirmGate.question(count: clearCount),
-                            help: "Remove everything except pinned items, and the picked colours", enabled: hasUnpinned, height: 30) {
+                ConfirmPill(
+                    title: "Clear history", question: ConfirmGate.question(count: clearCount),
+                    help: "Remove everything except pinned items, and the picked colours", enabled: hasUnpinned, height: 30
+                ) {
                     model.send(.clipClear)
                 }
             }
@@ -65,16 +68,18 @@ struct ClipboardTab: View {
                     .nfont(.body).foregroundStyle(NT.text3)
                 Spacer(minLength: 0)
             } else {
-                TextField("", text: $query,
-                          prompt: Text(verbatim: "Search clipboard").foregroundColor(NT.text3))
-                    .textFieldStyle(.plain)
-                    .font(NType.body.font)
-                    .foregroundStyle(NT.text1)
-                    .focused($focused)
-                    .onChange(of: query) { _, q in debounce(q) }
-                    .onSubmit { focused = false }
-                    .simultaneousGesture(TapGesture().onEnded { model.requestKeyboard(true) })
-                    .accessibilityLabel(Text(verbatim: "Search clipboard"))
+                TextField(
+                    "", text: $query,
+                    prompt: Text(verbatim: "Search clipboard").foregroundColor(NT.text3)
+                )
+                .textFieldStyle(.plain)
+                .font(NType.body.font)
+                .foregroundStyle(NT.text1)
+                .focused($focused)
+                .onChange(of: query) { _, q in debounce(q) }
+                .onSubmit { focused = false }
+                .simultaneousGesture(TapGesture().onEnded { model.requestKeyboard(true) })
+                .accessibilityLabel(Text(verbatim: "Search clipboard"))
             }
             if !query.isEmpty && !snapshot {
                 IconButton(symbol: "xmark.circle.fill", label: "Clear search", size: 11, frame: 24) { query = "" }
@@ -94,7 +99,9 @@ struct ClipboardTab: View {
                     .foregroundStyle(NT.text3)
                     .help("Colours you picked from the screen")
                 ForEach(Array(colors.enumerated()), id: \.offset) { _, hex in
-                    Button { model.send(.colorPicked(hex: hex)) } label: {
+                    Button {
+                        model.send(.colorPicked(hex: hex))
+                    } label: {
                         Circle().fill(NT.color(hex))
                             .frame(width: 18, height: 18)
                             .overlay(Circle().strokeBorder(NT.hairline, lineWidth: 1))
@@ -139,11 +146,13 @@ struct ClipboardTab: View {
 
     @ViewBuilder private var empty: some View {
         if vm.clipboard.query.isEmpty {
-            EmptyState(symbol: "doc.on.clipboard", title: "Nothing copied yet",
-                       hint: "Copy something and it appears here.")
+            EmptyState(
+                symbol: "doc.on.clipboard", title: "Nothing copied yet",
+                hint: "Copy something and it appears here.")
         } else {
-            EmptyState(symbol: "magnifyingglass", title: "No matches",
-                       hint: "Try fewer words, or clear the search.")
+            EmptyState(
+                symbol: "magnifyingglass", title: "No matches",
+                hint: "Try fewer words, or clear the search.")
         }
     }
 
@@ -164,7 +173,9 @@ struct ClipboardTab: View {
     private func row(_ item: ClipView, now: Int) -> some View {
         HStack(alignment: .center, spacing: 2) {
             let source = Thumbnails.source(of: item)
-            Button { copy(item) } label: {
+            Button {
+                copy(item)
+            } label: {
                 HStack(spacing: 10) {
                     if let source {
                         ClipThumb(source: source)
@@ -224,8 +235,10 @@ struct ClipboardTab: View {
             .accessibilityLabel(Text(verbatim: "Copy: \(item.preview)"))
             let actions = ClipActions.of(item, hasPreview: source != nil)
             if actions.contains(.copyPlain) {
-                IconButton(symbol: "textformat", label: "Copy as plain text", size: 11,
-                           tint: item.rich ? NT.text2 : NT.text3, help: "Copy without formatting") {
+                IconButton(
+                    symbol: "textformat", label: "Copy as plain text", size: 11,
+                    tint: item.rich ? NT.text2 : NT.text3, help: "Copy without formatting"
+                ) {
                     copyPlain(item)
                 }
             }
@@ -235,13 +248,17 @@ struct ClipboardTab: View {
                     model.clipPreview = item.id
                 }
             }
-            IconButton(symbol: item.pinned ? "pin.fill" : "pin", label: item.pinned ? "Unpin" : "Pin",
-                       size: 11, tint: item.pinned ? NT.accent : NT.text3,
-                       help: item.pinned ? "Unpin" : "Pin: keep it when the history is cleared") {
+            IconButton(
+                symbol: item.pinned ? "pin.fill" : "pin", label: item.pinned ? "Unpin" : "Pin",
+                size: 11, tint: item.pinned ? NT.accent : NT.text3,
+                help: item.pinned ? "Unpin" : "Pin: keep it when the history is cleared"
+            ) {
                 model.send(.clipPin(id: item.id, pinned: !item.pinned))
             }
-            IconButton(symbol: "xmark", label: "Delete", size: NGlyph.small, tint: NT.text3,
-                       help: "Remove from history") {
+            IconButton(
+                symbol: "xmark", label: "Delete", size: NGlyph.small, tint: NT.text3,
+                help: "Remove from history"
+            ) {
                 model.send(.clipRemove(id: item.id))
             }
         }

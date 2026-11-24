@@ -46,20 +46,24 @@ public enum NotchGeometry {
     public static let minimizedBottomRadius: CGFloat = 4
 
     /// The notch rectangle, or a centred pill when the screen has no notch.
-    public static func notchRect(screenFrame: CGRect, safeAreaTop: CGFloat,
-                                 leftAux: CGRect?, rightAux: CGRect?) -> CGRect {
+    public static func notchRect(
+        screenFrame: CGRect, safeAreaTop: CGFloat,
+        leftAux: CGRect?, rightAux: CGRect?
+    ) -> CGRect {
         // Only the widths of the side areas are used, so the result does not
         // depend on which coordinate space AppKit reports them in.
         if safeAreaTop > 0, let l = leftAux, let r = rightAux {
             let width = screenFrame.width - l.width - r.width
             if width > 0 {
-                return CGRect(x: screenFrame.midX - width / 2, y: screenFrame.maxY - safeAreaTop,
-                              width: width, height: safeAreaTop)
+                return CGRect(
+                    x: screenFrame.midX - width / 2, y: screenFrame.maxY - safeAreaTop,
+                    width: width, height: safeAreaTop)
             }
         }
         let s = fallbackSize
-        return CGRect(x: screenFrame.midX - s.width / 2, y: screenFrame.maxY - s.height,
-                      width: s.width, height: s.height)
+        return CGRect(
+            x: screenFrame.midX - s.width / 2, y: screenFrame.maxY - s.height,
+            width: s.width, height: s.height)
     }
 
     /// Width of one wing beside the notch for an activity. Wings are
@@ -134,9 +138,10 @@ public enum NotchGeometry {
 
     /// Where the shape sits inside a view of `bounds`: centred, top-aligned.
     public static func shapeRect(in bounds: CGSize, shape: CGSize, flipped: Bool) -> CGRect {
-        CGRect(x: (bounds.width - shape.width) / 2,
-               y: flipped ? 0 : bounds.height - shape.height,
-               width: shape.width, height: shape.height)
+        CGRect(
+            x: (bounds.width - shape.width) / 2,
+            y: flipped ? 0 : bounds.height - shape.height,
+            width: shape.width, height: shape.height)
     }
 }
 
@@ -330,8 +335,10 @@ public struct NotchLayout: Equatable {
     /// a hardware notch, which the shape has to cover.
     public var minimized: Bool
 
-    public init(style: NotchStyle, notch: CGSize, hasNotch: Bool = true, menuBarHeight: CGFloat = 0,
-                minimized: Bool = false) {
+    public init(
+        style: NotchStyle, notch: CGSize, hasNotch: Bool = true, menuBarHeight: CGFloat = 0,
+        minimized: Bool = false
+    ) {
         self.style = style
         self.notch = notch
         self.hasNotch = hasNotch
@@ -434,8 +441,9 @@ public struct NotchLayout: Equatable {
         case .toast:
             return CGSize(width: NotchGeometry.toastWidth, height: top(for: .toast) + NotchGeometry.toastExtraHeight)
         case .expanded:
-            return CGSize(width: NotchGeometry.expandedSize.width,
-                          height: top(for: .expanded) + NotchGeometry.expandedSize.height)
+            return CGSize(
+                width: NotchGeometry.expandedSize.width,
+                height: top(for: .expanded) + NotchGeometry.expandedSize.height)
         }
     }
 

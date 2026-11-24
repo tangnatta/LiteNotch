@@ -35,9 +35,17 @@ struct GrowthIcon: View {
             func line(_ p: Path, _ w: CGFloat) {
                 ctx.stroke(p, with: shading, style: StrokeStyle(lineWidth: w, lineCap: .round))
             }
-            line(Path { $0.move(to: CGPoint(x: 4, y: 3)); $0.addLine(to: CGPoint(x: 20, y: 3)) }, 1.8)
+            line(
+                Path {
+                    $0.move(to: CGPoint(x: 4, y: 3))
+                    $0.addLine(to: CGPoint(x: 20, y: 3))
+                }, 1.8)
             for (top, width) in Self.stems[stage] ?? [] {
-                line(Path { $0.move(to: CGPoint(x: 12, y: 3)); $0.addLine(to: CGPoint(x: 12, y: top)) }, width)
+                line(
+                    Path {
+                        $0.move(to: CGPoint(x: 12, y: 3))
+                        $0.addLine(to: CGPoint(x: 12, y: top))
+                    }, width)
             }
             ctx.fill(Self.body(stage), with: shading)
         }
@@ -54,8 +62,9 @@ struct GrowthIcon: View {
         var p = Path()
         switch stage {
         case .seed:
-            p.addEllipse(in: CGRect(x: 9, y: 5, width: 6, height: 8),
-                         transform: CGAffineTransform(translationX: 12, y: 9).rotated(by: -.pi / 9).translatedBy(x: -12, y: -9))
+            p.addEllipse(
+                in: CGRect(x: 9, y: 5, width: 6, height: 8),
+                transform: CGAffineTransform(translationX: 12, y: 9).rotated(by: -.pi / 9).translatedBy(x: -12, y: -9))
         case .leaves:
             leaf(&p, from: CGPoint(x: 12, y: 12.5), angle: .pi * 0.18, len: 8, width: 3.4)
             leaf(&p, from: CGPoint(x: 12, y: 11), angle: .pi * 0.82, len: 7, width: 3.2)
@@ -82,10 +91,12 @@ struct GrowthIcon: View {
         let tip = CGPoint(x: a.x + dx * len, y: a.y + dy * len)
         let mid = CGPoint(x: a.x + dx * len / 2, y: a.y + dy * len / 2)
         p.move(to: a)
-        p.addCurve(to: tip, control1: CGPoint(x: mid.x + nx * width, y: mid.y + ny * width),
-                   control2: CGPoint(x: tip.x + nx * width * 0.3, y: tip.y + ny * width * 0.3))
-        p.addCurve(to: a, control1: CGPoint(x: tip.x - nx * width * 0.3, y: tip.y - ny * width * 0.3),
-                   control2: CGPoint(x: mid.x - nx * width, y: mid.y - ny * width))
+        p.addCurve(
+            to: tip, control1: CGPoint(x: mid.x + nx * width, y: mid.y + ny * width),
+            control2: CGPoint(x: tip.x + nx * width * 0.3, y: tip.y + ny * width * 0.3))
+        p.addCurve(
+            to: a, control1: CGPoint(x: tip.x - nx * width * 0.3, y: tip.y - ny * width * 0.3),
+            control2: CGPoint(x: mid.x - nx * width, y: mid.y - ny * width))
         p.closeSubpath()
     }
 }
@@ -106,8 +117,9 @@ struct DayGlyph: View {
             Image(systemName: Format.daySymbol(startMs: startMs, endMs: endMs, nowMs: nowMs))
                 .font(symbolFont).foregroundStyle(color).accessibilityHidden(true)
         case .tree:
-            GrowthIcon(stage: Format.growthStage(startMs: startMs, endMs: endMs, nowMs: nowMs),
-                       size: plantSize, color: color)
+            GrowthIcon(
+                stage: Format.growthStage(startMs: startMs, endMs: endMs, nowMs: nowMs),
+                size: plantSize, color: color)
         }
     }
 }

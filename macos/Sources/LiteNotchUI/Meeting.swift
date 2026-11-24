@@ -134,7 +134,9 @@ struct MeetingPresets: View {
         HStack(spacing: 4) {
             ForEach(Array(m.presets.enumerated()), id: \.offset) { _, p in
                 let on = p.title == m.title
-                Button { send(.meetingLoad(preset: p.id)) } label: {
+                Button {
+                    send(.meetingLoad(preset: p.id))
+                } label: {
                     VText(Self.shortTitle(p)).nfont(on ? .captionStrong : .caption)
                         .foregroundStyle(on ? NT.text1 : NT.text2)
                         .lineLimit(1).fixedSize()
@@ -151,8 +153,10 @@ struct MeetingPresets: View {
     }
 }
 
-private func roundButton(_ symbol: String, label: String, size: CGFloat, fill: Color, tint: Color,
-                         action: @escaping () -> Void) -> some View {
+private func roundButton(
+    _ symbol: String, label: String, size: CGFloat, fill: Color, tint: Color,
+    action: @escaping () -> Void
+) -> some View {
     Button(action: action) {
         Image(systemName: symbol)
             .glyph(size * 0.38, .bold)
@@ -184,10 +188,12 @@ struct MeetingStartCard: View {
                 Text(verbatim: m.items.count == 1 ? "1 item planned" : "\(m.items.count) items planned")
                     .nfont(.caption).foregroundStyle(NT.text2)
                 Spacer(minLength: 6)
-                TextPill(title: "Start meeting", tint: NT.onAccent, background: NT.accent, height: 30,
-                         weight: .semibold) { send(.meetingToggle) }
-                    .disabled(m.items.isEmpty)
-                    .opacity(m.items.isEmpty ? 0.4 : 1)
+                TextPill(
+                    title: "Start meeting", tint: NT.onAccent, background: NT.accent, height: 30,
+                    weight: .semibold
+                ) { send(.meetingToggle) }
+                .disabled(m.items.isEmpty)
+                .opacity(m.items.isEmpty ? 0.4 : 1)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -219,10 +225,14 @@ struct MeetingRunCard: View {
                 }
                 Spacer(minLength: 6)
                 HStack(spacing: 8) {
-                    roundButton("arrow.counterclockwise", label: "Reset meeting", size: 28,
-                                fill: NT.fill, tint: NT.text2) { send(.meetingReset) }
-                    roundButton(running ? "pause.fill" : "play.fill", label: running ? "Pause" : "Resume",
-                                size: 36, fill: NT.accent, tint: NT.onAccent) { send(.meetingToggle) }
+                    roundButton(
+                        "arrow.counterclockwise", label: "Reset meeting", size: 28,
+                        fill: NT.fill, tint: NT.text2
+                    ) { send(.meetingReset) }
+                    roundButton(
+                        running ? "pause.fill" : "play.fill", label: running ? "Pause" : "Resume",
+                        size: 36, fill: NT.accent, tint: NT.onAccent
+                    ) { send(.meetingToggle) }
                     Spacer(minLength: 0)
                     TextPill(title: MeetingMath.nextTitle(m), height: 28, weight: .semibold) {
                         send(.meetingNext)
@@ -268,8 +278,10 @@ struct MeetingSummaryCard: View {
                 Text(verbatim: "Planned \(Format.countdown(seconds: m.totalPlannedSecs))")
                     .nfont(.caption).monospacedDigit().foregroundStyle(NT.text2)
                 Spacer(minLength: 6)
-                TextPill(title: "New meeting", tint: NT.onAccent, background: NT.accent, height: 30,
-                         weight: .semibold) { send(.meetingReset) }
+                TextPill(
+                    title: "New meeting", tint: NT.onAccent, background: NT.accent, height: 30,
+                    weight: .semibold
+                ) { send(.meetingReset) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -440,15 +452,17 @@ struct AgendaEditor: View {
                     VText(line.wrappedValue.name).nfont(.body).foregroundStyle(NT.text1).lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    TextField("", text: line.name,
-                              prompt: Text(verbatim: "Item name").foregroundColor(NT.text3))
-                        .textFieldStyle(.plain)
-                        .font(NType.body.font)
-                        .foregroundStyle(NT.text1)
-                        .focused($focused, equals: id)
-                        .onSubmit { focused = nil }
-                        .simultaneousGesture(TapGesture().onEnded { model.requestKeyboard(true) })
-                        .accessibilityLabel(Text(verbatim: "Item name"))
+                    TextField(
+                        "", text: line.name,
+                        prompt: Text(verbatim: "Item name").foregroundColor(NT.text3)
+                    )
+                    .textFieldStyle(.plain)
+                    .font(NType.body.font)
+                    .foregroundStyle(NT.text1)
+                    .focused($focused, equals: id)
+                    .onSubmit { focused = nil }
+                    .simultaneousGesture(TapGesture().onEnded { model.requestKeyboard(true) })
+                    .accessibilityLabel(Text(verbatim: "Item name"))
                 }
             }
             .padding(.horizontal, 7)
@@ -480,7 +494,10 @@ struct AgendaEditor: View {
         guard agenda != MeetingMath.agenda(of: meeting) else { return }
         let title = meeting.title
         let send = model.send
-        let work = DispatchWorkItem { pending = nil; send(.meetingSet(title: title, items: agenda)) }
+        let work = DispatchWorkItem {
+            pending = nil
+            send(.meetingSet(title: title, items: agenda))
+        }
         pending = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
@@ -502,7 +519,9 @@ struct OverrunText: View {
         .foregroundStyle(left < 0 ? NT.deny : NT.text1)
         .lineLimit(1)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: left < 0
-            ? "\(Format.countdown(seconds: -left)) over time" : "\(Format.countdown(seconds: left)) left"))
+        .accessibilityLabel(
+            Text(
+                verbatim: left < 0
+                    ? "\(Format.countdown(seconds: -left)) over time" : "\(Format.countdown(seconds: left)) left"))
     }
 }

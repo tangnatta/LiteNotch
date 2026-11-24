@@ -23,8 +23,8 @@ enum UpdateText {
     /// The page to open, only if it is one of ours.
     static func releasePage(_ s: String?) -> URL? {
         guard let s, s.hasPrefix(releasesPage), s.count <= 300,
-              s.dropFirst(releasesPage.count).allSatisfy({ $0.isLetter || $0.isNumber || "/._-".contains($0) }),
-              let url = URL(string: s), url.scheme == "https", url.host == "github.com"
+            s.dropFirst(releasesPage.count).allSatisfy({ $0.isLetter || $0.isNumber || "/._-".contains($0) }),
+            let url = URL(string: s), url.scheme == "https", url.host == "github.com"
         else { return nil }
         return url
     }

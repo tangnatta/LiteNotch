@@ -51,12 +51,13 @@ struct HomeTab: View {
                 let p = Format.dayPercent(startMs: d.startMs, endMs: d.endMs, nowMs: now)
                 VStack(spacing: 6) {
                     Spacer(minLength: 0)
-                    DayGlyph(icons: icons, startMs: d.startMs, endMs: d.endMs, nowMs: now,
-                             symbolFont: .system(size: 22, weight: .regular), plantSize: 28, color: NT.text2)
+                    DayGlyph(
+                        icons: icons, startMs: d.startMs, endMs: d.endMs, nowMs: now,
+                        symbolFont: .system(size: 22, weight: .regular), plantSize: 28, color: NT.text2)
                     // The number large and light, the `%` at half size on its baseline.
                     (Text(verbatim: String(Format.dayProgress(p).dropLast()))
                         .font(.system(size: 52, weight: .light)).monospacedDigit()
-                     + Text(verbatim: "%").font(.system(size: 26, weight: .light)))
+                        + Text(verbatim: "%").font(.system(size: 26, weight: .light)))
                         .foregroundStyle(NT.text1).lineLimit(1).minimumScaleFactor(0.6)
                         .accessibilityLabel(Text(verbatim: Format.dayProgress(p)))
                     VText(d.line).nfont(.body).foregroundStyle(NT.text2)
@@ -118,11 +119,14 @@ struct HomeTab: View {
                     ArtworkView(path: nil, size: 56, radius: 10, dimmed: true)
                     Text(verbatim: vm.settings.media.enabled ? "Nothing playing" : "Now playing is off")
                         .nfont(.emphasis).foregroundStyle(NT.text2)
-                    Text(verbatim: vm.settings.media.enabled ? "Play something in Music, Spotify or a browser and it shows up here."
-                                                             : "Turn it on in Settings \u{203A} Music.")
-                        .nfont(.caption).foregroundStyle(NT.text3)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(
+                        verbatim: vm.settings.media.enabled
+                            ? "Play something in Music, Spotify or a browser and it shows up here."
+                            : "Turn it on in Settings \u{203A} Music."
+                    )
+                    .nfont(.caption).foregroundStyle(NT.text3)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -148,7 +152,8 @@ struct HomeTab: View {
         let running = t.runState == .running
         return HomeRow(symbol: "hourglass", tint: NT.accent) {
             EverySecond { now in
-                let left = running && t.endsAtMs != nil
+                let left =
+                    running && t.endsAtMs != nil
                     ? Format.secondsLeft(until: t.endsAtMs ?? now, nowMs: now) : t.remainingSecs
                 Text(verbatim: Format.countdown(seconds: left))
                     .nfont(.heading).monospacedDigit()
@@ -157,7 +162,9 @@ struct HomeTab: View {
             Text(verbatim: running ? "Timer" : "Timer paused")
                 .nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
         } trailing: {
-            Button { model.send(.timerToggle) } label: {
+            Button {
+                model.send(.timerToggle)
+            } label: {
                 Image(systemName: running ? "pause.fill" : "play.fill")
                     .glyph(11, .bold).foregroundStyle(NT.onAccent)
                     .frame(width: 28, height: 28)
@@ -188,7 +195,9 @@ struct HomeTab: View {
                     .nfont(.caption).monospacedDigit().foregroundStyle(NT.text3).lineLimit(1).fixedSize()
             }
         } trailing: {
-            Button { model.send(.meetingToggle) } label: {
+            Button {
+                model.send(.meetingToggle)
+            } label: {
                 Image(systemName: running ? "pause.fill" : "play.fill")
                     .glyph(11, .bold).foregroundStyle(NT.onAccent)
                     .frame(width: 28, height: 28)
@@ -211,7 +220,8 @@ struct HomeTab: View {
         let onBreak = p.phase == .shortBreak || p.phase == .longBreak
         return HomeRow(symbol: onBreak ? "leaf.fill" : "timer", tint: p.phase == .focus ? NT.accent : NT.text2) {
             EverySecond { now in
-                let left = running && p.endsAtMs != nil
+                let left =
+                    running && p.endsAtMs != nil
                     ? Format.secondsLeft(until: p.endsAtMs ?? now, nowMs: now) : p.remainingSecs
                 Text(verbatim: Format.countdown(seconds: left))
                     .nfont(.heading).monospacedDigit()
@@ -220,7 +230,9 @@ struct HomeTab: View {
             Text(verbatim: p.runState == .paused ? "Paused" : (p.phase == .idle ? "Timer ready" : Format.phaseLabel(p.phase)))
                 .nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
         } trailing: {
-            Button { model.send(.pomodoroToggle) } label: {
+            Button {
+                model.send(.pomodoroToggle)
+            } label: {
                 Image(systemName: running ? "pause.fill" : "play.fill")
                     .glyph(11, .bold).foregroundStyle(NT.onAccent)
                     .frame(width: 28, height: 28)
@@ -238,8 +250,10 @@ struct HomeTab: View {
     private func dayRow(_ d: DayView) -> some View {
         EverySecond(interval: 60) { now in
             let p = Format.dayPercent(startMs: d.startMs, endMs: d.endMs, nowMs: now)
-            HomeRow(symbol: Format.daySymbol(startMs: d.startMs, endMs: d.endMs, nowMs: now), tint: NT.text2,
-                    plant: icons == .tree ? Format.growthStage(startMs: d.startMs, endMs: d.endMs, nowMs: now) : nil) {
+            HomeRow(
+                symbol: Format.daySymbol(startMs: d.startMs, endMs: d.endMs, nowMs: now), tint: NT.text2,
+                plant: icons == .tree ? Format.growthStage(startMs: d.startMs, endMs: d.endMs, nowMs: now) : nil
+            ) {
                 Text(verbatim: Format.dayProgress(p)).nfont(.emphasis).monospacedDigit()
                     .foregroundStyle(NT.text1).lineLimit(1)
                 VText(d.line).nfont(.caption).foregroundStyle(NT.text2).lineLimit(1)
@@ -390,13 +404,13 @@ private struct HomeRow<Lines: View, Trailing: View>: View {
     }
 }
 
-private extension View {
+extension View {
     /// Makes a whole block jump to `tab`. Buttons inside keep their own clicks.
-    func opens(_ tab: Tab, _ name: String, _ model: PanelState) -> some View {
+    fileprivate func opens(_ tab: Tab, _ name: String, _ model: PanelState) -> some View {
         opens(name, model) { model.selectTab(tab) }
     }
 
-    func opens(_ name: String, _ model: PanelState, _ go: @escaping () -> Void) -> some View {
+    fileprivate func opens(_ name: String, _ model: PanelState, _ go: @escaping () -> Void) -> some View {
         contentShape(Rectangle())
             .onTapGesture(perform: go)
             .help("Open \(name)")
@@ -410,11 +424,13 @@ public enum CalendarText {
     public static let appBundleId = "com.apple.iCal"
 
     /// The times, then the place if there is one.
-    public static func detail(_ e: CalendarEvent, nowMs: Int, calendar: Calendar = .current,
-                              locale: Locale = .current) -> String {
-        let time = Format.eventTime(startMs: e.startMs, endMs: e.endMs, nowMs: nowMs,
-                                    calendar: calendar, locale: locale)
+    public static func detail(
+        _ e: CalendarEvent, nowMs: Int, calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        let time = Format.eventTime(
+            startMs: e.startMs, endMs: e.endMs, nowMs: nowMs,
+            calendar: calendar, locale: locale)
         return e.location.isEmpty ? time : "\(time) \u{b7} \(e.location)"
     }
 }
-

@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import XCTest
+
 @testable import LiteNotchUI
 
 private func fixture(_ name: String) throws -> ViewModel {
@@ -21,8 +22,9 @@ final class OverflowTests: XCTestCase {
     /// The space a tab gets inside the open panel (see `ExpandedView`).
     private var room: CGSize {
         let header = max(NotchGeometry.fallbackSize.height, NotchGeometry.islandHeaderHeight)
-        return CGSize(width: NotchGeometry.expandedSize.width - 2 * (NotchGeometry.expandedEar + 14),
-                      height: NotchGeometry.expandedSize.height - header - 8 - 20)
+        return CGSize(
+            width: NotchGeometry.expandedSize.width - 2 * (NotchGeometry.expandedEar + 14),
+            height: NotchGeometry.expandedSize.height - header - 8 - 20)
     }
 
     /// The height the view insists on when offered `room`.
@@ -51,8 +53,9 @@ final class OverflowTests: XCTestCase {
                 p.settingsSection = section
                 p.app?.accessibilityNeeded = true
                 p.app?.calendarAccess = .denied
-                XCTAssertLessThanOrEqual(height(SettingsTab(vm: vm, model: p)), room.height,
-                                         "Settings › \(section.title) with the \(name) fixture")
+                XCTAssertLessThanOrEqual(
+                    height(SettingsTab(vm: vm, model: p)), room.height,
+                    "Settings › \(section.title) with the \(name) fixture")
             }
         }
     }

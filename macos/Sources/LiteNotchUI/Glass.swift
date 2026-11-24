@@ -17,16 +17,16 @@ public enum GlassSupport {
     /// The build has the API.
     public static var compiled: Bool {
         #if compiler(>=6.2)
-        return true
+            return true
         #else
-        return false
+            return false
         #endif
     }
 
     /// The build has the API and the system can draw it.
     public static var available: Bool {
         #if compiler(>=6.2)
-        if #available(macOS 26, *) { return true }
+            if #available(macOS 26, *) { return true }
         #endif
         return false
     }
@@ -47,24 +47,24 @@ struct PanelFill<S: Shape>: View {
 
     var body: some View {
         #if compiler(>=6.2)
-        if glass, #available(macOS 26, *) {
-            // A static material: the window server samples and refracts
-            // what is behind it, and SwiftUI does not re-render when that
-            // changes. Glass over moving content (video) still costs GPU
-            // compositing; not measured yet.
-            // Frosted (`regular`) and untinted: the system adapts it to what is
-            // behind, and applies the user's own system-wide glass setting.
-            // The window server hands events over fully transparent pixels to
-            // the window behind, and the glass leaves the window's own pixels
-            // at alpha 0, so a scroll on an empty part of the panel scrolled
-            // the app underneath. A fill too faint to see keeps them.
-            shape.fill(Color.black.opacity(0.01))
-                .glassEffect(.regular, in: shape)
-        } else {
-            shape.fill(NT.panel)
-        }
+            if glass, #available(macOS 26, *) {
+                // A static material: the window server samples and refracts
+                // what is behind it, and SwiftUI does not re-render when that
+                // changes. Glass over moving content (video) still costs GPU
+                // compositing; not measured yet.
+                // Frosted (`regular`) and untinted: the system adapts it to what is
+                // behind, and applies the user's own system-wide glass setting.
+                // The window server hands events over fully transparent pixels to
+                // the window behind, and the glass leaves the window's own pixels
+                // at alpha 0, so a scroll on an empty part of the panel scrolled
+                // the app underneath. A fill too faint to see keeps them.
+                shape.fill(Color.black.opacity(0.01))
+                    .glassEffect(.regular, in: shape)
+            } else {
+                shape.fill(NT.panel)
+            }
         #else
-        shape.fill(NT.panel)
+            shape.fill(NT.panel)
         #endif
     }
 }

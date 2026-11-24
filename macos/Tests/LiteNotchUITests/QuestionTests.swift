@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LiteNotchUI
 
 final class QuestionTests: XCTestCase {
@@ -10,14 +11,16 @@ final class QuestionTests: XCTestCase {
 
     private func questions(multi: Bool = false, count: Int = 1) -> [AgentQuestion] {
         (0..<count).map { i in
-            AgentQuestion(header: "H\(i)", question: "Q\(i)?", multiSelect: multi,
-                          options: [QuestionOption(label: "A"), QuestionOption(label: "B")])
+            AgentQuestion(
+                header: "H\(i)", question: "Q\(i)?", multiSelect: multi,
+                options: [QuestionOption(label: "A"), QuestionOption(label: "B")])
         }
     }
 
     func testSingleChoiceReplacesAndTypedTextExcludesAChoice() {
         var d = QuestionDraft(questions())
-        d.toggle("A", in: 0); d.toggle("B", in: 0)
+        d.toggle("A", in: 0)
+        d.toggle("B", in: 0)
         XCTAssertEqual(d.answers, [["B"]])
         d.type("  other ", in: 0)
         XCTAssertEqual(d.answers, [["other"]], "typing replaces the choice")
@@ -29,7 +32,9 @@ final class QuestionTests: XCTestCase {
 
     func testMultipleChoiceKeepsEveryPickAndTypedText() {
         var d = QuestionDraft(questions(multi: true))
-        d.toggle("A", in: 0); d.toggle("B", in: 0); d.type("C", in: 0)
+        d.toggle("A", in: 0)
+        d.toggle("B", in: 0)
+        d.type("C", in: 0)
         XCTAssertEqual(d.answers, [["A", "B", "C"]])
         d.toggle("A", in: 0)
         XCTAssertEqual(d.answers, [["B", "C"]])
@@ -50,7 +55,8 @@ final class QuestionTests: XCTestCase {
 
     func testOutOfRangeIndexesAreIgnored() {
         var d = QuestionDraft(questions())
-        d.toggle("A", in: 3); d.type("x", in: -1)
+        d.toggle("A", in: 3)
+        d.type("x", in: -1)
         XCTAssertEqual(d, QuestionDraft(questions()))
     }
 
@@ -63,9 +69,10 @@ final class QuestionTests: XCTestCase {
     }
 
     func testAQuestionOffersNoAllowOrDenyAndHasItsOwnHeadline() throws {
-        let r = PermissionRequest(id: "r", sessionId: "s", project: "LiteNotch", toolName: "AskUserQuestion",
-                                  summary: "", detail: "{}", truncated: true, createdMs: 0, expiresMs: 1,
-                                  questions: questions())
+        let r = PermissionRequest(
+            id: "r", sessionId: "s", project: "LiteNotch", toolName: "AskUserQuestion",
+            summary: "", detail: "{}", truncated: true, createdMs: 0, expiresMs: 1,
+            questions: questions())
         let p = ApprovalPresentation(r)
         XCTAssertTrue(p.isQuestion)
         XCTAssertEqual(p.offeredDecisions, [.pass])
@@ -74,10 +81,12 @@ final class QuestionTests: XCTestCase {
     }
 
     func testARequestWithoutQuestionsDecodes() throws {
-        let json = #"{"id":"r","session_id":"s","project":"p","tool_name":"Bash","summary":"ls","detail":"ls","created_ms":0,"expires_ms":1}"#
+        let json =
+            #"{"id":"r","session_id":"s","project":"p","tool_name":"Bash","summary":"ls","detail":"ls","created_ms":0,"expires_ms":1}"#
         let r = try Self.decoder.decode(PermissionRequest.self, from: Data(json.utf8))
         XCTAssertTrue(r.questions.isEmpty)
-        let q = #"{"id":"r","session_id":"s","project":"p","tool_name":"AskUserQuestion","summary":"","detail":"","created_ms":0,"expires_ms":1,"questions":[{"header":"h","question":"q","multi_select":true,"options":[{"label":"A","description":"d"}]}]}"#
+        let q =
+            #"{"id":"r","session_id":"s","project":"p","tool_name":"AskUserQuestion","summary":"","detail":"","created_ms":0,"expires_ms":1,"questions":[{"header":"h","question":"q","multi_select":true,"options":[{"label":"A","description":"d"}]}]}"#
         let withQ = try Self.decoder.decode(PermissionRequest.self, from: Data(q.utf8))
         XCTAssertTrue(withQ.questions[0].multiSelect)
         XCTAssertEqual(withQ.questions[0].options[0].description, "d")
@@ -85,16 +94,21 @@ final class QuestionTests: XCTestCase {
 
     func testSeveralQuestionsAreAskedOneAtATimeAndNextNeedsAnAnswer() {
         var d = QuestionDraft(questions(count: 3))
-        XCTAssertEqual(d.step, 0); XCTAssertEqual(d.count, 3); XCTAssertFalse(d.isLast)
+        XCTAssertEqual(d.step, 0)
+        XCTAssertEqual(d.count, 3)
+        XCTAssertFalse(d.isLast)
         d.next()
         XCTAssertEqual(d.step, 0, "no answer, no next")
-        d.toggle("A", in: 0); d.next()
+        d.toggle("A", in: 0)
+        d.next()
         XCTAssertEqual(d.step, 1)
         d.back()
         XCTAssertEqual(d.step, 0)
         d.back()
         XCTAssertEqual(d.step, 0)
-        d.next(); d.toggle("B", in: 1); d.next()
+        d.next()
+        d.toggle("B", in: 1)
+        d.next()
         XCTAssertTrue(d.isLast)
         d.next()
         XCTAssertEqual(d.step, 2, "stops on the last")
@@ -125,8 +139,10 @@ final class QuestionTests: XCTestCase {
     func testMultipleChoiceTakesSeveralOfTheUsersOwnAnswers() {
         var d = QuestionDraft(questions(multi: true))
         d.toggle("A", in: 0)
-        d.type("first", in: 0); d.commit(0)
-        d.type("  second ", in: 0); d.commit(0)
+        d.type("first", in: 0)
+        d.commit(0)
+        d.type("  second ", in: 0)
+        d.commit(0)
         XCTAssertEqual(d.typed[0], "", "the line is empty again after adding")
         XCTAssertEqual(d.extras[0], ["first", "second"])
         d.type("third", in: 0)
@@ -137,15 +153,22 @@ final class QuestionTests: XCTestCase {
 
     func testAnOwnAnswerIsNotAddedTwiceOrWhenBlank() {
         var d = QuestionDraft(questions(multi: true))
-        d.type("x", in: 0); d.commit(0); d.type("x", in: 0); d.commit(0)
-        d.type("  ", in: 0); d.commit(0)
-        d.toggle("A", in: 0); d.type("A", in: 0); d.commit(0)
+        d.type("x", in: 0)
+        d.commit(0)
+        d.type("x", in: 0)
+        d.commit(0)
+        d.type("  ", in: 0)
+        d.commit(0)
+        d.toggle("A", in: 0)
+        d.type("A", in: 0)
+        d.commit(0)
         XCTAssertEqual(d.answers, [["A", "x"]])
     }
 
     func testSingleChoiceKeepsOneLineOnly() {
         var d = QuestionDraft(questions())
-        d.type("mine", in: 0); d.commit(0)
+        d.type("mine", in: 0)
+        d.commit(0)
         XCTAssertTrue(d.extras[0].isEmpty, "adding is for multiple choice")
         XCTAssertEqual(d.answers, [["mine"]])
         XCTAssertFalse(d.canAdd(0))
@@ -153,7 +176,10 @@ final class QuestionTests: XCTestCase {
 
     func testTheNumberOfAnswersIsLimited() {
         var d = QuestionDraft(questions(multi: true))
-        for i in 0..<(QuestionDraft.maxAnswers + 3) { d.type("n\(i)", in: 0); d.commit(0) }
+        for i in 0..<(QuestionDraft.maxAnswers + 3) {
+            d.type("n\(i)", in: 0)
+            d.commit(0)
+        }
         XCTAssertEqual(d.answers[0].count, QuestionDraft.maxAnswers)
         XCTAssertFalse(d.canAdd(0))
     }

@@ -87,7 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let lib = Bench.nowPlayingLib { config["nowplaying_lib"] = lib }
         }
         guard let data = try? JSONSerialization.data(withJSONObject: config),
-              let json = String(data: data, encoding: .utf8) else { return false }
+            let json = String(data: data, encoding: .utf8)
+        else { return false }
         let context = Unmanaged.passUnretained(model).toOpaque()
         return json.withCString { ln_start($0, viewCallback, context) }
     }
@@ -130,10 +131,12 @@ enum Bench {
     static func run(model: AppModel) {
         guard enabled else { return }
         if let json = env["LITENOTCH_BENCH_COMMANDS"],
-           let list = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]] {
+            let list = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]]
+        {
             for command in list {
                 if let data = try? JSONSerialization.data(withJSONObject: command),
-                   let text = String(data: data, encoding: .utf8) {
+                    let text = String(data: data, encoding: .utf8)
+                {
                     _ = text.withCString { ln_send($0) }
                 }
             }

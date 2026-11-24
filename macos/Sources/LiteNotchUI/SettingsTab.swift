@@ -82,7 +82,10 @@ struct SettingsTab: View {
         pending?.cancel()
         pending = nil
         guard s != vm.settings else { return }
-        let work = DispatchWorkItem { pending = nil; send(.setSettings(s)) }
+        let work = DispatchWorkItem {
+            pending = nil
+            send(.setSettings(s))
+        }
         pending = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
@@ -97,7 +100,9 @@ struct SettingsTab: View {
                 VStack(spacing: 2) {
                     ForEach(SettingsSection.allCases, id: \.self) { s in
                         let on = s == model.settingsSection
-                        Button { model.settingsSection = s } label: {
+                        Button {
+                            model.settingsSection = s
+                        } label: {
                             HStack(spacing: 7) {
                                 Image(systemName: s.symbol).glyph(11)
                                     .frame(width: 16)
@@ -107,7 +112,9 @@ struct SettingsTab: View {
                             .foregroundStyle(on ? NT.text1 : NT.text2)
                             .padding(.horizontal, 8)
                             .frame(height: 24)
-                            .background(on ? NT.fillHi : Color.clear, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
+                            .background(
+                                on ? NT.fillHi : Color.clear, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous)
+                            )
                             .contentShape(Rectangle())
                             .rowHover(inset: 0)
                         }
@@ -130,8 +137,11 @@ struct SettingsTab: View {
     @ViewBuilder private var pane: some View {
         switch model.settingsSection {
         case .general: general
-        case .notch: NotchPriorityPane(config: $draft.notch, island: draft.appearance.notchStyle == .island,
-                                         hasNotch: model.hasNotch)
+        case .notch:
+            NotchPriorityPane(
+                config: $draft.notch, island: draft.appearance.notchStyle == .island,
+                hasNotch: model.hasNotch
+            )
             .environment(\.dayIcons, draft.day.icons)
         case .home: home
         case .day: day
@@ -150,47 +160,61 @@ struct SettingsTab: View {
         updateBlock
         Hairline().padding(.vertical, 2)
         if let app = model.app { LaunchAtLoginRow(app: app) }
-        toggle("Open on hover", $draft.general.hoverToExpand,
-               caption: "Clicking the notch always opens it.")
-        toggle("Show on every display", $draft.general.allScreens,
-               caption: "When off, it shows on the built-in or main display only.")
+        toggle(
+            "Open on hover", $draft.general.hoverToExpand,
+            caption: "Clicking the notch always opens it.")
+        toggle(
+            "Show on every display", $draft.general.allScreens,
+            caption: "When off, it shows on the built-in or main display only.")
         Hairline().padding(.vertical, 2)
         row("Theme") {
-            SegmentedPill(options: [(ThemeChoice.system, "System"), (ThemeChoice.dark, "Dark"), (ThemeChoice.light, "Light")],
-                          selection: Binding(get: { draft.appearance.theme == .unknown ? .system : draft.appearance.theme },
-                                             set: { draft.appearance.theme = $0 }),
-                          label: "Theme", height: 22)
+            SegmentedPill(
+                options: [(ThemeChoice.system, "System"), (ThemeChoice.dark, "Dark"), (ThemeChoice.light, "Light")],
+                selection: Binding(
+                    get: { draft.appearance.theme == .unknown ? .system : draft.appearance.theme },
+                    set: { draft.appearance.theme = $0 }),
+                label: "Theme", height: 22)
         }
         row("Notch") {
-            SegmentedPill(options: [(NotchStyle.attached, "Attached"), (NotchStyle.island, "Island")],
-                          selection: Binding(get: { draft.appearance.notchStyle == .island ? .island : .attached },
-                                             set: { draft.appearance.notchStyle = $0 }),
-                          label: "Notch style", height: 22)
+            SegmentedPill(
+                options: [(NotchStyle.attached, "Attached"), (NotchStyle.island, "Island")],
+                selection: Binding(
+                    get: { draft.appearance.notchStyle == .island ? .island : .attached },
+                    set: { draft.appearance.notchStyle = $0 }),
+                label: "Notch style", height: 22)
         }
         // A display with a camera housing always draws the closed notch black,
         // so the choice is offered only on one without.
         if !model.hasNotch {
             row("Closed notch") {
-                SegmentedPill(options: [(ClosedNotchChoice.dark, "Always dark"), (ClosedNotchChoice.theme, "Match theme")],
-                              selection: Binding(get: { draft.appearance.closedNotch == .unknown ? .dark : draft.appearance.closedNotch },
-                                                 set: { draft.appearance.closedNotch = $0 }),
-                              label: "Closed notch", height: 22)
+                SegmentedPill(
+                    options: [(ClosedNotchChoice.dark, "Always dark"), (ClosedNotchChoice.theme, "Match theme")],
+                    selection: Binding(
+                        get: { draft.appearance.closedNotch == .unknown ? .dark : draft.appearance.closedNotch },
+                        set: { draft.appearance.closedNotch = $0 }),
+                    label: "Closed notch", height: 22)
             }
             wideRow("Shrink", caption: "A thin strip at the top edge instead of the closed notch.") {
-                SegmentedPill(options: [(ShrinkChoice.off, "Default"), (ShrinkChoice.whenEmpty, "When empty"),
-                                        (ShrinkChoice.always, "Always")],
-                              selection: Binding(get: { draft.appearance.shrink == .unknown ? .off : draft.appearance.shrink },
-                                                 set: { draft.appearance.shrink = $0 }),
-                              label: "Shrink", height: 22)
+                SegmentedPill(
+                    options: [
+                        (ShrinkChoice.off, "Default"), (ShrinkChoice.whenEmpty, "When empty"),
+                        (ShrinkChoice.always, "Always"),
+                    ],
+                    selection: Binding(
+                        get: { draft.appearance.shrink == .unknown ? .off : draft.appearance.shrink },
+                        set: { draft.appearance.shrink = $0 }),
+                    label: "Shrink", height: 22)
             }
         } else {
             // Beside a camera housing the only useful choice is to keep
             // the sides clear: an empty notch already is just the notch.
             row("Shrink", caption: "Nothing beside the notch while closed. Peeks and notifications still show.") {
-                SegmentedPill(options: [(ShrinkChoice.off, "Default"), (ShrinkChoice.always, "Always")],
-                              selection: Binding(get: { draft.appearance.shrink == .always ? .always : .off },
-                                                 set: { draft.appearance.shrink = $0 }),
-                              label: "Shrink", height: 22)
+                SegmentedPill(
+                    options: [(ShrinkChoice.off, "Default"), (ShrinkChoice.always, "Always")],
+                    selection: Binding(
+                        get: { draft.appearance.shrink == .always ? .always : .off },
+                        set: { draft.appearance.shrink = $0 }),
+                    label: "Shrink", height: 22)
             }
         }
         materialRow
@@ -198,13 +222,17 @@ struct SettingsTab: View {
             HStack(spacing: 5) {
                 namedSwatch(.system, help: "Use the accent colour chosen in macOS", label: "System accent") {
                     Circle().fill(NT.color(NT.systemAccent() ?? AppearanceConfig.defaultAccent))
-                        .overlay(Image(systemName: "apple.logo").font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(.white).offset(y: -0.5))
+                        .overlay(
+                            Image(systemName: "apple.logo").font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.white).offset(y: -0.5))
                 }
                 namedSwatch(.mono, help: "Black or white, whichever the theme calls for", label: "Black and white") {
-                    Circle().fill(LinearGradient(stops: [.init(color: .black, location: 0.5), .init(color: .white, location: 0.5)],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .overlay(Circle().strokeBorder(NT.hairline, lineWidth: 1))
+                    Circle().fill(
+                        LinearGradient(
+                            stops: [.init(color: .black, location: 0.5), .init(color: .white, location: 0.5)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
+                    .overlay(Circle().strokeBorder(NT.hairline, lineWidth: 1))
                 }
                 ForEach(AccentPresets.all, id: \.self) { hex in swatch(hex) }
                 customSwatch
@@ -214,8 +242,10 @@ struct SettingsTab: View {
             row("Custom", caption: "Drag, or pick from the screen.") {
                 HStack(spacing: 6) {
                     HueStrip(hue: accentHue) { draft.appearance.accent = ColorMath.hex(ColorMath.fromHue($0)) }
-                    IconButton(symbol: "eyedropper", label: "Pick from the screen", size: 11, frame: 22,
-                               help: "Pick the accent from anywhere on the screen") { model.app?.pickAccent() }
+                    IconButton(
+                        symbol: "eyedropper", label: "Pick from the screen", size: 11, frame: 22,
+                        help: "Pick the accent from anywhere on the screen"
+                    ) { model.app?.pickAccent() }
                 }
             }
         }
@@ -232,10 +262,12 @@ struct SettingsTab: View {
     @ViewBuilder private var updateBlock: some View {
         let u = vm.update
         row("LiteNotch \(u.current)", caption: UpdateText.caption(u)) {
-            TextPill(title: u.status == .checking ? "Checking\u{2026}" : "Check for updates",
-                     tint: NT.text1, height: 22) { send(.updateCheck) }
-                .disabled(u.status == .checking)
-                .help("Asks GitHub for the newest release")
+            TextPill(
+                title: u.status == .checking ? "Checking\u{2026}" : "Check for updates",
+                tint: NT.text1, height: 22
+            ) { send(.updateCheck) }
+            .disabled(u.status == .checking)
+            .help("Asks GitHub for the newest release")
         }
         if u.status == .available, let latest = u.latest {
             row("Version \(latest) is available") {
@@ -253,9 +285,11 @@ struct SettingsTab: View {
                 .nfont(.caption).foregroundStyle(NT.text2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        toggle("Check automatically", $draft.general.checkUpdates,
-               caption: "At start and once a day. This contacts GitHub; with it off nothing is sent until you press the button.")
-            .padding(.top, 6)
+        toggle(
+            "Check automatically", $draft.general.checkUpdates,
+            caption: "At start and once a day. This contacts GitHub; with it off nothing is sent until you press the button."
+        )
+        .padding(.top, 6)
     }
 
     /// Solid or Liquid Glass for the open panel. Shown everywhere so the
@@ -264,16 +298,20 @@ struct SettingsTab: View {
     /// caption says the closed notch follows when it matches the theme.
     private var materialRow: some View {
         let reason = GlassSupport.unavailableReason
-        let caption = reason.map { "Liquid Glass: \($0)" }
+        let caption =
+            reason.map { "Liquid Glass: \($0)" }
             ?? (model.hasNotch ? "" : "Glass also covers the closed notch when it matches the theme.")
         return row("Panel", caption: caption) {
-            SegmentedPill(options: [(MaterialChoice.solid, "Solid"), (MaterialChoice.glass, "Glass")],
-                          selection: Binding(get: { draft.appearance.material == .glass && reason == nil ? .glass : .solid },
-                                             set: { draft.appearance.material = $0 }),
-                          label: "Panel material", height: 22)
-                .disabled(reason != nil)
-                .opacity(reason == nil ? 1 : 0.5)
-                .help(reason ?? "Liquid Glass lets the desktop show through the open panel")
+            SegmentedPill(
+                options: [(MaterialChoice.solid, "Solid"), (MaterialChoice.glass, "Glass")],
+                selection: Binding(
+                    get: { draft.appearance.material == .glass && reason == nil ? .glass : .solid },
+                    set: { draft.appearance.material = $0 }),
+                label: "Panel material", height: 22
+            )
+            .disabled(reason != nil)
+            .opacity(reason == nil ? 1 : 0.5)
+            .help(reason ?? "Liquid Glass lets the desktop show through the open panel")
         }
     }
 
@@ -285,10 +323,14 @@ struct SettingsTab: View {
         return ColorMath.hue(of: c)
     }
 
-    private func namedSwatch<Fill: View>(_ choice: AccentChoice, help: String, label: String,
-                                         @ViewBuilder fill: () -> Fill) -> some View {
+    private func namedSwatch<Fill: View>(
+        _ choice: AccentChoice, help: String, label: String,
+        @ViewBuilder fill: () -> Fill
+    ) -> some View {
         let on = accentChoice == choice
-        return Button { draft.appearance.accent = choice.raw } label: {
+        return Button {
+            draft.appearance.accent = choice.raw
+        } label: {
             fill()
                 .frame(width: 15, height: 15)
                 .padding(2.5)
@@ -304,7 +346,9 @@ struct SettingsTab: View {
     /// Opens the hue strip; selected while the accent is a custom colour.
     private var customSwatch: some View {
         let on = accentChoice.isCustom
-        return Button { customAccent.toggle() } label: {
+        return Button {
+            customAccent.toggle()
+        } label: {
             Circle().fill(AngularGradient(colors: HueStrip.colors, center: .center))
                 .frame(width: 15, height: 15)
                 .padding(2.5)
@@ -319,7 +363,9 @@ struct SettingsTab: View {
 
     private func swatch(_ hex: String) -> some View {
         let on = accentChoice == .color(hex)
-        return Button { draft.appearance.accent = hex } label: {
+        return Button {
+            draft.appearance.accent = hex
+        } label: {
             Circle().fill(NT.color(hex))
                 .frame(width: 15, height: 15)
                 .padding(2.5)
@@ -341,11 +387,13 @@ struct SettingsTab: View {
         toggle("Auto-start focus", $draft.pomodoro.autoStartFocus)
         Hairline().padding(.vertical, 2)
         wideRow("Heads-up before it ends", caption: "Pomodoro and timer show the time left for a moment.") {
-            SegmentedPill(options: SettingsLimits.timeWarningSecs.map { ($0, $0 == 0 ? "Off" : $0 == 600 ? "10 min" : "\($0 / 60)") },
-                          selection: $draft.peek.timeWarningSecs, label: "Heads-up before it ends", height: 22)
+            SegmentedPill(
+                options: SettingsLimits.timeWarningSecs.map { ($0, $0 == 0 ? "Off" : $0 == 600 ? "10 min" : "\($0 / 60)") },
+                selection: $draft.peek.timeWarningSecs, label: "Heads-up before it ends", height: 22)
         }
-        toggle("Sound when time is up", $draft.sound.enabled,
-               caption: "When a timer, a focus session or a break ends.")
+        toggle(
+            "Sound when time is up", $draft.sound.enabled,
+            caption: "When a timer, a focus session or a break ends.")
         if draft.sound.enabled {
             row("Sound") {
                 SoundPicker(name: $draft.sound.name) { send(.soundPreview(name: $0)) }
@@ -353,51 +401,64 @@ struct SettingsTab: View {
         }
         Hairline().padding(.vertical, 2)
         wideRow("Eye break", caption: "A quick blink and look away, every so many minutes at the Mac.") {
-            SegmentedPill(options: SettingsLimits.eyeBreakMins.map { ($0, $0 == 0 ? "Off" : $0 == 20 ? "20 min" : "\($0)") },
-                          selection: $draft.peek.eyeBreakMins, label: "Eye break", height: 22)
+            SegmentedPill(
+                options: SettingsLimits.eyeBreakMins.map { ($0, $0 == 0 ? "Off" : $0 == 20 ? "20 min" : "\($0)") },
+                selection: $draft.peek.eyeBreakMins, label: "Eye break", height: 22)
         }
         wideRow("Move", caption: "Stretch, walk or drink water, every so many minutes at the Mac.") {
-            SegmentedPill(options: SettingsLimits.moveMins.map { ($0, $0 == 0 ? "Off" : $0 == 60 ? "60 min" : "\($0)") },
-                          selection: $draft.peek.moveMins, label: "Move", height: 22)
+            SegmentedPill(
+                options: SettingsLimits.moveMins.map { ($0, $0 == 0 ? "Off" : $0 == 60 ? "60 min" : "\($0)") },
+                selection: $draft.peek.moveMins, label: "Move", height: 22)
         }
-        toggle("A few words after a break", $draft.peek.breakQuote,
-               caption: "The closed notch shows a short line of encouragement when a break ends.")
-        toggle("Remind me if I keep working on a break", $draft.peek.stillWorking,
-               caption: "Checks a few times during a break whether the keyboard or mouse is in use.")
+        toggle(
+            "A few words after a break", $draft.peek.breakQuote,
+            caption: "The closed notch shows a short line of encouragement when a break ends.")
+        toggle(
+            "Remind me if I keep working on a break", $draft.peek.stillWorking,
+            caption: "Checks a few times during a break whether the keyboard or mouse is in use.")
     }
 
     @ViewBuilder private var day: some View {
-        toggle("Day progress", $draft.day.enabled,
-               caption: "How far through your office hours: \u{2212} before they start, + after they end.")
+        toggle(
+            "Day progress", $draft.day.enabled,
+            caption: "How far through your office hours: \u{2212} before they start, + after they end.")
         if draft.day.enabled {
             row("Starts") {
-                TimeStepper(minutes: Binding(get: { draft.day.startMin },
-                                             set: { start in
-                                                 draft.day.startMin = start
-                                                 // The core keeps the end at least a span after it.
-                                                 draft.day.endMin = max(draft.day.endMin, start + SettingsLimits.dayMinSpan)
-                                             }),
-                            range: SettingsLimits.dayStart, label: "Starts")
+                TimeStepper(
+                    minutes: Binding(
+                        get: { draft.day.startMin },
+                        set: { start in
+                            draft.day.startMin = start
+                            // The core keeps the end at least a span after it.
+                            draft.day.endMin = max(draft.day.endMin, start + SettingsLimits.dayMinSpan)
+                        }),
+                    range: SettingsLimits.dayStart, label: "Starts")
             }
             row("Ends") {
-                TimeStepper(minutes: $draft.day.endMin,
-                            range: (draft.day.startMin + SettingsLimits.dayMinSpan)...SettingsLimits.dayEnd.upperBound,
-                            label: "Ends")
+                TimeStepper(
+                    minutes: $draft.day.endMin,
+                    range: (draft.day.startMin + SettingsLimits.dayMinSpan)...SettingsLimits.dayEnd.upperBound,
+                    label: "Ends")
             }
             row("Days") { WeekdayPicker(days: $draft.day.days) }
-            wideRow("Icon", caption: draft.day.icons == .tree
+            wideRow(
+                "Icon",
+                caption: draft.day.icons == .tree
                     ? "A plant that grows through the day, green in the closed notch."
-                    : "Sun and moon by the time of day.") {
-                SegmentedPill(options: [(DayIcons.sun, "Default"), (.tree, "Grow a tree")],
-                              selection: $draft.day.icons, label: "Icon", height: 22)
+                    : "Sun and moon by the time of day."
+            ) {
+                SegmentedPill(
+                    options: [(DayIcons.sun, "Default"), (.tree, "Grow a tree")],
+                    selection: $draft.day.icons, label: "Icon", height: 22)
             }
         }
     }
 
     @ViewBuilder private var home: some View {
         row("Big card", caption: homeCardCaption) {
-            SegmentedPill(options: [(HomeCard.auto, "Auto"), (.day, "Day"), (.media, "Music")],
-                          selection: $draft.day.homeCard, label: "Big card", height: 22)
+            SegmentedPill(
+                options: [(HomeCard.auto, "Auto"), (.day, "Day"), (.media, "Music")],
+                selection: $draft.day.homeCard, label: "Big card", height: 22)
         }
         .opacity(draft.day.enabled ? 1 : 0.5)
         if !draft.day.enabled {
@@ -419,12 +480,15 @@ struct SettingsTab: View {
     }
 
     @ViewBuilder private var music: some View {
-        toggle("Show now playing", $draft.media.enabled,
-               caption: "Shows and controls what\u{2019}s playing in any app.")
-        toggle("Progress ring", $draft.media.progressRing,
-               caption: "A ring around the artwork in the closed notch fills as the song plays.")
-        toggle("Show a new song for a moment", $draft.peek.trackChange,
-               caption: "The closed notch shows the title when the song changes.")
+        toggle(
+            "Show now playing", $draft.media.enabled,
+            caption: "Shows and controls what\u{2019}s playing in any app.")
+        toggle(
+            "Progress ring", $draft.media.progressRing,
+            caption: "A ring around the artwork in the closed notch fills as the song plays.")
+        toggle(
+            "Show a new song for a moment", $draft.peek.trackChange,
+            caption: "The closed notch shows the title when the song changes.")
     }
 
     @ViewBuilder private var notifications: some View {
@@ -443,8 +507,9 @@ struct SettingsTab: View {
             }
         }
         stepper("Banner stays for", $draft.notify.bannerSecs, SettingsLimits.bannerSecs, unit: "s")
-        toggle("Hold during focus", $draft.notify.dndDuringFocus,
-               caption: "Less urgent notifications wait until a focus session ends.")
+        toggle(
+            "Hold during focus", $draft.notify.dndDuringFocus,
+            caption: "Less urgent notifications wait until a focus session ends.")
     }
 
     private var systemCaption: String {
@@ -488,18 +553,22 @@ struct SettingsTab: View {
 
     @ViewBuilder private var clipboard: some View {
         toggle("Clipboard history", $draft.clipboard.enabled)
-        toggle("Keep after restart", $draft.general.persistClipboard,
-               caption: "When off, history is forgotten when LiteNotch quits.")
+        toggle(
+            "Keep after restart", $draft.general.persistClipboard,
+            caption: "When off, history is forgotten when LiteNotch quits.")
         stepper("History size", $draft.clipboard.maxItems, SettingsLimits.clipboardItems, step: 10, unit: "items")
-        toggle("Skip passwords", $draft.clipboard.ignoreConcealed,
-               caption: "Ignores what password managers copy.")
+        toggle(
+            "Skip passwords", $draft.clipboard.ignoreConcealed,
+            caption: "Ignores what password managers copy.")
     }
 
     @ViewBuilder private var agents: some View {
-        toggle("Show Claude Code activity", $draft.agent.enabled,
-               caption: "Sessions and approval requests appear in the notch.")
-        toggle("Usage alerts", $draft.general.usageAlerts,
-               caption: "A notification when a usage limit is close.")
+        toggle(
+            "Show Claude Code activity", $draft.agent.enabled,
+            caption: "Sessions and approval requests appear in the notch.")
+        toggle(
+            "Usage alerts", $draft.general.usageAlerts,
+            caption: "A notification when a usage limit is close.")
         stepper("Approval wait", $draft.agent.approvalTimeoutSecs, SettingsLimits.approvalSecs, step: 15, unit: "s")
         let installed = vm.agents.hooksInstalled ?? false
         row("Claude Code", caption: installed ? "Connected" : "Not connected") {
@@ -513,8 +582,10 @@ struct SettingsTab: View {
                 .help("Adds LiteNotch to Claude Code\u{2019}s settings. New sessions show up here.")
             }
         }
-        if let warning = AgentsText.otherCopies(found: vm.agents.otherCopies ?? 0,
-                                               missing: vm.agents.otherCopiesMissing ?? 0) {
+        if let warning = AgentsText.otherCopies(
+            found: vm.agents.otherCopies ?? 0,
+            missing: vm.agents.otherCopiesMissing ?? 0)
+        {
             warningRow(warning) {
                 TextPill(title: "Remove them", tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold) {
                     send(.hooksClean)
@@ -537,10 +608,12 @@ struct SettingsTab: View {
     @ViewBuilder private var keepAwake: some View {
         let c = vm.caffeine
         row("What stays awake") {
-            SegmentedPill(options: [(AwakeMode.display, "Mac and screen"), (AwakeMode.system, "Mac only")],
-                          selection: Binding(get: { draft.caffeine.defaultMode == .system ? .system : .display },
-                                             set: { draft.caffeine.defaultMode = $0 }),
-                          label: "Default keep-awake mode", height: 22)
+            SegmentedPill(
+                options: [(AwakeMode.display, "Mac and screen"), (AwakeMode.system, "Mac only")],
+                selection: Binding(
+                    get: { draft.caffeine.defaultMode == .system ? .system : .display },
+                    set: { draft.caffeine.defaultMode = $0 }),
+                label: "Default keep-awake mode", height: 22)
         }
         row("With the lid closed", caption: c.lid == .pending ? "" : lidCaption(c)) {
             NotchToggle(isOn: $draft.caffeine.lidClosed, label: "Keep awake with lid closed")
@@ -558,7 +631,10 @@ struct SettingsTab: View {
             .fixedSize(horizontal: false, vertical: true)
         row("Keep awake for", caption: awakeCaption(c)) {
             HStack(spacing: 4) {
-                chip("30m", 1800); chip("1h", 3600); chip("2h", 7200); chip("\u{221E}", nil)
+                chip("30m", 1800)
+                chip("1h", 3600)
+                chip("2h", 7200)
+                chip("\u{221E}", nil)
             }
         }
     }
@@ -594,7 +670,9 @@ struct SettingsTab: View {
         let c = vm.caffeine
         // Only "until turned off" can be told apart from the view model.
         let selected = secs == nil && c.mode != .off && c.mode != .unknown && c.untilMs == nil
-        return Button { send(.caffeineActivate(mode: activateMode, durationSecs: secs)) } label: {
+        return Button {
+            send(.caffeineActivate(mode: activateMode, durationSecs: secs))
+        } label: {
             Text(verbatim: title).nfont(.captionStrong).foregroundStyle(NT.text1)
                 .lineLimit(1).fixedSize()
                 .frame(minWidth: 22).padding(.horizontal, 6).frame(height: 22)
@@ -610,8 +688,9 @@ struct SettingsTab: View {
     }
 
     @ViewBuilder private var privacy: some View {
-        toggle("Usage statistics (stays on this Mac)", $draft.analytics.enabled,
-               caption: "Daily counts only. Nothing leaves this Mac.")
+        toggle(
+            "Usage statistics (stays on this Mac)", $draft.analytics.enabled,
+            caption: "Daily counts only. Nothing leaves this Mac.")
         VStack(spacing: 3) {
             ForEach(Array(vm.analytics.prefix(5).enumerated()), id: \.offset) { _, f in
                 HStack {
@@ -637,9 +716,11 @@ struct SettingsTab: View {
         Binding(get: { b.wrappedValue / 60 }, set: { b.wrappedValue = $0 * 60 })
     }
 
-    private func row<C: View>(_ title: String, caption: String = "", tint: Color = NT.text1,
-                              captionTint: Color = NT.text3,
-                              @ViewBuilder _ control: () -> C) -> some View {
+    private func row<C: View>(
+        _ title: String, caption: String = "", tint: Color = NT.text1,
+        captionTint: Color = NT.text3,
+        @ViewBuilder _ control: () -> C
+    ) -> some View {
         HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: title).nfont(.body).foregroundStyle(tint).lineLimit(2)
@@ -657,8 +738,10 @@ struct SettingsTab: View {
 
     /// A row whose control is too wide to share a line with its caption:
     /// title and caption on top, the control below, so neither is cut off.
-    private func wideRow<C: View>(_ title: String, caption: String = "",
-                                  @ViewBuilder _ control: () -> C) -> some View {
+    private func wideRow<C: View>(
+        _ title: String, caption: String = "",
+        @ViewBuilder _ control: () -> C
+    ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: title).nfont(.body).foregroundStyle(NT.text1)
@@ -686,8 +769,10 @@ struct SettingsTab: View {
         row(title, caption: caption) { NotchToggle(isOn: b, label: title) }
     }
 
-    private func stepper(_ title: String, _ b: Binding<Int>, _ r: ClosedRange<Int>, step: Int = 1,
-                         unit: String = "") -> some View {
+    private func stepper(
+        _ title: String, _ b: Binding<Int>, _ r: ClosedRange<Int>, step: Int = 1,
+        unit: String = ""
+    ) -> some View {
         row(title) {
             HStack(spacing: 6) {
                 MiniStepper(value: b, range: r, step: step, label: title)
@@ -763,7 +848,9 @@ struct SoundPicker: View {
     var body: some View {
         HStack(spacing: 2) {
             arrow("chevron.left", "Previous sound", step: -1)
-            Button { preview(name) } label: {
+            Button {
+                preview(name)
+            } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "speaker.wave.2.fill").glyph(9)
                     Text(verbatim: name).nfont(.bodyMedium).lineLimit(1)
@@ -858,7 +945,9 @@ struct WeekdayPicker: View {
         HStack(spacing: 3) {
             ForEach(0..<7, id: \.self) { i in
                 let on = days & (1 << i) != 0
-                Button { days ^= 1 << i } label: {
+                Button {
+                    days ^= 1 << i
+                } label: {
                     Text(verbatim: Self.letters[i]).nfont(.caption)
                         .foregroundStyle(on ? NT.onAccent : NT.text2)
                         .frame(width: 20, height: 20)
@@ -892,9 +981,11 @@ struct LaunchAtLoginRow: View {
                 TextPill(title: "Open", tint: NT.text1, height: 22) { app.loginItem.openSystemSettings() }
                     .help("Opens Login Items in System Settings")
             }
-            NotchToggle(isOn: Binding(get: { status.isOn || status == .needsApproval },
-                                      set: { app.setLaunchAtLogin($0) }),
-                        label: LoginItemStatus.title)
+            NotchToggle(
+                isOn: Binding(
+                    get: { status.isOn || status == .needsApproval },
+                    set: { app.setLaunchAtLogin($0) }),
+                label: LoginItemStatus.title)
         }
         .frame(minHeight: 22)
         .onAppear { app.refreshLaunchAtLogin() }

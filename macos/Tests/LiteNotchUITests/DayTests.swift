@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import LiteNotchUI
 
 private func fixture(_ name: String) throws -> ViewModel {
@@ -65,7 +66,8 @@ final class DayTests: XCTestCase {
     func testIconsDefaultToTheSunAndOldSettingsLoad() throws {
         let vm = try fixture("day")
         XCTAssertEqual(vm.settings.day.icons, .sun)
-        let snake = JSONDecoder(); snake.keyDecodingStrategy = .convertFromSnakeCase
+        let snake = JSONDecoder()
+        snake.keyDecodingStrategy = .convertFromSnakeCase
         let old = #"{"enabled":true,"start_min":600,"end_min":1080,"days":31}"#
         let d = try snake.decode(DayConfig.self, from: Data(old.utf8))
         XCTAssertEqual(d.icons, .sun)

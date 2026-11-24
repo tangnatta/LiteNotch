@@ -13,18 +13,24 @@ public enum SnapshotRenderer {
             .filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         var written: [URL] = []
         let canvas = CGSize(width: 680, height: 320)
-        func add(_ name: String, _ vm: ViewModel, expanded: Bool = true, tab: Tab = .home,
-                 section: SettingsSection = .general, pane: AgentsPane = .sessions,
-                 timerPane: TimerPane = .focus, clipPreview: Int? = nil,
-                 accessibilityNeeded: Bool = false, notchless: Bool = false) throws {
+        func add(
+            _ name: String, _ vm: ViewModel, expanded: Bool = true, tab: Tab = .home,
+            section: SettingsSection = .general, pane: AgentsPane = .sessions,
+            timerPane: TimerPane = .focus, clipPreview: Int? = nil,
+            accessibilityNeeded: Bool = false, notchless: Bool = false
+        ) throws {
             // A pending approval opens the panel whatever `expanded` says;
             // a short canvas would show it cut off.
             let open = NotchPresentation.mode(expanded: expanded, view: vm) == .expanded
             let size = open ? canvas : CGSize(width: canvas.width, height: 110)
-            if let u = try write(vm, expanded: expanded, tab: tab, section: section, pane: pane,
-                                 timerPane: timerPane, clipPreview: clipPreview,
-                                 accessibilityNeeded: accessibilityNeeded, notchless: notchless, size: size,
-                                 to: outDir.appendingPathComponent("\(name).png")) { written.append(u) }
+            if let u = try write(
+                vm, expanded: expanded, tab: tab, section: section, pane: pane,
+                timerPane: timerPane, clipPreview: clipPreview,
+                accessibilityNeeded: accessibilityNeeded, notchless: notchless, size: size,
+                to: outDir.appendingPathComponent("\(name).png"))
+            {
+                written.append(u)
+            }
         }
         for f in files {
             let name = f.deletingPathExtension().lastPathComponent
@@ -63,10 +69,11 @@ public enum SnapshotRenderer {
                 try add("pair-expanded-settings-notch", vm, tab: .settings, section: .notch)
                 // The meeting starts: the banner offers to pause the focus session.
                 var starting = vm
-                starting.inbox.banner = NotificationItem(id: 99, source: "calendar", title: "Design review",
-                                                         body: "Starting now \u{b7} Room 3", priority: .high, group: nil,
-                                                         ttlSecs: nil, createdMs: snapshotNowMs, read: false,
-                                                         open: .tab(.home, pane: nil), action: .pauseFocus)
+                starting.inbox.banner = NotificationItem(
+                    id: 99, source: "calendar", title: "Design review",
+                    body: "Starting now \u{b7} Room 3", priority: .high, group: nil,
+                    ttlSecs: nil, createdMs: snapshotNowMs, read: false,
+                    open: .tab(.home, pane: nil), action: .pauseFocus)
                 try add("pair-starting-toast", starting, expanded: false)
                 // Only the dot: nothing running, an agent waiting.
                 var dot = vm
@@ -116,7 +123,8 @@ public enum SnapshotRenderer {
             if name == "approval" {
                 var long = vm
                 long.agents.pending[0].truncated = true
-                long.agents.pending[0].detail = String(repeating: "rm -rf build && cargo build --release --target aarch64-apple-darwin && ", count: 8)
+                long.agents.pending[0].detail = String(
+                    repeating: "rm -rf build && cargo build --release --target aarch64-apple-darwin && ", count: 8)
                 long.agents.pending.append(long.agents.pending[0])
                 long.agents.pending[1].id = "req-2"
                 try add("approval-truncated-expanded", long)
@@ -128,12 +136,16 @@ public enum SnapshotRenderer {
                 }
                 let pg = QuestionOption(label: "Postgres", description: "Relational, what the team already runs")
                 let lite = QuestionOption(label: "SQLite", description: "Embedded, one file")
-                let single = AgentQuestion(header: "Database", question: "Which database should the service use?",
-                                           options: [pg, lite, QuestionOption(label: "DynamoDB", description: "Managed key-value")])
-                let multi = AgentQuestion(header: "Checks", question: "Which checks should run before merging?", multiSelect: true,
-                                          options: [QuestionOption(label: "Unit tests", description: "cargo test"),
-                                                    QuestionOption(label: "Clippy", description: "-D warnings"),
-                                                    QuestionOption(label: "Benchmarks", description: "scripts/bench.sh")])
+                let single = AgentQuestion(
+                    header: "Database", question: "Which database should the service use?",
+                    options: [pg, lite, QuestionOption(label: "DynamoDB", description: "Managed key-value")])
+                let multi = AgentQuestion(
+                    header: "Checks", question: "Which checks should run before merging?", multiSelect: true,
+                    options: [
+                        QuestionOption(label: "Unit tests", description: "cargo test"),
+                        QuestionOption(label: "Clippy", description: "-D warnings"),
+                        QuestionOption(label: "Benchmarks", description: "scripts/bench.sh"),
+                    ])
                 let open = AgentQuestion(header: "Name", question: "What should the new command be called?", options: [])
                 try add("question-single-expanded", asking([single]))
                 try add("question-multi-expanded", asking([multi]))
@@ -151,8 +163,9 @@ public enum SnapshotRenderer {
                 running.pomodoro = vm.pomodoro
                 running.timer.runState = .running
                 running.timer.endsAtMs = snapshotNowMs + 4 * 60_000 + 12_000
-                running.compact = CompactView(kind: .timer, title: "Timer", value: "",
-                                              endsAtMs: running.timer.endsAtMs, totalSecs: 300, count: 0)
+                running.compact = CompactView(
+                    kind: .timer, title: "Timer", value: "",
+                    endsAtMs: running.timer.endsAtMs, totalSecs: 300, count: 0)
                 try add("timer-running-expanded-timer", running, tab: .timer, timerPane: .countdown)
                 try add("timer-running-closed", running, expanded: false)
                 var done = vm
@@ -262,8 +275,9 @@ public enum SnapshotRenderer {
                 var waiting = vm
                 waiting.settings.notify.system = true
                 try add("media-expanded-inbox-permission", waiting, tab: .inbox, accessibilityNeeded: true)
-                try add("media-expanded-settings-notifications-permission", waiting, tab: .settings,
-                        section: .notifications, accessibilityNeeded: true)
+                try add(
+                    "media-expanded-settings-notifications-permission", waiting, tab: .settings,
+                    section: .notifications, accessibilityNeeded: true)
                 // Not playing, not controllable, long names.
                 var paused = vm
                 paused.media?.playing = false
@@ -277,7 +291,9 @@ public enum SnapshotRenderer {
             }
             if name == "idle" {
                 var empty = vm
-                empty.usage.week = []; empty.usage.models = []; empty.usage.projects = []
+                empty.usage.week = []
+                empty.usage.models = []
+                empty.usage.projects = []
                 empty.usage.summary = ""
                 empty.usage.today = TokenTotals(input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0)
                 try add("idle-expanded-agents-usage-empty", empty, tab: .agents, pane: .usage)
@@ -336,27 +352,31 @@ public enum SnapshotRenderer {
         }
         v.meeting = m
         if MeetingMath.isActive(m), let item = MeetingMath.currentItem(m) {
-            v.compact = CompactView(kind: .meeting, title: item.name, value: m.runState == .paused ? "Paused" : "",
-                                    endsAtMs: m.endsAtMs, totalSecs: item.plannedSecs, count: 0)
+            v.compact = CompactView(
+                kind: .meeting, title: item.name, value: m.runState == .paused ? "Paused" : "",
+                endsAtMs: m.endsAtMs, totalSecs: item.plannedSecs, count: 0)
         }
         return v
     }
 
     @MainActor
-    static func write(_ vm: ViewModel, expanded: Bool, tab: Tab, section: SettingsSection = .general,
-                      pane: AgentsPane = .sessions, timerPane: TimerPane = .focus, clipPreview: Int? = nil,
-                      accessibilityNeeded: Bool = false, notchless: Bool = false,
-                      nowMs: Int = snapshotNowMs, backdrop: Bool = false,
-                      size: CGSize, to url: URL) throws -> URL? {
+    static func write(
+        _ vm: ViewModel, expanded: Bool, tab: Tab, section: SettingsSection = .general,
+        pane: AgentsPane = .sessions, timerPane: TimerPane = .focus, clipPreview: Int? = nil,
+        accessibilityNeeded: Bool = false, notchless: Bool = false,
+        nowMs: Int = snapshotNowMs, backdrop: Bool = false,
+        size: CGSize, to url: URL
+    ) throws -> URL? {
         let model = AppModel(bridge: MockBridge())
         if notchless {
             model.primary.notch = NotchGeometry.fallbackSize
             model.primary.hasNotch = false
             model.primary.menuBarHeight = 24
         }
-        model.setForSnapshot(vm, expanded: expanded, tab: tab, section: section, pane: pane,
-                             timerPane: timerPane, clipPreview: clipPreview,
-                             accessibilityNeeded: accessibilityNeeded)
+        model.setForSnapshot(
+            vm, expanded: expanded, tab: tab, section: section, pane: pane,
+            timerPane: timerPane, clipPreview: clipPreview,
+            accessibilityNeeded: accessibilityNeeded)
         let offset = nowMs - Int(Date().timeIntervalSince1970 * 1000)
         // "System" renders dark; light variants set the theme explicitly.
         let scheme: ColorScheme = vm.settings.appearance.theme == .light ? .light : .dark

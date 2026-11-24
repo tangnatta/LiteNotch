@@ -10,16 +10,19 @@ struct AgentsTab: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                SegmentedPill(options: [(AgentsPane.sessions, "Sessions"), (AgentsPane.usage, "Usage")],
-                              selection: $model.agentsPane, label: "Agents view")
+                SegmentedPill(
+                    options: [(AgentsPane.sessions, "Sessions"), (AgentsPane.usage, "Usage")],
+                    selection: $model.agentsPane, label: "Agents view")
                 Spacer(minLength: 4)
             }
             .frame(height: 24)
             switch model.agentsPane {
             case .sessions:
                 if vm.agents.sessions.isEmpty && !(vm.agents.hooksInstalled ?? false) {
-                    EmptyState(symbol: "terminal", title: "Not connected to Claude Code",
-                               hint: "Connect it, then start Claude Code in a terminal to see its sessions and approve its requests here.") {
+                    EmptyState(
+                        symbol: "terminal", title: "Not connected to Claude Code",
+                        hint: "Connect it, then start Claude Code in a terminal to see its sessions and approve its requests here."
+                    ) {
                         connectButton
                     }
                 } else {
@@ -38,11 +41,13 @@ struct AgentsTab: View {
             Image(systemName: installed ? "checkmark.circle" : "link.badge.plus")
                 .glyph(11)
                 .foregroundStyle(installed ? NT.text3 : NT.accentText)
-            Text(verbatim: installed
-                 ? "Connected to Claude Code"
-                 : "Connect Claude Code to see its sessions and approve requests here.")
-                .nfont(.body).foregroundStyle(installed ? NT.text3 : NT.text2).lineLimit(1)
-                .minimumScaleFactor(0.9)
+            Text(
+                verbatim: installed
+                    ? "Connected to Claude Code"
+                    : "Connect Claude Code to see its sessions and approve requests here."
+            )
+            .nfont(.body).foregroundStyle(installed ? NT.text3 : NT.text2).lineLimit(1)
+            .minimumScaleFactor(0.9)
             Spacer(minLength: 4)
             if installed {
                 TextPill(title: "Disconnect", tint: NT.text2, height: 22) { send(.hooksUninstall) }
@@ -65,12 +70,15 @@ struct AgentsTab: View {
         let now = nowMs(Date(), offset: offset)
         return Group {
             if vm.agents.sessions.isEmpty {
-                EmptyState(symbol: "terminal", title: "No sessions",
-                           hint: "Start Claude Code in a terminal to see it here.")
+                EmptyState(
+                    symbol: "terminal", title: "No sessions",
+                    hint: "Start Claude Code in a terminal to see it here.")
             } else {
                 NotchScroll {
                     ForEach(Array(vm.agents.sessions.enumerated()), id: \.element.id) { i, s in
-                        Button { model.openSession(s) } label: {
+                        Button {
+                            model.openSession(s)
+                        } label: {
                             SessionRow(session: s, now: now)
                         }
                         .buttonStyle(.plain)
@@ -160,9 +168,11 @@ struct UsagePane: View {
     var body: some View {
         if !hasLimits && !Format.hasTokenData(usage) {
             if statusline == true {
-                EmptyState(symbol: "chart.bar", title: "No usage yet",
-                           hint: "\(UsageText.waiting)\n\(UsageText.tokensHint)")
-                    .padding(.horizontal, 40)
+                EmptyState(
+                    symbol: "chart.bar", title: "No usage yet",
+                    hint: "\(UsageText.waiting)\n\(UsageText.tokensHint)"
+                )
+                .padding(.horizontal, 40)
             } else {
                 EmptyState(symbol: "chart.bar", title: "No usage yet", hint: UsageText.offer) {
                     showLimitsButton

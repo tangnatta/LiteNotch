@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import XCTest
+
 @testable import LiteNotchUI
 
 private func fixtureURL(_ name: String) -> URL {
@@ -96,7 +97,10 @@ final class DecodingTests: XCTestCase {
         XCTAssertTrue(old.settings.media.enabled)
         XCTAssertFalse(old.settings.notify.system)
 
-        usage["week"] = "soon"; usage["models"] = [["name": 3]]; usage["projects"] = 7; usage["summary"] = ["x"]
+        usage["week"] = "soon"
+        usage["models"] = [["name": 3]]
+        usage["projects"] = 7
+        usage["summary"] = ["x"]
         o["usage"] = usage
         let odd = try ViewModel.decode(JSONSerialization.data(withJSONObject: o))
         XCTAssertEqual(odd.usage.week, [])
@@ -169,7 +173,8 @@ final class DecodingTests: XCTestCase {
 
     func testPermissionRequestWithoutTruncatedFieldDefaultsToFalse() throws {
         let j = #"{"id":"a","session_id":"s","project":"p","tool_name":"Bash","summary":"x","detail":"x","created_ms":1,"expires_ms":2}"#
-        let d = JSONDecoder(); d.keyDecodingStrategy = .convertFromSnakeCase
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
         XCTAssertFalse(try d.decode(PermissionRequest.self, from: Data(j.utf8)).truncated)
     }
 
@@ -214,8 +219,10 @@ final class CommandTests: XCTestCase {
             (.media(.playPause), #"{"cmd":"media","action":"play_pause"}"#),
             (.media(.next), #"{"cmd":"media","action":"next"}"#),
             (.media(.previous), #"{"cmd":"media","action":"previous"}"#),
-            (.notifySystem(app: "Mail", title: "Hi \"you\"", body: "line"),
-             #"{"cmd":"notify_system","app":"Mail","title":"Hi \"you\"","body":"line"}"#),
+            (
+                .notifySystem(app: "Mail", title: "Hi \"you\"", body: "line"),
+                #"{"cmd":"notify_system","app":"Mail","title":"Hi \"you\"","body":"line"}"#
+            ),
             (.agentDecide(requestId: "req-1", decision: .allow), #"{"cmd":"agent_decide","request_id":"req-1","decision":"allow"}"#),
             (.agentDecide(requestId: "req-1", decision: .deny), #"{"cmd":"agent_decide","request_id":"req-1","decision":"deny"}"#),
             (.agentDecide(requestId: "req-1", decision: .pass), #"{"cmd":"agent_decide","request_id":"req-1","decision":"pass"}"#),
@@ -241,17 +248,26 @@ final class CommandTests: XCTestCase {
         let s = try obj(ShellCommand.setSettings(settings).encode())
         XCTAssertEqual(s["cmd"] as? String, "set_settings")
         let inner = try XCTUnwrap(s["settings"] as? NSDictionary)
-        XCTAssertEqual(Set(inner.allKeys as! [String]),
-                       ["general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics",
-                        "calendar", "notch", "peek", "sound", "day"])
+        XCTAssertEqual(
+            Set(inner.allKeys as! [String]),
+            [
+                "general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics",
+                "calendar", "notch", "peek", "sound", "day",
+            ])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
-        XCTAssertEqual(inner["peek"] as? NSDictionary,
-                       ["track_change": true, "time_warning_secs": 300,
-                        "eye_break_mins": 0, "move_mins": 0, "break_quote": true,
-                        "still_working": true])
-        XCTAssertEqual(inner["appearance"] as? NSDictionary,
-                       ["theme": "system", "accent": "#FF9E0A", "notch_style": "attached", "closed_notch": "dark",
-                        "material": "solid", "shrink": "off"])
+        XCTAssertEqual(
+            inner["peek"] as? NSDictionary,
+            [
+                "track_change": true, "time_warning_secs": 300,
+                "eye_break_mins": 0, "move_mins": 0, "break_quote": true,
+                "still_working": true,
+            ])
+        XCTAssertEqual(
+            inner["appearance"] as? NSDictionary,
+            [
+                "theme": "system", "accent": "#FF9E0A", "notch_style": "attached", "closed_notch": "dark",
+                "material": "solid", "shrink": "off",
+            ])
         XCTAssertEqual((inner["media"] as! NSDictionary)["enabled"] as? Bool, true)
         XCTAssertEqual((inner["notify"] as! NSDictionary)["system"] as? Bool, false)
         XCTAssertEqual(Tab.allCases.map(\.rawValue), ["home", "music", "timer", "clipboard", "agents", "inbox", "settings"])
@@ -267,7 +283,7 @@ final class CommandTests: XCTestCase {
         let model = AppModel(bridge: bridge)
         model.send(.pomodoroToggle)
         model.primary.selectTab(.inbox)
-        model.primary.selectTab(.inbox) // no change, no command
+        model.primary.selectTab(.inbox)  // no change, no command
         XCTAssertEqual(bridge.sent, [#"{"cmd":"pomodoro_toggle"}"#, #"{"cmd":"tab_opened","tab":"inbox"}"#])
     }
 
@@ -323,9 +339,11 @@ final class GeometryTests: XCTestCase {
         // Media: artwork left, equaliser right, never text.
         let song = CompactView(kind: .media, title: String(repeating: "x", count: 40), value: "", endsAtMs: nil, totalSecs: nil, count: 0)
         XCTAssertEqual(NotchGeometry.wingWidth(for: song), 40)
-        let longName = CompactView(kind: .agent, title: String(repeating: "x", count: 80), value: "", endsAtMs: nil, totalSecs: nil, count: 1)
+        let longName = CompactView(
+            kind: .agent, title: String(repeating: "x", count: 80), value: "", endsAtMs: nil, totalSecs: nil, count: 1)
         XCTAssertLessThanOrEqual(NotchGeometry.wingWidth(for: longName), 130)
-        XCTAssertEqual(NotchGeometry.wingWidth(for: CompactView(kind: .idle, title: "", value: "", endsAtMs: nil, totalSecs: nil, count: 0)), 0)
+        XCTAssertEqual(
+            NotchGeometry.wingWidth(for: CompactView(kind: .idle, title: "", value: "", endsAtMs: nil, totalSecs: nil, count: 0)), 0)
     }
 
     func testPeeksWidenTheWings() throws {
@@ -339,8 +357,9 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(warning.kind, .pomodoro)
         XCTAssertEqual(warning.peek, .timeWarning)
         XCTAssertNotNil(warning.endsAtMs)
-        XCTAssertGreaterThan(NotchGeometry.wingWidth(for: warning),
-                             NotchGeometry.wingWidth(for: try loadFixture("pomodoro").compact))
+        XCTAssertGreaterThan(
+            NotchGeometry.wingWidth(for: warning),
+            NotchGeometry.wingWidth(for: try loadFixture("pomodoro").compact))
 
         // Without a peek the media view is unchanged.
         XCTAssertNil(try loadFixture("media").compact.peek)
@@ -366,8 +385,10 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(NotchGeometry.wingWidth(for: move), 130)
         XCTAssertEqual(NotchGeometry.islandWingWidth(for: move), 80)
         var m = move
-        for (title, symbol) in [("Stretch", "figure.flexibility"), ("Walk", "figure.walk"), ("Water", "drop.fill"),
-                                ("Dance", "figure.walk")] {
+        for (title, symbol) in [
+            ("Stretch", "figure.flexibility"), ("Walk", "figure.walk"), ("Water", "drop.fill"),
+            ("Dance", "figure.walk"),
+        ] {
             m.title = title
             XCTAssertEqual(ClosedActivityView.nudgeSymbol(m), symbol, title)
             XCTAssertNotNil(NSImage(systemSymbolName: symbol, accessibilityDescription: nil), symbol)
@@ -412,8 +433,9 @@ final class GeometryTests: XCTestCase {
         let bridge = MockBridge()
         let model = AppModel(bridge: bridge)
         model.primary.banner(banner, perform: .skipBreak)
-        XCTAssertEqual(bridge.sentObjects.compactMap { $0["cmd"] as? String },
-                       ["pomodoro_skip", "notify_opened", "notify_dismiss_banner"])
+        XCTAssertEqual(
+            bridge.sentObjects.compactMap { $0["cmd"] as? String },
+            ["pomodoro_skip", "notify_opened", "notify_dismiss_banner"])
     }
 
     func testTheFaceBlinksWithACoreAnimationKeyframe() {
@@ -432,8 +454,9 @@ final class GeometryTests: XCTestCase {
         view.layout()
         let faces = view.layer?.sublayers ?? []
         XCTAssertEqual(faces.count, 2)
-        XCTAssertEqual(faces.compactMap { ($0 as? CATextLayer)?.string as? NSAttributedString }.map(\.string),
-                       [">_<", "-_-"])
+        XCTAssertEqual(
+            faces.compactMap { ($0 as? CATextLayer)?.string as? NSAttributedString }.map(\.string),
+            [">_<", "-_-"])
         XCTAssertTrue(faces.allSatisfy { $0.animation(forKey: "blink") != nil })
         view.layout()
         XCTAssertEqual(view.layer?.sublayers?.count, 2, "laying out again adds nothing")
@@ -461,7 +484,9 @@ final class GeometryTests: XCTestCase {
         settings.peek.timeWarningSecs = 60
         let json = String(decoding: try e.encode(settings), as: UTF8.self)
         XCTAssertTrue(json.contains(#""time_warning_secs":60"#))
-        XCTAssertEqual(try d.decode(CompactView.self, from: Data(#"{"kind":"media","title":"T","value":"A","count":0,"peek":"aurora"}"#.utf8)).peek, .unknown)
+        XCTAssertEqual(
+            try d.decode(CompactView.self, from: Data(#"{"kind":"media","title":"T","value":"A","count":0,"peek":"aurora"}"#.utf8)).peek,
+            .unknown)
 
         // Peek settings from before the reminders and the break line.
         let oldPeek = try d.decode(PeekConfig.self, from: Data(#"{"track_change":false,"time_warning_secs":0}"#.utf8))
@@ -469,7 +494,8 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(oldPeek.moveMins, 0)
         XCTAssertTrue(oldPeek.breakQuote)
         // A file saved when Move could count focus time still loads, and the key is not written back.
-        let withCounts = try d.decode(PeekConfig.self, from: Data(#"{"track_change":true,"time_warning_secs":0,"move_mins":20,"move_counts":"focus"}"#.utf8))
+        let withCounts = try d.decode(
+            PeekConfig.self, from: Data(#"{"track_change":true,"time_warning_secs":0,"move_mins":20,"move_counts":"focus"}"#.utf8))
         XCTAssertEqual(withCounts.moveMins, 20)
         XCTAssertFalse(String(decoding: try e.encode(withCounts), as: UTF8.self).contains("move_counts"))
         settings.peek.eyeBreakMins = 5
@@ -518,17 +544,20 @@ final class GeometryTests: XCTestCase {
         // Island: the same, never narrower than its idle capsule.
         let island = NotchLayout(style: .island, notch: notch, hasNotch: false, menuBarHeight: 24)
         XCTAssertEqual(island.size(for: .closed, content: pair).width, NotchGeometry.rowWidth(for: pair, island: true))
-        XCTAssertLessThan(island.size(for: .closed, content: pair).width,
-                          island.centerWidth + 2 * island.wingWidth(for: pair))
+        XCTAssertLessThan(
+            island.size(for: .closed, content: pair).width,
+            island.centerWidth + 2 * island.wingWidth(for: pair))
         // Just the dot keeps the original layout.
-        XCTAssertEqual(bare.size(for: .closed, content: ClosedContent(primary: nil, waiting: true)),
-                       NotchGeometry.closedSize(notch: notch, wing: bare.wingWidth(for: ClosedContent(primary: nil, waiting: true))))
+        XCTAssertEqual(
+            bare.size(for: .closed, content: ClosedContent(primary: nil, waiting: true)),
+            NotchGeometry.closedSize(notch: notch, wing: bare.wingWidth(for: ClosedContent(primary: nil, waiting: true))))
     }
 
     func testShrinkIsAThinStripAtTheTopWithoutANotch() {
         for style in [NotchStyle.attached, .island] {
-            let bare = NotchLayout(style: style, notch: NotchGeometry.fallbackSize, hasNotch: false,
-                                   menuBarHeight: 24, minimized: true)
+            let bare = NotchLayout(
+                style: style, notch: NotchGeometry.fallbackSize, hasNotch: false,
+                menuBarHeight: 24, minimized: true)
             XCTAssertEqual(bare.size(for: .closed, content: ClosedContent(primary: nil)), CGSize(width: 120, height: 8))
             XCTAssertEqual(bare.top(for: .closed), 0, "flush with the top edge")
             XCTAssertEqual(bare.size(for: .expanded, compact: nil).width, NotchGeometry.expandedSize.width, "opening is full size")
@@ -565,14 +594,16 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(bare.capsuleHeight, 18)
         XCTAssertEqual(bare.top(for: .closed), 3)
         XCTAssertEqual(bare.size(for: .closed, compact: nil), CGSize(width: NotchGeometry.islandCenterWidth, height: 21))
-        XCTAssertEqual(bare.size(for: .closed, compact: pomo).width,
-                       NotchGeometry.islandCenterWidth + 2 * NotchGeometry.islandWingWidth(for: pomo))
+        XCTAssertEqual(
+            bare.size(for: .closed, compact: pomo).width,
+            NotchGeometry.islandCenterWidth + 2 * NotchGeometry.islandWingWidth(for: pomo))
         // The toast overlaps the menu bar; the panel starts below it.
         XCTAssertEqual(bare.top(for: .toast), 24 - NotchGeometry.islandToastLift)
         XCTAssertEqual(bare.top(for: .expanded), 24 + NotchGeometry.islandPanelDrop)
         XCTAssertGreaterThanOrEqual(NotchGeometry.islandPanelDrop, 4, "a visible gap under the menu bar")
-        XCTAssertEqual(bare.size(for: .expanded, compact: pomo).height,
-                       24 + NotchGeometry.islandPanelDrop + NotchGeometry.expandedSize.height)
+        XCTAssertEqual(
+            bare.size(for: .expanded, compact: pomo).height,
+            24 + NotchGeometry.islandPanelDrop + NotchGeometry.expandedSize.height)
         // A hidden menu bar falls back to the stand-in's height.
         XCTAssertEqual(NotchLayout(style: .island, notch: NotchGeometry.fallbackSize, hasNotch: false).bar, 32)
         // With a notch the capsule keeps the notch's width and height band.
@@ -588,8 +619,9 @@ final class GeometryTests: XCTestCase {
         // The window has room for the island panel.
         let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
         let notch = NotchGeometry.notchRect(screenFrame: frame, safeAreaTop: 0, leftAux: nil, rightAux: nil)
-        XCTAssertGreaterThanOrEqual(NotchGeometry.panelFrame(screenFrame: frame, notch: notch).height,
-                                    bare.size(for: .expanded, compact: nil).height)
+        XCTAssertGreaterThanOrEqual(
+            NotchGeometry.panelFrame(screenFrame: frame, notch: notch).height,
+            bare.size(for: .expanded, compact: nil).height)
     }
 
     func testNotchStyleDecodesLenientlyAndDefaultsToAttached() throws {
@@ -618,7 +650,9 @@ final class GeometryTests: XCTestCase {
     }
 
     func testPresentationMode() throws {
-        let idle = try loadFixture("idle"), approval = try loadFixture("approval"), banner = try loadFixture("banner")
+        let idle = try loadFixture("idle")
+        let approval = try loadFixture("approval")
+        let banner = try loadFixture("banner")
         XCTAssertEqual(NotchPresentation.mode(expanded: false, view: idle), .closed)
         XCTAssertEqual(NotchPresentation.mode(expanded: true, view: idle), .expanded)
         XCTAssertEqual(NotchPresentation.mode(expanded: false, view: approval), .expanded)
@@ -685,8 +719,9 @@ final class FormatTests: XCTestCase {
         utc.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
         // The media fixture's week ends on Wednesday 11 November 2026.
         let week = try loadFixture("media").usage.week
-        XCTAssertEqual(week.map { Format.weekdayInitial(dayStartMs: $0.dayStartMs, calendar: utc) },
-                       ["T", "F", "S", "S", "M", "T", "W"])
+        XCTAssertEqual(
+            week.map { Format.weekdayInitial(dayStartMs: $0.dayStartMs, calendar: utc) },
+            ["T", "F", "S", "S", "M", "T", "W"])
     }
 
     func testAgentsHeadlineAndDetail() throws {
@@ -705,7 +740,9 @@ final class FormatTests: XCTestCase {
         XCTAssertEqual(Format.agentsDetail(media).limit, "42% of 5-hour limit")
         XCTAssertTrue(Format.hasTokenData(media))
         var none = try loadFixture("idle").usage
-        none.week = []; none.models = []; none.projects = []
+        none.week = []
+        none.models = []
+        none.projects = []
         none.today = TokenTotals(input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0)
         XCTAssertEqual(Format.agentsDetail(none).tokens, "0 tokens today")
         XCTAssertFalse(Format.hasTokenData(none))
@@ -725,8 +762,9 @@ final class FormatTests: XCTestCase {
 
 final class ApprovalSecurityTests: XCTestCase {
     private func request(truncated: Bool, detail: String = "ls") -> PermissionRequest {
-        PermissionRequest(id: "r", sessionId: "s", project: "p", toolName: "Bash", summary: "ls",
-                          detail: detail, truncated: truncated, createdMs: 0, expiresMs: 1)
+        PermissionRequest(
+            id: "r", sessionId: "s", project: "p", toolName: "Bash", summary: "ls",
+            detail: detail, truncated: truncated, createdMs: 0, expiresMs: 1)
     }
 
     func testAllowIsNeverOfferedWhenTruncated() {
@@ -735,8 +773,9 @@ final class ApprovalSecurityTests: XCTestCase {
         XCTAssertTrue(p.showTruncatedNotice)
         XCTAssertFalse(p.offeredDecisions.contains(.allow))
         XCTAssertEqual(p.offeredDecisions, [.deny, .pass])
-        XCTAssertEqual(ApprovalPresentation.truncatedNotice,
-                       "Command too long to review here \u{2014} answer in Terminal")
+        XCTAssertEqual(
+            ApprovalPresentation.truncatedNotice,
+            "Command too long to review here \u{2014} answer in Terminal")
     }
 
     func testAllowOfferedWhenComplete() {
@@ -927,8 +966,9 @@ final class PanelLandingTests: XCTestCase {
     private func banner(source: String = "ci", group: String? = nil, open: OpenTarget?) {
         nextId += 1
         clock += 1
-        let n = NotificationItem(id: nextId, source: source, title: "t", body: "b", priority: .high,
-                                 group: group, ttlSecs: nil, createdMs: 0, read: false, open: open)
+        let n = NotificationItem(
+            id: nextId, source: source, title: "t", body: "b", priority: .high,
+            group: group, ttlSecs: nil, createdMs: 0, read: false, open: open)
         vm?.inbox.banner = n
         app?.apply(vm!)
         clock += 5
@@ -1005,8 +1045,9 @@ final class PanelLandingTests: XCTestCase {
         leave(model, on: .settings)
         let target = OpenTarget.app(bundleId: "com.apple.Terminal", tty: nil)
         banner(source: "agent", group: "agent-s1", open: target)
-        let item = NotificationItem(id: nextId, source: "agent", title: "t", body: "b", priority: .high,
-                                    group: "agent-s1", ttlSecs: nil, createdMs: 0, read: false, open: target)
+        let item = NotificationItem(
+            id: nextId, source: "agent", title: "t", body: "b", priority: .high,
+            group: "agent-s1", ttlSecs: nil, createdMs: 0, read: false, open: target)
         model.openNotification(item, isBanner: true)
         XCTAssertEqual(activated, [target])
         XCTAssertFalse(model.expanded)
@@ -1028,37 +1069,47 @@ private func text(_ value: String, id: String = "") -> AXNode {
     AXNode(role: "AXStaticText", identifier: id, value: value)
 }
 
-private func banner(_ description: String, subrole: String = "AXNotificationCenterBanner",
-                    _ children: [AXNode]) -> AXNode {
+private func banner(
+    _ description: String, subrole: String = "AXNotificationCenterBanner",
+    _ children: [AXNode]
+) -> AXNode {
     AXNode(role: "AXGroup", subrole: subrole, description: description, children: children)
 }
 
 final class BannerParserTests: XCTestCase {
     func testTaggedTexts() {
-        let b = banner("Messages, Anna, Lunch?, stacked", [
-            AXNode(role: "AXImage"),
-            AXNode(role: "AXGroup", children: [
-                text("Lunch at 12?", id: "body"),
-                text("Anna", id: "title"),
-                text("Work chat", id: "subtitle"),
-            ]),
-            AXNode(role: "AXButton", value: "Close"),
-        ])
-        XCTAssertEqual(BannerParser.parse(banner: b),
-                       CapturedNotification(app: "Messages", title: "Anna", body: "Work chat \u{2014} Lunch at 12?"))
+        let b = banner(
+            "Messages, Anna, Lunch?, stacked",
+            [
+                AXNode(role: "AXImage"),
+                AXNode(
+                    role: "AXGroup",
+                    children: [
+                        text("Lunch at 12?", id: "body"),
+                        text("Anna", id: "title"),
+                        text("Work chat", id: "subtitle"),
+                    ]),
+                AXNode(role: "AXButton", value: "Close"),
+            ])
+        XCTAssertEqual(
+            BannerParser.parse(banner: b),
+            CapturedNotification(app: "Messages", title: "Anna", body: "Work chat \u{2014} Lunch at 12?"))
     }
 
     func testUntaggedTextsUseOrder() {
         let b = banner("Calendar", [text("Stand-up"), text("in 5 minutes"), text("Room 2")])
-        XCTAssertEqual(BannerParser.parse(banner: b),
-                       CapturedNotification(app: "Calendar", title: "Stand-up", body: "in 5 minutes Room 2"))
+        XCTAssertEqual(
+            BannerParser.parse(banner: b),
+            CapturedNotification(app: "Calendar", title: "Stand-up", body: "in 5 minutes Room 2"))
     }
 
     func testFallbacks() {
-        XCTAssertEqual(BannerParser.parse(banner: banner("", [text("  Hello \n")])),
-                       CapturedNotification(app: "Notification", title: "Hello", body: ""))
-        XCTAssertEqual(BannerParser.parse(banner: banner(" , x", [text("only body", id: "body")])),
-                       CapturedNotification(app: "Notification", title: "only body", body: ""))
+        XCTAssertEqual(
+            BannerParser.parse(banner: banner("", [text("  Hello \n")])),
+            CapturedNotification(app: "Notification", title: "Hello", body: ""))
+        XCTAssertEqual(
+            BannerParser.parse(banner: banner(" , x", [text("only body", id: "body")])),
+            CapturedNotification(app: "Notification", title: "only body", body: ""))
         XCTAssertNil(BannerParser.parse(banner: banner("Mail, x", [AXNode(role: "AXImage"), text("   ")])))
         // A non-text element's value is never notification text.
         XCTAssertNil(BannerParser.parse(banner: banner("Mail", [AXNode(role: "AXButton", value: "Reply")])))
@@ -1074,15 +1125,21 @@ final class BannerParserTests: XCTestCase {
 
     func testFindsBannersAndAlertsAnywhereButNothingElse() {
         let roots = [
-            AXNode(role: "AXWindow", children: [
-                AXNode(role: "AXGroup", children: [
-                    AXNode(role: "AXScrollArea", children: [
-                        banner("Mail, one", [text("One")]),
-                        banner("Reminders, two", subrole: "AXNotificationCenterAlert", [text("Two")]),
-                        AXNode(role: "AXGroup", subrole: "AXWidget", description: "Weather, x", children: [text("Sunny")]),
-                    ]),
+            AXNode(
+                role: "AXWindow",
+                children: [
+                    AXNode(
+                        role: "AXGroup",
+                        children: [
+                            AXNode(
+                                role: "AXScrollArea",
+                                children: [
+                                    banner("Mail, one", [text("One")]),
+                                    banner("Reminders, two", subrole: "AXNotificationCenterAlert", [text("Two")]),
+                                    AXNode(role: "AXGroup", subrole: "AXWidget", description: "Weather, x", children: [text("Sunny")]),
+                                ])
+                        ])
                 ]),
-            ]),
             AXNode(role: "AXWindow", children: [text("stray")]),
         ]
         XCTAssertEqual(BannerParser.notifications(in: roots).map(\.app), ["Mail", "Reminders"])
@@ -1107,8 +1164,14 @@ final class BannerParserTests: XCTestCase {
 private final class FakeBannerSource: BannerSource {
     var onChange: (([AXNode]) -> Void)?
     var starts = 0, stops = 0
-    func start(onChange: @escaping ([AXNode]) -> Void) { starts += 1; self.onChange = onChange }
-    func stop() { stops += 1; onChange = nil }
+    func start(onChange: @escaping ([AXNode]) -> Void) {
+        starts += 1
+        self.onChange = onChange
+    }
+    func stop() {
+        stops += 1
+        onChange = nil
+    }
 }
 
 final class SystemNotificationObserverTests: XCTestCase {
@@ -1119,15 +1182,19 @@ final class SystemNotificationObserverTests: XCTestCase {
     private var now = 1_000
 
     private func make(system: Bool) throws -> (AppModel, SystemNotificationObserver) {
-        bridge = MockBridge(); source = FakeBannerSource(); trusted = false; prompts = 0
+        bridge = MockBridge()
+        source = FakeBannerSource()
+        trusted = false
+        prompts = 0
         let model = AppModel(bridge: bridge)
         var vm = try loadFixture("idle")
         vm.settings.notify.system = system
         model.apply(vm)
-        let o = SystemNotificationObserver(model: model, source: source,
-                                           isTrusted: { [unowned self] in self.trusted },
-                                           promptForTrust: { [unowned self] in self.prompts += 1 },
-                                           nowMs: { [unowned self] in self.now })
+        let o = SystemNotificationObserver(
+            model: model, source: source,
+            isTrusted: { [unowned self] in self.trusted },
+            promptForTrust: { [unowned self] in self.prompts += 1 },
+            nowMs: { [unowned self] in self.now })
         return (model, o)
     }
 
@@ -1154,7 +1221,8 @@ final class SystemNotificationObserverTests: XCTestCase {
         XCTAssertEqual(prompts, 1)
         XCTAssertEqual(source.starts, 0)
         XCTAssertTrue(o.isWaitingForPermission)
-        o.recheck(); o.recheck()
+        o.recheck()
+        o.recheck()
         XCTAssertEqual(prompts, 1, "the system prompt is shown once")
         XCTAssertTrue(o.isWaitingForPermission)
 
@@ -1197,7 +1265,8 @@ final class SystemNotificationObserverTests: XCTestCase {
         // Permission revoked while on: capture stops and the notice returns.
         try setSystem(true, model)
         trusted = false
-        model.primary.close(); model.primary.open()
+        model.primary.close()
+        model.primary.open()
         XCTAssertEqual(source.stops, 2)
         XCTAssertTrue(model.accessibilityNeeded)
         try setSystem(false, model)
@@ -1209,12 +1278,16 @@ final class SystemNotificationObserverTests: XCTestCase {
         let (model, o) = try make(system: true)
         trusted = true
         o.start()
-        let tree = [AXNode(role: "AXWindow", children: [
-            banner("Mail, new message", [text("Build passed", id: "title"), text("main is green", id: "body")]),
-        ])]
+        let tree = [
+            AXNode(
+                role: "AXWindow",
+                children: [
+                    banner("Mail, new message", [text("Build passed", id: "title"), text("main is green", id: "body")])
+                ])
+        ]
         source.onChange?(tree)
         now += 400
-        source.onChange?(tree) // layout changed, same banner still showing
+        source.onChange?(tree)  // layout changed, same banner still showing
         let sent = bridge.sentObjects.filter { $0["cmd"] as? String == "notify_system" }
         XCTAssertEqual(sent.count, 1)
         XCTAssertEqual(sent.first?["app"] as? String, "Mail")
@@ -1254,7 +1327,8 @@ final class NewFieldsDecodingTests: XCTestCase {
     /// An older core sends none of these; a confused one sends wrong types.
     func testNewFieldsAreLenient() throws {
         var o = try JSONSerialization.jsonObject(with: Data(contentsOf: fixtureURL("media"))) as! [String: Any]
-        o.removeValue(forKey: "meeting"); o.removeValue(forKey: "colors")
+        o.removeValue(forKey: "meeting")
+        o.removeValue(forKey: "colors")
         var settings = o["settings"] as! [String: Any]
         settings.removeValue(forKey: "appearance")
         var general = settings["general"] as! [String: Any]
@@ -1262,7 +1336,12 @@ final class NewFieldsDecodingTests: XCTestCase {
         settings["general"] = general
         o["settings"] = settings
         var clipboard = o["clipboard"] as! [String: Any]
-        clipboard["items"] = (clipboard["items"] as! [[String: Any]]).map { var i = $0; i.removeValue(forKey: "image_path"); i.removeValue(forKey: "files"); return i }
+        clipboard["items"] = (clipboard["items"] as! [[String: Any]]).map {
+            var i = $0
+            i.removeValue(forKey: "image_path")
+            i.removeValue(forKey: "files")
+            return i
+        }
         o["clipboard"] = clipboard
         let old = try ViewModel.decode(JSONSerialization.data(withJSONObject: o))
         XCTAssertEqual(old.meeting, .empty)
@@ -1324,8 +1403,10 @@ final class NewCommandTests: XCTestCase {
     func testMeetingAndColorCommands() throws {
         let cases: [(ShellCommand, String)] = [
             (.meetingLoad(preset: "retro"), #"{"cmd":"meeting_load","preset":"retro"}"#),
-            (.meetingSet(title: "Sync \"x\"", items: [AgendaLine(name: "Intro", minutes: 5), AgendaLine(name: "Demo", minutes: 20)]),
-             #"{"cmd":"meeting_set","title":"Sync \"x\"","items":[{"name":"Intro","minutes":5},{"name":"Demo","minutes":20}]}"#),
+            (
+                .meetingSet(title: "Sync \"x\"", items: [AgendaLine(name: "Intro", minutes: 5), AgendaLine(name: "Demo", minutes: 20)]),
+                #"{"cmd":"meeting_set","title":"Sync \"x\"","items":[{"name":"Intro","minutes":5},{"name":"Demo","minutes":20}]}"#
+            ),
             (.meetingSet(title: "", items: []), #"{"cmd":"meeting_set","title":"","items":[]}"#),
             (.meetingToggle, #"{"cmd":"meeting_toggle"}"#),
             (.meetingNext, #"{"cmd":"meeting_next"}"#),
@@ -1343,16 +1424,22 @@ final class NewCommandTests: XCTestCase {
         s.appearance = AppearanceConfig(theme: .light, accent: "#30D158", notchStyle: .island)
         let inner = try obj(ShellCommand.setSettings(s).encode())["settings"] as! NSDictionary
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, true)
-        XCTAssertEqual(inner["appearance"] as? NSDictionary,
-                       ["theme": "light", "accent": "#30D158", "notch_style": "island", "closed_notch": "dark",
-                        "material": "solid", "shrink": "off"])
+        XCTAssertEqual(
+            inner["appearance"] as? NSDictionary,
+            [
+                "theme": "light", "accent": "#30D158", "notch_style": "island", "closed_notch": "dark",
+                "material": "solid", "shrink": "off",
+            ])
     }
 
     func testClosedNotchFollowsTheThemeOnlyWhenAsked() throws {
         // The same key strategies as the bridge: the core's snake_case JSON.
-        let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
-        let encoder = JSONEncoder(); encoder.keyEncodingStrategy = .convertToSnakeCase
-        let matched = try decoder.decode(AppearanceConfig.self, from: Data(##"{"theme":"light","accent":"#FF9E0A","closed_notch":"theme"}"##.utf8))
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let matched = try decoder.decode(
+            AppearanceConfig.self, from: Data(##"{"theme":"light","accent":"#FF9E0A","closed_notch":"theme"}"##.utf8))
         XCTAssertEqual(matched.closedNotch, .theme)
         XCTAssertEqual(matched.closedScheme(system: .dark), .light)
         // A hardware notch keeps it black whatever the setting says.
@@ -1363,7 +1450,8 @@ final class NewCommandTests: XCTestCase {
         let old = try decoder.decode(AppearanceConfig.self, from: Data(##"{"theme":"light","accent":"#FF9E0A"}"##.utf8))
         XCTAssertEqual(old.closedNotch, .dark)
         XCTAssertEqual(old.closedScheme(system: .light), .dark)
-        let odd = try decoder.decode(AppearanceConfig.self, from: Data(##"{"theme":"light","accent":"#FF9E0A","closed_notch":"glass"}"##.utf8))
+        let odd = try decoder.decode(
+            AppearanceConfig.self, from: Data(##"{"theme":"light","accent":"#FF9E0A","closed_notch":"glass"}"##.utf8))
         XCTAssertEqual(odd.closedNotch, .unknown)
         XCTAssertEqual(odd.closedScheme(system: .light), .dark)
         // An unknown value is left out so the core keeps its own.
@@ -1382,11 +1470,13 @@ final class NewCommandTests: XCTestCase {
     }
 
     func testClosedNotchIsGlassOnlyWhereItFollowsTheTheme() {
-        let glass = AppearanceConfig(theme: .light, accent: "#FF9E0A", notchStyle: .island,
-                                     closedNotch: .theme, material: .glass)
+        let glass = AppearanceConfig(
+            theme: .light, accent: "#FF9E0A", notchStyle: .island,
+            closedNotch: .theme, material: .glass)
         // Exactly when the open panel would be glass (needs the SDK and macOS 26).
-        XCTAssertEqual(glass.closedDrawsGlass(hardwareNotch: false, approvalPending: false, minimized: false),
-                       GlassSupport.available)
+        XCTAssertEqual(
+            glass.closedDrawsGlass(hardwareNotch: false, approvalPending: false, minimized: false),
+            GlassSupport.available)
         // A camera housing keeps it black.
         XCTAssertFalse(glass.closedDrawsGlass(hardwareNotch: true, approvalPending: false, minimized: false))
         // An approval is read on the solid colour.
@@ -1405,8 +1495,9 @@ final class NewCommandTests: XCTestCase {
         // Attached without a notch follows the same rule as Island.
         var attached = glass
         attached.notchStyle = .attached
-        XCTAssertEqual(attached.closedDrawsGlass(hardwareNotch: false, approvalPending: false, minimized: false),
-                       GlassSupport.available)
+        XCTAssertEqual(
+            attached.closedDrawsGlass(hardwareNotch: false, approvalPending: false, minimized: false),
+            GlassSupport.available)
     }
 }
 
@@ -1459,7 +1550,10 @@ final class ColorTests: XCTestCase {
     /// fewer presets, and a way to choose a colour without the screen loupe.
     func testNamedAccentsFollowTheSystemOrTheTheme() {
         let system = NT.systemAccent
-        defer { NT.systemAccent = system; NT.setAccent(AppearanceConfig.defaultAccent) }
+        defer {
+            NT.systemAccent = system
+            NT.setAccent(AppearanceConfig.defaultAccent)
+        }
 
         XCTAssertEqual(AccentChoice("system"), .system)
         XCTAssertEqual(AccentChoice(" Mono "), .mono)
@@ -1489,7 +1583,8 @@ final class ColorTests: XCTestCase {
         XCTAssertFalse(NT.setAccent("mono"))
         // White on the dark panel, near-black on the light one, and the
         // reverse for what is drawn on it.
-        let accent = NSColor(NT.accent), on = NSColor(NT.onAccent)
+        let accent = NSColor(NT.accent)
+        let on = NSColor(NT.onAccent)
         func white(_ c: NSColor, dark: Bool) -> CGFloat {
             var w: CGFloat = -1
             NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
@@ -1506,7 +1601,10 @@ final class ColorTests: XCTestCase {
     @MainActor
     func testAChangeOfTheSystemAccentRedrawsOnlyWhenItIsInUse() throws {
         let system = NT.systemAccent
-        defer { NT.systemAccent = system; NT.setAccent(AppearanceConfig.defaultAccent) }
+        defer {
+            NT.systemAccent = system
+            NT.setAccent(AppearanceConfig.defaultAccent)
+        }
         NT.systemAccent = { "#0A84FF" }
         let model = AppModel(bridge: MockBridge())
         var vm = try loadFixture("idle")
@@ -1566,12 +1664,15 @@ final class ColorTests: XCTestCase {
 
 final class MeetingMathTests: XCTestCase {
     private func meeting(_ state: MeetingRunState, current: Int? = 1) -> MeetingView {
-        MeetingView(title: "Review",
-                    items: [MeetingItem(name: "Intro", plannedSecs: 300, elapsedSecs: 340, state: .done),
-                            MeetingItem(name: "Demo", plannedSecs: 600, elapsedSecs: 100, state: .running),
-                            MeetingItem(name: "Wrap", plannedSecs: 120)],
-                    current: current, runState: state, endsAtMs: nil, runningSinceMs: nil,
-                    remainingSecs: 500, totalPlannedSecs: 1020, totalElapsedSecs: 440, presets: [])
+        MeetingView(
+            title: "Review",
+            items: [
+                MeetingItem(name: "Intro", plannedSecs: 300, elapsedSecs: 340, state: .done),
+                MeetingItem(name: "Demo", plannedSecs: 600, elapsedSecs: 100, state: .running),
+                MeetingItem(name: "Wrap", plannedSecs: 120),
+            ],
+            current: current, runState: state, endsAtMs: nil, runningSinceMs: nil,
+            remainingSecs: 500, totalPlannedSecs: 1020, totalElapsedSecs: 440, presets: [])
     }
 
     func testSignedCountdown() {
@@ -1635,7 +1736,10 @@ final class MeetingMathTests: XCTestCase {
 private final class FakeSampler: ColorSampling {
     var result: String?
     var calls = 0
-    func sample(_ done: @escaping (String?) -> Void) { calls += 1; done(result) }
+    func sample(_ done: @escaping (String?) -> Void) {
+        calls += 1
+        done(result)
+    }
 }
 
 /// Each display's panel has its own presentation state; the core is shared.
@@ -1644,7 +1748,8 @@ final class PanelStateTests: XCTestCase {
     private var sampler = FakeSampler()
 
     private func makeApp(_ fixture: String = "idle") throws -> AppModel {
-        bridge = MockBridge(); sampler = FakeSampler()
+        bridge = MockBridge()
+        sampler = FakeSampler()
         let app = AppModel(bridge: bridge, sampler: sampler)
         app.apply(try loadFixture(fixture))
         return app
@@ -1656,7 +1761,8 @@ final class PanelStateTests: XCTestCase {
 
     func testHoverAndClicksOnlyAffectTheirOwnPanel() throws {
         let app = try makeApp()
-        let a = app.primary, b = app.addPanel()
+        let a = app.primary
+        let b = app.addPanel()
         XCTAssertEqual(app.panels.count, 2)
         b.hoverChanged(true)
         spin(NotchPresentation.hoverDelay + 0.15)
@@ -1784,7 +1890,8 @@ final class PanelStateTests: XCTestCase {
 
 final class ContrastTests: XCTestCase {
     func testContrastRatio() {
-        let black = ColorMath.RGB(r: 0, g: 0, b: 0), white = ColorMath.RGB(r: 1, g: 1, b: 1)
+        let black = ColorMath.RGB(r: 0, g: 0, b: 0)
+        let white = ColorMath.RGB(r: 1, g: 1, b: 1)
         XCTAssertEqual(ColorMath.contrast(black, white), 21, accuracy: 0.01)
         XCTAssertEqual(ColorMath.contrast(white, white), 1, accuracy: 0.01)
         // The default orange alone is too pale for text on a light panel.
@@ -1846,9 +1953,11 @@ final class FollowTargetTests: XCTestCase {
         XCTAssertEqual(p.tab, .timer)
         XCTAssertEqual(p.timerPane, .countdown)
         p.follow(.tab(.agents, pane: "usage"))
-        XCTAssertEqual(p.tab, .agents); XCTAssertEqual(p.agentsPane, .usage)
+        XCTAssertEqual(p.tab, .agents)
+        XCTAssertEqual(p.agentsPane, .usage)
         p.follow(.tab(.settings, pane: "keep_awake"))
-        XCTAssertEqual(p.tab, .settings); XCTAssertEqual(p.settingsSection, .keepAwake)
+        XCTAssertEqual(p.tab, .settings)
+        XCTAssertEqual(p.settingsSection, .keepAwake)
         p.follow(.tab(.timer, pane: "nonsense"))
         XCTAssertEqual(p.timerPane, .countdown, "an unknown pane keeps the current one")
         p.follow(nil)
@@ -1869,17 +1978,20 @@ final class FollowTargetTests: XCTestCase {
     func testTargetsDecodeAndUnknownOnesAreIgnored() throws {
         func item(_ open: String) throws -> NotificationItem {
             let json = """
-            {"id":1,"source":"s","title":"t","body":"","priority":"normal","group":null,
-             "ttl_secs":null,"created_ms":0,"read":false,"open":\(open)}
-            """
-            let d = JSONDecoder(); d.keyDecodingStrategy = .convertFromSnakeCase
+                {"id":1,"source":"s","title":"t","body":"","priority":"normal","group":null,
+                 "ttl_secs":null,"created_ms":0,"read":false,"open":\(open)}
+                """
+            let d = JSONDecoder()
+            d.keyDecodingStrategy = .convertFromSnakeCase
             return try d.decode(NotificationItem.self, from: Data(json.utf8))
         }
-        XCTAssertEqual(try item(#"{"kind":"app","bundle_id":"com.apple.Terminal"}"#).open,
-                       .app(bundleId: "com.apple.Terminal"))
+        XCTAssertEqual(
+            try item(#"{"kind":"app","bundle_id":"com.apple.Terminal"}"#).open,
+            .app(bundleId: "com.apple.Terminal"))
         XCTAssertEqual(try item(#"{"kind":"app_named","name":"Mail"}"#).open, .appNamed("Mail"))
-        XCTAssertEqual(try item(#"{"kind":"tab","tab":"timer","pane":"meeting"}"#).open,
-                       .tab(.timer, pane: "meeting"))
+        XCTAssertEqual(
+            try item(#"{"kind":"tab","tab":"timer","pane":"meeting"}"#).open,
+            .tab(.timer, pane: "meeting"))
         XCTAssertNil(try item(#"{"kind":"teleport"}"#).open)
         XCTAssertNil(try item(#"{"kind":"tab","tab":"nowhere"}"#).open)
         XCTAssertNil(try item("null").open)
@@ -1892,10 +2004,12 @@ final class PermissionResetTests: XCTestCase {
         var vm = try loadFixture("idle")
         vm.settings.notify.system = true
         model.apply(vm)
-        var prompts = 0, resets: [String] = []
-        let o = SystemNotificationObserver(model: model, source: FakeBannerSource(),
-                                           isTrusted: { false }, promptForTrust: { prompts += 1 },
-                                           nowMs: { 0 })
+        var prompts = 0
+        var resets: [String] = []
+        let o = SystemNotificationObserver(
+            model: model, source: FakeBannerSource(),
+            isTrusted: { false }, promptForTrust: { prompts += 1 },
+            nowMs: { 0 })
         o.resetEntry = { resets.append($0) }
         o.start()
         XCTAssertEqual(prompts, 1)
@@ -1956,17 +2070,19 @@ final class ReportedIssueTests: XCTestCase {
         model.apply(try loadFixture("idle"))
         model.activateApp = { activated.append($0) }
         let q = model.primary
-        let mail = NotificationItem(id: 1, source: "Mail", title: "t", body: "", priority: .normal, group: nil,
-                                    ttlSecs: nil, createdMs: 0, read: false, open: .appNamed("Mail"))
+        let mail = NotificationItem(
+            id: 1, source: "Mail", title: "t", body: "", priority: .normal, group: nil,
+            ttlSecs: nil, createdMs: 0, read: false, open: .appNamed("Mail"))
         q.openNotification(mail, isBanner: true)
         XCTAssertEqual(activated, [.appNamed("Mail")])
         // "When a notification is clicked, assume it has been read."
         XCTAssertTrue(bridge.sent.contains { $0.contains(#""cmd":"notify_opened""#) && $0.contains(#""id":1"#) })
         XCTAssertTrue(bridge.sent.contains { $0.contains("notify_dismiss_banner") })
 
-        let timer = NotificationItem(id: 2, source: "timer", title: "t", body: "", priority: .high, group: nil,
-                                     ttlSecs: nil, createdMs: 0, read: false,
-                                     open: .tab(.timer, pane: "countdown"))
+        let timer = NotificationItem(
+            id: 2, source: "timer", title: "t", body: "", priority: .high, group: nil,
+            ttlSecs: nil, createdMs: 0, read: false,
+            open: .tab(.timer, pane: "countdown"))
         q.openNotification(timer, isBanner: false)
         XCTAssertEqual(q.tab, .timer)
         XCTAssertEqual(q.timerPane, .countdown)
@@ -1979,8 +2095,9 @@ final class ReportedIssueTests: XCTestCase {
         let p = try panel()
         var activated: [OpenTarget] = []
         app?.activateApp = { activated.append($0) }
-        var s = AgentSession(id: "s", project: "api", cwd: "/w/api", status: .working, lastEventMs: 0,
-                             lastMessage: nil, app: nil)
+        var s = AgentSession(
+            id: "s", project: "api", cwd: "/w/api", status: .working, lastEventMs: 0,
+            lastMessage: nil, app: nil)
         p.openSession(s)
         XCTAssertTrue(activated.isEmpty)
         s.app = "com.apple.Terminal"
@@ -1996,8 +2113,10 @@ final class ReportedIssueTests: XCTestCase {
 
     func testOnlyATerminalDeviceNameReachesTheWindowScript() throws {
         for good in ["ttys0", "ttys003", "ttys9999"] { XCTAssertTrue(TerminalWindow.validTTY(good), good) }
-        for bad in ["", "ttys", "ttys12345", "/dev/ttys003", "ttys3a", "console", "ttys-1", "ttys３",
-                    "ttys3\" & do shell script \"id"] {
+        for bad in [
+            "", "ttys", "ttys12345", "/dev/ttys003", "ttys3a", "console", "ttys-1", "ttys３",
+            "ttys3\" & do shell script \"id",
+        ] {
             XCTAssertFalse(TerminalWindow.validTTY(bad), bad)
             XCTAssertFalse(TerminalWindow.focus(bundleId: "com.apple.Terminal", tty: bad, fallback: {}))
         }
@@ -2015,18 +2134,25 @@ final class ReportedIssueTests: XCTestCase {
         XCTAssertFalse(TerminalWindow.iTermScript.contains("write text"))
 
         // From the core: the device rides on the app target, and a bad one is dropped.
-        let d = JSONDecoder(); d.keyDecodingStrategy = .convertFromSnakeCase
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
         func target(_ json: String) throws -> OpenTarget { try d.decode(OpenTarget.self, from: Data(json.utf8)) }
-        XCTAssertEqual(try target(#"{"kind":"app","bundle_id":"com.apple.Terminal","tty":"ttys012"}"#),
-                       .app(bundleId: "com.apple.Terminal", tty: "ttys012"))
-        XCTAssertEqual(try target(#"{"kind":"app","bundle_id":"com.apple.Terminal","tty":"x; rm"}"#),
-                       .app(bundleId: "com.apple.Terminal"))
-        XCTAssertEqual(try target(#"{"kind":"app","bundle_id":"com.apple.Terminal"}"#),
-                       .app(bundleId: "com.apple.Terminal"))
-        let session = try d.decode(AgentSession.self, from: Data(#"""
-        {"id":"s","project":"p","cwd":"/p","status":"idle","last_event_ms":0,"last_message":null,
-         "app":"com.apple.Terminal","tty":"ttys004"}
-        """#.utf8))
+        XCTAssertEqual(
+            try target(#"{"kind":"app","bundle_id":"com.apple.Terminal","tty":"ttys012"}"#),
+            .app(bundleId: "com.apple.Terminal", tty: "ttys012"))
+        XCTAssertEqual(
+            try target(#"{"kind":"app","bundle_id":"com.apple.Terminal","tty":"x; rm"}"#),
+            .app(bundleId: "com.apple.Terminal"))
+        XCTAssertEqual(
+            try target(#"{"kind":"app","bundle_id":"com.apple.Terminal"}"#),
+            .app(bundleId: "com.apple.Terminal"))
+        let session = try d.decode(
+            AgentSession.self,
+            from: Data(
+                #"""
+                {"id":"s","project":"p","cwd":"/p","status":"idle","last_event_ms":0,"last_message":null,
+                 "app":"com.apple.Terminal","tty":"ttys004"}
+                """#.utf8))
         XCTAssertEqual(session.tty, "ttys004")
     }
 
@@ -2125,9 +2251,11 @@ final class TextContrastTests: XCTestCase {
     private func surfaces(dark: Bool) -> [(String, ColorMath.RGB)] {
         let panel = NT.Tone.panel.resolved(dark: dark, over: ColorMath.RGB(r: 0, g: 0, b: 0))
         let card = NT.Tone.fill.resolved(dark: dark, over: panel)
-        return [("panel", panel), ("card", card),
-                ("hover", NT.Tone.fillHi.resolved(dark: dark, over: panel)),
-                ("hover in card", NT.Tone.fill.resolved(dark: dark, over: card))]
+        return [
+            ("panel", panel), ("card", card),
+            ("hover", NT.Tone.fillHi.resolved(dark: dark, over: panel)),
+            ("hover in card", NT.Tone.fill.resolved(dark: dark, over: card)),
+        ]
     }
 
     func testTextTokensPassAAOnEverySurfaceInBothSchemes() {
@@ -2151,17 +2279,21 @@ final class TextContrastTests: XCTestCase {
     }
 
     func testCompositing() {
-        let w = ColorMath.RGB(r: 1, g: 1, b: 1), b = ColorMath.RGB(r: 0, g: 0, b: 0)
+        let w = ColorMath.RGB(r: 1, g: 1, b: 1)
+        let b = ColorMath.RGB(r: 0, g: 0, b: 0)
         XCTAssertEqual(ColorMath.over(w, alpha: 0.5, b), ColorMath.RGB(r: 0.5, g: 0.5, b: 0.5))
         XCTAssertEqual(ColorMath.over(w, alpha: 2, b), w)
         XCTAssertEqual(ColorMath.over(w, alpha: 0, b), b)
     }
 
     func testTheClosedNotchAndToastAreBlackUnlessAskedToMatchTheTheme() throws {
-        let src = try String(contentsOf: URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/LiteNotchUI/NotchRootView.swift"), encoding: .utf8)
-        XCTAssertTrue(src.contains("shape.fill(mode == .expanded || appearance.closedFollowsTheme(hardwareNotch: model.hasNotch) ? NT.panel : Color.black)"))
+        let src = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/LiteNotchUI/NotchRootView.swift"), encoding: .utf8)
+        XCTAssertTrue(
+            src.contains(
+                "shape.fill(mode == .expanded || appearance.closedFollowsTheme(hardwareNotch: model.hasNotch) ? NT.panel : Color.black)"))
     }
 }
 
@@ -2217,14 +2349,18 @@ final class CopyTests: XCTestCase {
 
     func testKeepAwakeTooltipSaysWhatHappensAndForHowLong() {
         XCTAssertEqual(KeepAwakeText.help(on: false, untilMs: nil, nowMs: 0), "Keep the Mac awake")
-        XCTAssertEqual(KeepAwakeText.help(on: true, untilMs: nil, nowMs: 0),
-                       "Keeping the Mac awake until you turn it off. Click to stop.")
-        XCTAssertEqual(KeepAwakeText.help(on: true, untilMs: 42 * 60_000 - 500, nowMs: 0),
-                       "Keeping the Mac awake, 42 min left. Click to stop.")
-        XCTAssertEqual(KeepAwakeText.help(on: true, untilMs: 90 * 60_000, nowMs: 0),
-                       "Keeping the Mac awake, 1h 30m left. Click to stop.")
-        XCTAssertEqual(KeepAwakeText.help(on: true, untilMs: 1_000, nowMs: 5_000),
-                       "Keeping the Mac awake, 1 min left. Click to stop.")
+        XCTAssertEqual(
+            KeepAwakeText.help(on: true, untilMs: nil, nowMs: 0),
+            "Keeping the Mac awake until you turn it off. Click to stop.")
+        XCTAssertEqual(
+            KeepAwakeText.help(on: true, untilMs: 42 * 60_000 - 500, nowMs: 0),
+            "Keeping the Mac awake, 42 min left. Click to stop.")
+        XCTAssertEqual(
+            KeepAwakeText.help(on: true, untilMs: 90 * 60_000, nowMs: 0),
+            "Keeping the Mac awake, 1h 30m left. Click to stop.")
+        XCTAssertEqual(
+            KeepAwakeText.help(on: true, untilMs: 1_000, nowMs: 5_000),
+            "Keeping the Mac awake, 1 min left. Click to stop.")
     }
 
     func testNoTrackedCapsLabelsInViews() throws {
@@ -2232,7 +2368,7 @@ final class CopyTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/LiteNotchUI")
         for f in try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
-            where f.pathExtension == "swift" {
+        where f.pathExtension == "swift" {
             let src = try String(contentsOf: f, encoding: .utf8)
             XCTAssertFalse(src.contains(".tracking("), f.lastPathComponent)
             XCTAssertFalse(src.contains(".uppercased())"), f.lastPathComponent)
@@ -2242,31 +2378,40 @@ final class CopyTests: XCTestCase {
 
 final class RoundTwoTests: XCTestCase {
     private func request(_ tool: String, _ summary: String) -> PermissionRequest {
-        PermissionRequest(id: "r", sessionId: "s", project: "LiteNotch", toolName: tool, summary: summary,
-                          detail: summary, createdMs: 0, expiresMs: 0)
+        PermissionRequest(
+            id: "r", sessionId: "s", project: "LiteNotch", toolName: tool, summary: summary,
+            detail: summary, createdMs: 0, expiresMs: 0)
     }
 
     func testApprovalHeadlineSaysWhatIsAsked() {
-        XCTAssertEqual(ApprovalPresentation.headline(request("Bash", "ls")),
-                       "Claude Code wants to run a command in LiteNotch")
-        XCTAssertEqual(ApprovalPresentation.headline(request("Edit", "/Users/me/src/main.rs")),
-                       "Claude Code wants to edit main.rs in LiteNotch")
-        XCTAssertEqual(ApprovalPresentation.headline(request("Write", "")),
-                       "Claude Code wants to edit a file in LiteNotch")
-        XCTAssertEqual(ApprovalPresentation.headline(request("WebSearch", "q")),
-                       "Claude Code wants to use WebSearch in LiteNotch")
+        XCTAssertEqual(
+            ApprovalPresentation.headline(request("Bash", "ls")),
+            "Claude Code wants to run a command in LiteNotch")
+        XCTAssertEqual(
+            ApprovalPresentation.headline(request("Edit", "/Users/me/src/main.rs")),
+            "Claude Code wants to edit main.rs in LiteNotch")
+        XCTAssertEqual(
+            ApprovalPresentation.headline(request("Write", "")),
+            "Claude Code wants to edit a file in LiteNotch")
+        XCTAssertEqual(
+            ApprovalPresentation.headline(request("WebSearch", "q")),
+            "Claude Code wants to use WebSearch in LiteNotch")
         // Invisible formatting cannot sneak into the headline either.
-        XCTAssertEqual(ApprovalPresentation.headline(request("Bash\u{202E}", "x")),
-                       "Claude Code wants to use Bash\u{FFFD} in LiteNotch")
+        XCTAssertEqual(
+            ApprovalPresentation.headline(request("Bash\u{202E}", "x")),
+            "Claude Code wants to use Bash\u{FFFD} in LiteNotch")
     }
 
     func testOverrunAndScheduleAndSourceTags() throws {
         XCTAssertEqual(Format.overrun(65), "1:05")
         XCTAssertEqual(Format.overrun(-65), "1:05 over")
         let p = try loadFixture("idle").settings.pomodoro
-        XCTAssertEqual(Format.scheduleLines(p),
-                       ["\(p.focusSecs / 60) min focus \u{00B7} \(p.shortBreakSecs / 60) min break",
-                        "\(p.longBreakSecs / 60) min long break every \(p.roundsBeforeLong) rounds"])
+        XCTAssertEqual(
+            Format.scheduleLines(p),
+            [
+                "\(p.focusSecs / 60) min focus \u{00B7} \(p.shortBreakSecs / 60) min break",
+                "\(p.longBreakSecs / 60) min long break every \(p.roundsBeforeLong) rounds",
+            ])
         XCTAssertEqual(Format.sourceTag("ci"), "CI")
         XCTAssertEqual(Format.sourceTag("agent"), "Agent")
         XCTAssertEqual(Format.sourceTag("Slack"), "Slack")
@@ -2306,10 +2451,12 @@ final class RoundTwoTests: XCTestCase {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         func png(_ w: Int, _ h: Int) throws -> String {
-            let rep = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
-                                                     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
-                                                     isPlanar: false, colorSpaceName: .deviceRGB,
-                                                     bytesPerRow: 0, bitsPerPixel: 0))
+            let rep = try XCTUnwrap(
+                NSBitmapImageRep(
+                    bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+                    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                    isPlanar: false, colorSpaceName: .deviceRGB,
+                    bytesPerRow: 0, bitsPerPixel: 0))
             let url = dir.appendingPathComponent("\(w)x\(h).png")
             try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: url)
             return url.path
@@ -2378,8 +2525,9 @@ final class AppearanceOptionsTests: XCTestCase {
         ]
         for (size, ear, bottom) in cases {
             let rect = CGRect(origin: .zero, size: size)
-            XCTAssertEqual(NotchShape(topRadius: ear, bottomRadius: bottom).path(in: rect),
-                           originalNotchPath(in: rect, top: ear, bottom: bottom), "\(size)")
+            XCTAssertEqual(
+                NotchShape(topRadius: ear, bottomRadius: bottom).path(in: rect),
+                originalNotchPath(in: rect, top: ear, bottom: bottom), "\(size)")
         }
     }
 
@@ -2392,8 +2540,10 @@ final class AppearanceOptionsTests: XCTestCase {
         XCTAssertFalse(path.contains(CGPoint(x: 60, y: 1.5)), "the inset is empty")
         XCTAssertTrue(path.contains(CGPoint(x: 60, y: 12)))
         // All four corners are rounded: the corner points of the capsule's box are outside it.
-        for corner in [CGPoint(x: 0.5, y: 3.5), CGPoint(x: 119.5, y: 3.5),
-                       CGPoint(x: 0.5, y: 20.5), CGPoint(x: 119.5, y: 20.5)] {
+        for corner in [
+            CGPoint(x: 0.5, y: 3.5), CGPoint(x: 119.5, y: 3.5),
+            CGPoint(x: 0.5, y: 20.5), CGPoint(x: 119.5, y: 20.5),
+        ] {
             XCTAssertFalse(path.contains(corner), "\(corner)")
         }
         // Odd sizes never produce a negative radius or a path outside the rect.
@@ -2422,8 +2572,10 @@ final class AppearanceOptionsTests: XCTestCase {
         }
         XCTAssertEqual(NotchGeometry.islandWingWidth(for: compact(.idle)), 0)
         for kind in [ActivityKind.pomodoro, .timer, .caffeine, .meeting, .media, .approval, .banner, .agent] {
-            let w = NotchGeometry.islandWingWidth(for: compact(kind, title: String(repeating: "long title ", count: 20),
-                                                                 value: String(repeating: "9", count: 40), count: 3))
+            let w = NotchGeometry.islandWingWidth(
+                for: compact(
+                    kind, title: String(repeating: "long title ", count: 20),
+                    value: String(repeating: "9", count: 40), count: 3))
             XCTAssertGreaterThanOrEqual(w, 30, "\(kind)")
             XCTAssertLessThanOrEqual(w, 80, "\(kind)")
         }
@@ -2432,10 +2584,13 @@ final class AppearanceOptionsTests: XCTestCase {
     func testThePanelFollowsTheNotchStyleSetting() throws {
         let attached = try panel()
         XCTAssertFalse(attached.layout.island)
-        XCTAssertEqual(attached.targetSize,
-                       NotchGeometry.closedSize(notch: attached.notch,
-                                                wing: NotchGeometry.wingWidth(for: ClosedContent(view: attached.view),
-                                                                              island: false)))
+        XCTAssertEqual(
+            attached.targetSize,
+            NotchGeometry.closedSize(
+                notch: attached.notch,
+                wing: NotchGeometry.wingWidth(
+                    for: ClosedContent(view: attached.view),
+                    island: false)))
         XCTAssertTrue(attached.shapeContains(CGPoint(x: 1, y: 0)))
 
         let island = try panel { $0.appearance.notchStyle = .island }
@@ -2445,8 +2600,9 @@ final class AppearanceOptionsTests: XCTestCase {
         XCTAssertEqual(island.targetSize.height, 3 + 18, "a capsule inside a 24 pt menu bar")
         XCTAssertLessThan(island.targetSize.width, attached.targetSize.width)
         island.open()
-        XCTAssertEqual(island.targetSize.height,
-                       24 + NotchGeometry.islandPanelDrop + NotchGeometry.expandedSize.height)
+        XCTAssertEqual(
+            island.targetSize.height,
+            24 + NotchGeometry.islandPanelDrop + NotchGeometry.expandedSize.height)
         // Above the open panel the menu bar stays usable except under the notch.
         XCTAssertFalse(island.shapeContains(CGPoint(x: 5, y: 5)))
         XCTAssertTrue(island.shapeContains(CGPoint(x: island.targetSize.width / 2, y: 5)))
@@ -2465,13 +2621,16 @@ final class AppearanceOptionsTests: XCTestCase {
         XCTAssertEqual(d.closedScheme(system: .light), .dark)
 
         // Every combination survives the trip to the core and back.
-        let encoder = JSONEncoder(); encoder.keyEncodingStrategy = .convertToSnakeCase
-        let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
         for style in [NotchStyle.attached, .island] {
             for closed in [ClosedNotchChoice.dark, .theme] {
                 for material in [MaterialChoice.solid, .glass] {
-                    let a = AppearanceConfig(theme: .light, accent: "#30D158", notchStyle: style,
-                                             closedNotch: closed, material: material)
+                    let a = AppearanceConfig(
+                        theme: .light, accent: "#30D158", notchStyle: style,
+                        closedNotch: closed, material: material)
                     XCTAssertEqual(try decoder.decode(AppearanceConfig.self, from: encoder.encode(a)), a)
                     // Each option only decides its own part.
                     XCTAssertEqual(a.closedFollowsTheme(hardwareNotch: false), closed == .theme)
@@ -2490,9 +2649,10 @@ final class AppearanceOptionsTests: XCTestCase {
         glass.material = .glass
         XCTAssertFalse(glass.drawsGlass(approvalPending: !vm.agents.pending.isEmpty))
         // The view asks exactly that question.
-        let src = try String(contentsOf: URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/LiteNotchUI/NotchRootView.swift"), encoding: .utf8)
+        let src = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/LiteNotchUI/NotchRootView.swift"), encoding: .utf8)
         XCTAssertTrue(src.contains("let approvalPending = !(model.view?.agents.pending.isEmpty ?? true)"))
         XCTAssertTrue(src.contains("appearance.drawsGlass(approvalPending: approvalPending)"))
         // The closed notch and the toast ask it too.
@@ -2505,17 +2665,21 @@ final class AppearanceOptionsTests: XCTestCase {
         _ = NT.setAccent("#FFD60A")
         defer { _ = NT.setAccent(AppearanceConfig.defaultAccent) }
         let colour = NSColor(NT.accentText)
-        let dark = colour.resolved(dark: true), light = colour.resolved(dark: false)
+        let dark = colour.resolved(dark: true)
+        let light = colour.resolved(dark: false)
         XCTAssertNotEqual(dark, light, "a pale accent is darkened on a light surface")
         XCTAssertEqual(colour.resolved(dark: true), dark, "stable for the same scheme")
     }
 
     func testSnapshotsCoverTheNewLooks() throws {
-        let src = try String(contentsOf: URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/LiteNotchUI/SnapshotRenderer.swift"), encoding: .utf8)
-        for name in ["island-\\(name)-closed", "island-notchless-pomodoro-expanded-home",
-                     "light-matched-\\(name)-closed", "dark-matched-\\(name)-closed", "glass-media-expanded-home"] {
+        let src = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/LiteNotchUI/SnapshotRenderer.swift"), encoding: .utf8)
+        for name in [
+            "island-\\(name)-closed", "island-notchless-pomodoro-expanded-home",
+            "light-matched-\\(name)-closed", "dark-matched-\\(name)-closed", "glass-media-expanded-home",
+        ] {
             XCTAssertTrue(src.contains(name), name)
         }
     }

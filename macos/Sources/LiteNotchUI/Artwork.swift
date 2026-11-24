@@ -25,7 +25,10 @@ enum ArtworkCache {
             Thumbnails.downsample(path, px: pixels, maxSourceSide: Thumbnails.maxSourceSide)
         }.value
         let img = cg.map { NSImage(cgImage: $0, size: .zero) }
-        await MainActor.run { self.path = path; image = img }
+        await MainActor.run {
+            self.path = path
+            image = img
+        }
         return img
     }
 
@@ -56,9 +59,12 @@ struct ArtworkView: View {
                     .aspectRatio(contentMode: .fill)
             } else {
                 ZStack {
-                    LinearGradient(colors: [NT.text1.opacity(dimmed ? 0.10 : 0.20),
-                                            NT.text1.opacity(dimmed ? 0.04 : 0.07)],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                    LinearGradient(
+                        colors: [
+                            NT.text1.opacity(dimmed ? 0.10 : 0.20),
+                            NT.text1.opacity(dimmed ? 0.04 : 0.07),
+                        ],
+                        startPoint: .topLeading, endPoint: .bottomTrailing)
                     Image(systemName: "music.note")
                         .font(.system(size: size * 0.40, weight: .semibold))
                         .foregroundStyle(dimmed ? NT.text3 : NT.text2)
@@ -120,9 +126,13 @@ struct MediaControls: View {
 
     var body: some View {
         HStack(spacing: spacing) {
-            IconButton(symbol: "backward.fill", label: "Previous", size: size * 0.42, tint: NT.text1,
-                       frame: size) { send(.media(.previous)) }
-            Button { send(.media(.playPause)) } label: {
+            IconButton(
+                symbol: "backward.fill", label: "Previous", size: size * 0.42, tint: NT.text1,
+                frame: size
+            ) { send(.media(.previous)) }
+            Button {
+                send(.media(.playPause))
+            } label: {
                 Image(systemName: media.playing ? "pause.fill" : "play.fill")
                     .glyph(size * 0.42, .bold).foregroundStyle(NT.panel)
                     .frame(width: size, height: size)
@@ -133,8 +143,10 @@ struct MediaControls: View {
             .buttonStyle(.plain)
             .help(media.playing ? "Pause" : "Play")
             .accessibilityLabel(Text(verbatim: media.playing ? "Pause" : "Play"))
-            IconButton(symbol: "forward.fill", label: "Next", size: size * 0.42, tint: NT.text1,
-                       frame: size) { send(.media(.next)) }
+            IconButton(
+                symbol: "forward.fill", label: "Next", size: size * 0.42, tint: NT.text1,
+                frame: size
+            ) { send(.media(.next)) }
         }
     }
 }
@@ -182,14 +194,18 @@ struct RingShape: Shape {
         let r = min(radius, min(rect.width, rect.height) / 2)
         var p = Path()
         p.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        p.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.minY),
-                 tangent2End: CGPoint(x: rect.maxX, y: rect.maxY), radius: r)
-        p.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.maxY),
-                 tangent2End: CGPoint(x: rect.minX, y: rect.maxY), radius: r)
-        p.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.maxY),
-                 tangent2End: CGPoint(x: rect.minX, y: rect.minY), radius: r)
-        p.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.minY),
-                 tangent2End: CGPoint(x: rect.midX, y: rect.minY), radius: r)
+        p.addArc(
+            tangent1End: CGPoint(x: rect.maxX, y: rect.minY),
+            tangent2End: CGPoint(x: rect.maxX, y: rect.maxY), radius: r)
+        p.addArc(
+            tangent1End: CGPoint(x: rect.maxX, y: rect.maxY),
+            tangent2End: CGPoint(x: rect.minX, y: rect.maxY), radius: r)
+        p.addArc(
+            tangent1End: CGPoint(x: rect.minX, y: rect.maxY),
+            tangent2End: CGPoint(x: rect.minX, y: rect.minY), radius: r)
+        p.addArc(
+            tangent1End: CGPoint(x: rect.minX, y: rect.minY),
+            tangent2End: CGPoint(x: rect.midX, y: rect.minY), radius: r)
         p.closeSubpath()
         return p
     }
@@ -198,7 +214,8 @@ struct RingShape: Shape {
 /// How far through the track, 0...1, at `nowMs`.
 func mediaFraction(_ media: MediaView, nowMs: Int) -> Double {
     guard let dur = media.durationMs, dur > 0,
-          let pos = Format.mediaPosition(media, nowMs: nowMs) else { return 0 }
+        let pos = Format.mediaPosition(media, nowMs: nowMs)
+    else { return 0 }
     return min(1, max(0, Double(pos) / Double(dur)))
 }
 
@@ -281,7 +298,8 @@ final class ProgressRingNSView: NSView {
         fillLayer.strokeColor = fill
         trackLayer.strokeColor = track
         if radius != self.radius || line != self.line {
-            self.radius = radius; self.line = line
+            self.radius = radius
+            self.line = line
             needsLayout = true
         }
         let key = [media.positionMs ?? -1, media.positionAtMs, media.durationMs ?? -1, media.playing ? 1 : 0]

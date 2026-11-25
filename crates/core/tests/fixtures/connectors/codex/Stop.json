@@ -1,0 +1,11 @@
+{
+  "session_id": "019e0000-aaaa-7bbb-8ccc-000000000001",
+  "transcript_path": "/Users/me/.codex/sessions/rollout.jsonl",
+  "cwd": "/Users/me/proj",
+  "model": "gpt-5-codex",
+  "permission_mode": "default",
+  "hook_event_name": "Stop",
+  "turn_id": "turn-1",
+  "stop_hook_active": false,
+  "last_assistant_message": "Parser refactored; tests pass."
+}

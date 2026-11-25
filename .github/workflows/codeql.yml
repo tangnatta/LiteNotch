@@ -38,7 +38,7 @@ jobs:
         # used in a job-level `if`, so the list itself depends on the event).
         include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"language":"actions","build-mode":"none","os":"ubuntu-latest"},{"language":"c-cpp","build-mode":"none","os":"ubuntu-latest"},{"language":"rust","build-mode":"none","os":"ubuntu-latest"}]' || '[{"language":"actions","build-mode":"none","os":"ubuntu-latest"},{"language":"c-cpp","build-mode":"none","os":"ubuntu-latest"},{"language":"rust","build-mode":"none","os":"ubuntu-latest"},{"language":"swift","build-mode":"manual","os":"macos-latest"}]') }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -56,7 +56,7 @@ jobs:
         name: Build the Rust library the shell links against
         run: cargo build --locked --release --target x86_64-apple-darwin -p litenotch-app
 
-      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+      - uses: github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -67,6 +67,6 @@ jobs:
           LITENOTCH_RUST_LIB="$PWD/target/x86_64-apple-darwin/release" \
             swift build --package-path macos --arch x86_64
 
-      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+      - uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4
         with:
           category: /language:${{ matrix.language }}

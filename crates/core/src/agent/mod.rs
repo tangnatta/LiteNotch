@@ -96,7 +96,8 @@ const MAX_OPTIONS: usize = 8;
 const MAX_QUESTION_CHARS: usize = 300;
 const MAX_HEADER_CHARS: usize = 30;
 const MAX_LABEL_CHARS: usize = 80;
-const MAX_OPTION_NOTE_CHARS: usize = 200;
+/// The shell shows the first 200 and a "More" button for the rest.
+const MAX_OPTION_NOTE_CHARS: usize = 1000;
 /// Most answers one multiple-choice question takes: its options plus the user's own.
 const MAX_ANSWERS: usize = 16;
 /// Longest typed answer, in chars.
@@ -104,7 +105,9 @@ pub const MAX_ANSWER_CHARS: usize = 500;
 
 /// The questions of an `AskUserQuestion` input, or none if it is not shaped
 /// as expected (the prompt then falls back to the plain detail view). Also
-/// none when anything would be cut short: a question must be read in full.
+/// none when the question, a header or a label would be cut short: those must
+/// be read in full. An option's note is only a hint (the answer is its
+/// label), so a long one is shortened with an ellipsis instead.
 fn parse_questions(input: &Value) -> Vec<Question> {
     let Some(items) = input.get("questions").and_then(Value::as_array) else {
         return Vec::new();
@@ -136,12 +139,18 @@ fn parse_questions(input: &Value) -> Vec<Question> {
         }
         let mut options = Vec::new();
         for o in raw_options {
-            let (Some(label), Some(description)) = (
-                text(o.get("label"), MAX_LABEL_CHARS).filter(|l| !l.is_empty()),
-                text(o.get("description"), MAX_OPTION_NOTE_CHARS),
-            ) else {
+            let Some(label) = text(o.get("label"), MAX_LABEL_CHARS).filter(|l| !l.is_empty())
+            else {
                 return Vec::new();
             };
+            let description = shorten(
+                &sanitize(
+                    o.get("description")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                ),
+                MAX_OPTION_NOTE_CHARS,
+            );
             options.push(QuestionOption { label, description });
         }
         out.push(Question {
@@ -155,6 +164,15 @@ fn parse_questions(input: &Value) -> Vec<Question> {
         });
     }
     out
+}
+
+/// `s` cut to `max` chars, the last one an ellipsis, if it is longer.
+fn shorten(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let head: String = s.chars().take(max.saturating_sub(1)).collect();
+    format!("{}\u{2026}", head.trim_end())
 }
 
 /// The hook is registered with a 130 s timeout, after which the agent kills
@@ -1230,6 +1248,21 @@ mod tests {
             "header":"h","options":[]})).collect::<Vec<_>>()});
         a.on_hook(&perm("u", "AskUserQuestion", many), 0);
         assert!(a.pending()[2].questions.is_empty());
+    }
+
+    #[test]
+    fn a_long_option_note_is_shortened_not_a_reason_to_drop_the_choices() {
+        let mut a = agents();
+        let mut input = ask(false);
+        input["questions"][0]["options"][0]["description"] =
+            json!("word ".repeat(MAX_OPTION_NOTE_CHARS));
+        a.on_hook(&perm("s", "AskUserQuestion", input), 0);
+        let q = &a.pending()[0].questions;
+        assert_eq!(q.len(), 2, "still shown as questions");
+        let note = &q[0].options[0].description;
+        assert!(note.chars().count() <= MAX_OPTION_NOTE_CHARS);
+        assert!(note.ends_with('\u{2026}'));
+        assert_eq!(q[0].options[1].description, "embedded");
     }
 
     #[test]

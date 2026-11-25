@@ -244,9 +244,11 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   whose format is internal to Claude Code and may change.
 - **Questions** (`AskUserQuestion`): the `PermissionRequest` for that tool
   carries `questions` (`agent::Question`: header, text, `multi_select`,
-  options), parsed and sanitized by `parse_questions`; anything that would be
-  cut short (over 4 questions, 8 options, or the length caps) gives none and
-  the prompt falls back to the plain detail view. The shell answers with
+  options), parsed and sanitized by `parse_questions`; a question, header or label
+  that would be cut short (over 4 questions, 8 options, or the length caps)
+  gives none and the prompt falls back to the plain detail view; an option's
+  note over 1000 chars is only shortened with an ellipsis (the answer is the label);
+  the shell shows 200 of it and a More / Less button (`QuestionDraft.shownNote`). The shell answers with
   `agent_answer` (one list of labels or typed text per question); the core
   checks the shape and lengths (`Agents::answer`, no answer = request stays
   pending) and the CLI prints `allow` with `updatedInput` = the original input

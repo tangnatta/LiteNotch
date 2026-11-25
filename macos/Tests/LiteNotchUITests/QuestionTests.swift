@@ -183,4 +183,20 @@ final class QuestionTests: XCTestCase {
         XCTAssertEqual(d.answers[0].count, QuestionDraft.maxAnswers)
         XCTAssertFalse(d.canAdd(0))
     }
+
+    func testALongNoteShowsTwoHundredCharactersUntilMoreIsPressed() {
+        var d = QuestionDraft(questions())
+        let long = String(repeating: "word ", count: 100)
+        XCTAssertTrue(QuestionDraft.isLongNote(long))
+        XCTAssertFalse(QuestionDraft.isLongNote("short"))
+        let short = d.shownNote(long, 0, 0)
+        XCTAssertLessThanOrEqual(short.count, QuestionDraft.noteLimit)
+        XCTAssertTrue(short.hasSuffix("\u{2026}"))
+        XCTAssertEqual(d.shownNote("short", 0, 0), "short")
+        d.toggleNote(0, 0)
+        XCTAssertEqual(d.shownNote(long, 0, 0), long)
+        XCTAssertEqual(d.shownNote(long, 0, 1).count, short.count, "other options stay short")
+        d.toggleNote(0, 0)
+        XCTAssertEqual(d.shownNote(long, 0, 0), short)
+    }
 }

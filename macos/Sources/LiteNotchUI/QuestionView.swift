@@ -13,6 +13,10 @@ public struct QuestionDraft: Equatable {
     public static let maxAnswers = 16
     /// The question on screen; several questions are asked one at a time.
     public private(set) var step = 0
+    /// Option notes opened in full ("question.option"); the rest show
+    /// `noteLimit` characters and a "More" button.
+    public private(set) var expandedNotes: Set<String> = []
+    public static let noteLimit = 200
     private let multi: [Bool]
     private let open: [Bool]
 
@@ -31,6 +35,19 @@ public struct QuestionDraft: Equatable {
     /// No choices to pick from: the typed line is the whole answer.
     public func isOpen(_ q: Int) -> Bool { open.indices.contains(q) && open[q] }
     public func isMulti(_ q: Int) -> Bool { multi.indices.contains(q) && multi[q] }
+    /// The note has more than the short view shows.
+    public static func isLongNote(_ note: String) -> Bool { note.count > noteLimit }
+    public func isExpanded(_ q: Int, _ i: Int) -> Bool { expandedNotes.contains("\(q).\(i)") }
+    public mutating func toggleNote(_ q: Int, _ i: Int) {
+        let key = "\(q).\(i)"
+        if !expandedNotes.insert(key).inserted { expandedNotes.remove(key) }
+    }
+    /// What to draw of a note: all of it when opened, else the first
+    /// `noteLimit` characters ending in an ellipsis.
+    public func shownNote(_ note: String, _ q: Int, _ i: Int) -> String {
+        guard Self.isLongNote(note), !isExpanded(q, i) else { return note }
+        return String(note.prefix(Self.noteLimit - 1)).trimmingCharacters(in: .whitespaces) + "\u{2026}"
+    }
     public mutating func next() { if currentAnswered, !isLast { step += 1 } }
     public mutating func back() { if step > 0 { step -= 1 } }
 
@@ -231,14 +248,37 @@ struct QuestionForm: View {
             }
             VText(question.question).nfont(.emphasis).foregroundStyle(NT.text1)
                 .fixedSize(horizontal: false, vertical: true)
-            ForEach(Array(question.options.enumerated()), id: \.offset) { _, option in
-                optionRow(q, question, option)
+            ForEach(Array(question.options.enumerated()), id: \.offset) { i, option in
+                optionRow(q, i, question, option)
             }
             ForEach(Array(draft.extras[q].enumerated()), id: \.offset) { i, text in
                 extraRow(q, i, text)
             }
             otherField(q, roomy: draft.isOpen(q), multi: question.multiSelect)
         }
+    }
+
+    /// The option's text: label, its note, and for a long note an inline
+    /// "More" / "Less" link at the end. A link, not a button, because the
+    /// whole row is the choice and a button cannot sit inside a button.
+    private func optionText(_ q: Int, _ i: Int, _ option: QuestionOption) -> AttributedString {
+        var label = AttributedString(ApprovalPresentation.visible(option.label))
+        label.font = NType.bodyMedium.font
+        label.foregroundColor = NT.text1
+        guard !option.description.isEmpty else { return label }
+        let shown = draft.shownNote(option.description, q, i)
+        var note = AttributedString("  " + ApprovalPresentation.visible(shown))
+        note.font = NType.caption.font
+        note.foregroundColor = NT.text2
+        label.append(note)
+        if QuestionDraft.isLongNote(option.description) {
+            var more = AttributedString(draft.isExpanded(q, i) ? " Less" : " More")
+            more.font = NType.captionStrong.font
+            more.foregroundColor = NT.accent
+            more.link = URL(string: "litenotch-note://\(q).\(i)")
+            label.append(more)
+        }
+        return label
     }
 
     /// An answer of the user's own, added to a multiple-choice question.
@@ -256,27 +296,32 @@ struct QuestionForm: View {
         .background(NT.fillHi, in: RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
     }
 
-    private func optionRow(_ q: Int, _ question: AgentQuestion, _ option: QuestionOption) -> some View {
+    private func optionRow(_ q: Int, _ i: Int, _ question: AgentQuestion, _ option: QuestionOption) -> some View {
         let on = draft.picked[q].contains(option.label)
         let symbol =
             question.multiSelect
             ? (on ? "checkmark.square.fill" : "square")
             : (on ? "largecircle.fill.circle" : "circle")
         let clickMoves = draft.movesOnClick(q)
-        return Button {
+        let choose = {
             draft.toggle(option.label, in: q)
             if clickMoves { advance() }
-        } label: {
+        }
+        return
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: symbol).glyph(12, .regular)
                     .foregroundStyle(on ? NT.accent : NT.text2)
                 // Label and its note share a line (and wrap together): a
                 // list of choices has to fit the panel without scrolling.
-                (VText(ApprovalPresentation.visible(option.label)).font(NType.bodyMedium.font).foregroundColor(NT.text1)
-                    + VText(option.description.isEmpty ? "" : "  " + ApprovalPresentation.visible(option.description))
-                    .font(NType.caption.font).foregroundColor(NT.text2))
-                    .lineLimit(2)
+                Text(optionText(q, i, option))
+                    .lineLimit(QuestionDraft.isLongNote(option.description) || draft.isExpanded(q, i) ? nil : 2)
                     .fixedSize(horizontal: false, vertical: true)
+                    .environment(
+                        \.openURL,
+                        OpenURLAction { _ in
+                            draft.toggleNote(q, i)
+                            return .handled
+                        })
                 Spacer(minLength: 0)
             }
             .padding(.vertical, 3).padding(.horizontal, 8)
@@ -287,11 +332,14 @@ struct QuestionForm: View {
             )
             .contentShape(Rectangle())
             .controlHover(RoundedRectangle(cornerRadius: NT.radiusControl, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(clickMoves && !live)
-        .accessibilityLabel(Text(verbatim: option.label))
-        .accessibilityAddTraits(on ? .isSelected : [])
+            .onTapGesture(perform: choose)
+            .disabled(clickMoves && !live)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(verbatim: option.label))
+            .accessibilityHint(Text(verbatim: option.description))
+            .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction(named: Text(verbatim: "Choose"), choose)
+            .accessibilityAction(.default, choose)
     }
 
     /// Under choices: one line, "Something else…". With no choices at all

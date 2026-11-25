@@ -418,8 +418,12 @@ scripts/         build-app.sh, bench.sh, coverage.sh
 - `.github/workflows/release.yml` runs on a `v*` tag. The tag must equal the
   `version` in the root `Cargo.toml`. It tests, builds, zips
   `LiteNotch-<version>-arm64.zip`, publishes a GitHub pre-release, then
-  rewrites `version` and `sha256` in `Casks/litenotch.rb` of the tap
-  repository `tangnatta/homebrew-litenotch` and pushes that.
+  rewrites `version` and `sha256` of the tap repository
+  `tangnatta/homebrew-litenotch` and pushes that: a plain version updates
+  `Casks/litenotch.rb` (stable), one with a suffix (`-beta`) updates
+  `Casks/litenotch@beta.rb` (created from the stable cask the first time; the
+  two `conflicts_with` each other). Beta: `brew install --cask
+  tangnatta/litenotch/litenotch@beta`.
 - `main` is protected: every change goes through a branch and a pull request
   that passes CI (`rust`, `app`) and is reviewed; never push to `main`.
 - To release: bump `version` in `Cargo.toml` and add a `## <version>` section to

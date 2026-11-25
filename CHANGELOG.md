@@ -4,7 +4,7 @@ What changed in each release. The release workflow copies the section whose
 heading is the version (`## 0.2.4-beta`) into the GitHub release notes, so add
 the section in the pull request that bumps the version in `Cargo.toml`.
 
-## 0.2.5-beta
+## 0.2.5
 
 ### New
 - **Launch at login.** Settings › General › Launch at login starts LiteNotch

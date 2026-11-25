@@ -44,7 +44,13 @@ impl std::error::Error for InstallError {}
 /// The hook command line. The path is single-quoted so the shell takes it
 /// literally, whatever characters the install location contains.
 fn command_for(cli_path: &str) -> String {
-    format!("'{}' hook", cli_path.replace('\'', "'\\''"))
+    command_with(cli_path, "")
+}
+
+/// The hook command line with `tail` after `hook` (` --agent codex`): how
+/// the other agents' connectors tell the CLI who is calling.
+pub(crate) fn command_with(cli_path: &str, tail: &str) -> String {
+    format!("'{}' hook{tail}", cli_path.replace('\'', "'\\''"))
 }
 
 /// Splits a shell word in single quotes (as `command_for` writes it) off the
@@ -72,16 +78,18 @@ pub(crate) fn is_litenotch_cli(path: &str) -> bool {
     path.rsplit('/').next() == Some("litenotch")
 }
 
-/// The CLI path of a LiteNotch hook command (`'<path>/litenotch' hook`), from
-/// any copy of the app; `None` for anything else.
-fn litenotch_hook_cli(command: &str) -> Option<String> {
+/// The CLI path of a LiteNotch hook command (`'<path>/litenotch' hook`, or
+/// `… hook --agent <name> [--event <Name>]` for another agent's connector),
+/// from any copy of the app; `None` for anything else.
+pub(crate) fn litenotch_hook_cli(command: &str) -> Option<String> {
     let (path, rest) = leading_quoted(command)?;
-    (rest == " hook" && is_litenotch_cli(&path)).then_some(path)
+    let ours = rest == " hook" || rest.starts_with(" hook --agent ");
+    (ours && is_litenotch_cli(&path)).then_some(path)
 }
 
 /// Removes hook entries whose command `drop` accepts, and the groups and
 /// events that this empties. Returns whether anything was removed.
-fn remove_hooks(root: &mut Map<String, Value>, drop: impl Fn(&str) -> bool) -> bool {
+pub(crate) fn remove_hooks(root: &mut Map<String, Value>, drop: impl Fn(&str) -> bool) -> bool {
     let mut any = false;
     let mut hooks_now_empty = false;
     if let Some(hooks) = root.get_mut("hooks").and_then(Value::as_object_mut) {
@@ -154,7 +162,7 @@ pub fn remove_other_hooks(settings_json: &str, cli_path: &str) -> Result<String,
     Ok(render(root))
 }
 
-fn parse_root(settings_json: &str) -> Result<Map<String, Value>, InstallError> {
+pub(crate) fn parse_root(settings_json: &str) -> Result<Map<String, Value>, InstallError> {
     if settings_json.trim().is_empty() {
         return Ok(Map::new());
     }
@@ -165,12 +173,12 @@ fn parse_root(settings_json: &str) -> Result<Map<String, Value>, InstallError> {
     }
 }
 
-fn render(root: Map<String, Value>) -> String {
+pub(crate) fn render(root: Map<String, Value>) -> String {
     // Serializing a Value cannot fail; the fallback only avoids an unwrap.
     serde_json::to_string_pretty(&Value::Object(root)).unwrap_or_else(|_| "{}".to_owned())
 }
 
-fn group_has_command(group: &Value, cmd: &str) -> bool {
+pub(crate) fn group_has_command(group: &Value, cmd: &str) -> bool {
     group
         .get("hooks")
         .and_then(Value::as_array)
@@ -183,10 +191,26 @@ fn group_has_command(group: &Value, cmd: &str) -> bool {
 /// Adds LiteNotch hooks to `settings_json`, replacing those of any other
 /// copy of LiteNotch and keeping everything else; idempotent.
 pub fn install(settings_json: &str, cli_path: &str) -> Result<String, InstallError> {
+    install_events(settings_json, cli_path, &EVENTS, Some("*"), 1, |_| {
+        command_for(cli_path)
+    })
+}
+
+/// The shared installer: one group per event in `hooks.<Event>`, each
+/// holding one command hook. `matcher` is written when given;
+/// `timeout_unit` turns the table's seconds into the agent's unit
+/// (1000 for milliseconds); `command_for_event` builds the command line.
+pub(crate) fn install_events(
+    settings_json: &str,
+    cli_path: &str,
+    events: &[(&str, u64)],
+    matcher: Option<&str>,
+    timeout_unit: u64,
+    command_for_event: impl Fn(&str) -> String,
+) -> Result<String, InstallError> {
     if cli_path.is_empty() {
         return Err(InstallError::EmptyCliPath);
     }
-    let cmd = command_for(cli_path);
     let mut root = parse_root(settings_json)?;
     // One copy of LiteNotch at a time: another copy's hooks would run as
     // well, on every event, and report to this one.
@@ -198,19 +222,25 @@ pub fn install(settings_json: &str, cli_path: &str) -> Result<String, InstallErr
         .or_insert_with(|| Value::Object(Map::new()))
         .as_object_mut()
         .ok_or(InstallError::BadHooksShape)?;
-    for (event, timeout) in EVENTS {
+    for (event, timeout) in events {
+        let cmd = command_for_event(event);
         let groups = hooks
-            .entry(event)
+            .entry(*event)
             .or_insert_with(|| Value::Array(Vec::new()))
             .as_array_mut()
             .ok_or(InstallError::BadHooksShape)?;
         if groups.iter().any(|g| group_has_command(g, &cmd)) {
             continue;
         }
-        groups.push(json!({
-            "matcher": "*",
-            "hooks": [{"type": "command", "command": cmd, "timeout": timeout}]
-        }));
+        let mut group = Map::new();
+        if let Some(m) = matcher {
+            group.insert("matcher".into(), json!(m));
+        }
+        group.insert(
+            "hooks".into(),
+            json!([{"type": "command", "command": cmd, "timeout": timeout * timeout_unit}]),
+        );
+        groups.push(Value::Object(group));
     }
     Ok(render(root))
 }
@@ -225,14 +255,22 @@ pub fn uninstall(settings_json: &str, cli_path: &str) -> Result<String, InstallE
 
 /// True when every LiteNotch event is registered for `cli_path`.
 pub fn is_installed(settings_json: &str, cli_path: &str) -> bool {
-    let cmd = command_for(cli_path);
+    events_installed(settings_json, &EVENTS, |_| command_for(cli_path))
+}
+
+pub(crate) fn events_installed(
+    settings_json: &str,
+    events: &[(&str, u64)],
+    command_for_event: impl Fn(&str) -> String,
+) -> bool {
     let Ok(root) = parse_root(settings_json) else {
         return false;
     };
     let Some(hooks) = root.get("hooks").and_then(Value::as_object) else {
         return false;
     };
-    EVENTS.iter().all(|(event, _)| {
+    events.iter().all(|(event, _)| {
+        let cmd = command_for_event(event);
         hooks
             .get(*event)
             .and_then(Value::as_array)

@@ -7,14 +7,13 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use litenotch_core::agent::{allow_with_input_output, decision_output};
+use litenotch_core::agent::connector::{self, Agent};
 use litenotch_core::ipc::{self, Request, Response, MAX_REQUEST_BYTES};
 use litenotch_core::notify::Priority;
-use litenotch_files::hooks_file;
+use litenotch_files::hooks_file::{self, AgentDirs};
 use serde_json::Value;
 
 pub const USAGE: &str = "\
@@ -24,12 +23,16 @@ USAGE:
   litenotch notify <title> [body] [--priority low|normal|high] [--source NAME]
                    [--group KEY] [--ttl SECONDS]
   litenotch status                 Show what the notch is doing (JSON)
-  litenotch hooks install          Register LiteNotch in ~/.claude/settings.json
-  litenotch hooks uninstall        Remove it again
-  litenotch hooks status           Say whether it is registered
+  litenotch hooks install [--agent A]    Register LiteNotch with a coding agent
+  litenotch hooks uninstall [--agent A]  Remove it again
+  litenotch hooks status [--agent A]     Say whether it is registered
+                                   A: claude (default), codex, gemini,
+                                   antigravity, or all (those installed)
   litenotch statusline [-- CMD…]   Claude Code status line; feeds usage to the
                                    notch and prints it (after CMD's output)
-  litenotch hook                   Claude Code hook entry point (reads stdin)
+  litenotch hook [--agent A [--event E]]
+                                   Hook entry point (reads stdin); Claude Code
+                                   unless --agent says which agent is calling
 ";
 
 /// Longest wait for an approval: just under the 130 s hook timeout, after
@@ -43,6 +46,8 @@ pub struct Env {
     pub socket: Option<String>,
     /// `CLAUDE_CONFIG_DIR`: Claude Code's configuration directory.
     pub claude_dir: Option<String>,
+    /// `CODEX_HOME`: Codex's configuration directory.
+    pub codex_dir: Option<String>,
     /// Path of this executable, as registered in hooks.
     pub exe: String,
     /// `__CFBundleIdentifier`: the app this process was started from (the
@@ -64,6 +69,7 @@ impl Env {
             claude_dir: std::env::var("CLAUDE_CONFIG_DIR")
                 .ok()
                 .filter(|s| !s.is_empty()),
+            codex_dir: std::env::var("CODEX_HOME").ok().filter(|s| !s.is_empty()),
             exe: std::env::current_exe()
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_else(|_| "litenotch".to_string()),
@@ -80,11 +86,12 @@ impl Env {
             .unwrap_or_else(|| ipc::socket_path(&ipc::data_dir(&self.home)))
     }
 
-    fn claude_dir(&self) -> PathBuf {
-        match &self.claude_dir {
-            Some(dir) => PathBuf::from(dir),
-            None => PathBuf::from(&self.home).join(".claude"),
-        }
+    fn dirs(&self) -> AgentDirs {
+        AgentDirs::new(
+            &self.home,
+            self.claude_dir.as_deref(),
+            self.codex_dir.as_deref(),
+        )
     }
 }
 
@@ -154,7 +161,7 @@ pub fn run(
 ) -> i32 {
     let rest: Vec<&str> = args.iter().skip(1).map(String::as_str).collect();
     match args.first().map(String::as_str) {
-        Some("hook") => hook(env, stdin, stdout),
+        Some("hook") => hook(env, &rest, stdin, stdout),
         Some("statusline") => statusline(env, &rest, stdin, stdout),
         Some("notify") => notify(env, &rest, stdout, stderr),
         Some("status") => status(env, stdout, stderr),
@@ -234,8 +241,34 @@ pub fn controlling_tty() -> Option<String> {
     None
 }
 
-fn hook(env: &Env, stdin: &mut dyn Read, stdout: &mut dyn Write) -> i32 {
-    let Some(mut payload) = read_input(stdin) else {
+/// The value after `name` in `rest` (`--agent codex`).
+fn option<'a>(rest: &[&'a str], name: &str) -> Option<&'a str> {
+    rest.iter()
+        .position(|a| *a == name)
+        .and_then(|i| rest.get(i + 1).copied())
+}
+
+fn hook(env: &Env, rest: &[&str], stdin: &mut dyn Read, stdout: &mut dyn Write) -> i32 {
+    let agent = match option(rest, "--agent") {
+        None => Agent::Claude,
+        Some(flag) => match Agent::from_flag(flag) {
+            Some(agent) => agent,
+            None => return 0,
+        },
+    };
+    let event = option(rest, "--event");
+    // Whatever happens below, an agent that insists on an answer gets one.
+    let say_default = |stdout: &mut dyn Write| {
+        if let Some(output) = connector::default_output(agent, event) {
+            let _ = writeln!(stdout, "{output}");
+        }
+    };
+    let Some(payload) = read_input(stdin) else {
+        say_default(stdout);
+        return 0;
+    };
+    let Some(mut payload) = connector::normalize(agent, event, &payload) else {
+        say_default(stdout);
         return 0;
     };
     // Only this process's own app may be named; a value already in the
@@ -257,16 +290,16 @@ fn hook(env: &Env, stdin: &mut dyn Read, stdout: &mut dyn Write) -> i32 {
     } else {
         QUICK_WAIT
     };
-    match exchange(env, &Request::Hook { payload }, wait) {
-        Ok(Response::Decision { decision }) => {
-            if let Some(output) = decision_output(decision) {
-                let _ = writeln!(stdout, "{output}");
-            }
+    let output = match exchange(env, &Request::Hook { payload }, wait) {
+        Ok(Response::Decision { decision }) => connector::decision_output(agent, decision),
+        Ok(Response::Answer { updated_input }) => connector::answer_output(agent, &updated_input),
+        _ => None,
+    };
+    match output {
+        Some(output) => {
+            let _ = writeln!(stdout, "{output}");
         }
-        Ok(Response::Answer { updated_input }) => {
-            let _ = writeln!(stdout, "{}", allow_with_input_output(&updated_input));
-        }
-        _ => {}
+        None => say_default(stdout),
     }
     0
 }
@@ -428,54 +461,118 @@ fn status(env: &Env, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     }
 }
 
-fn hooks(env: &Env, rest: &[&str], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
-    let dir = env.claude_dir();
-    let settings = hooks_file::settings_path(&dir);
-    let result = match rest {
-        ["install"] => hooks_file::install_hooks(&dir, &env.exe).map(|()| {
-            format!(
-                "Hooks registered in {}. New Claude Code sessions will use them.",
-                settings.display()
-            )
-        }),
-        ["uninstall"] => hooks_file::uninstall_hooks(&dir, &env.exe)
-            .map(|()| format!("Hooks removed from {}.", settings.display())),
-        ["status"] => {
-            return match hooks_file::installed(&dir, &env.exe) {
-                Some(true) => {
-                    let _ = writeln!(stdout, "installed");
-                    0
-                }
-                Some(false) => {
-                    let _ = writeln!(stdout, "not installed");
-                    1
-                }
-                None => {
-                    let _ = writeln!(
-                        stderr,
-                        "litenotch hooks: cannot read {}",
-                        settings.display()
-                    );
-                    1
-                }
-            };
+/// The agents a `hooks` command acts on: `--agent`, or Claude Code. `all`
+/// means every agent that looks installed.
+fn hook_agents(env: &Env, rest: &[&str]) -> Result<Vec<Agent>, String> {
+    match option(rest, "--agent") {
+        None => Ok(vec![Agent::Claude]),
+        Some("all") => {
+            let dirs = env.dirs();
+            let found: Vec<Agent> = Agent::ALL
+                .into_iter()
+                .filter(|a| dirs.present(*a))
+                .collect();
+            if found.is_empty() {
+                Err("no supported coding agent found".to_string())
+            } else {
+                Ok(found)
+            }
         }
-        _ => {
-            let _ = writeln!(
-                stderr,
-                "litenotch hooks: expected install, uninstall or status"
-            );
+        Some(flag) => Agent::from_flag(flag).map(|a| vec![a]).ok_or_else(|| {
+            format!("unknown agent '{flag}' (use claude, codex, gemini, antigravity or all)")
+        }),
+    }
+}
+
+fn hooks(env: &Env, rest: &[&str], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    let Some(action) = rest.first().copied() else {
+        let _ = writeln!(
+            stderr,
+            "litenotch hooks: expected install, uninstall or status"
+        );
+        return 2;
+    };
+    if !["install", "uninstall", "status"].contains(&action) {
+        let _ = writeln!(
+            stderr,
+            "litenotch hooks: expected install, uninstall or status"
+        );
+        return 2;
+    }
+    let agents = match hook_agents(env, &rest[1..]) {
+        Ok(agents) => agents,
+        Err(message) => {
+            let _ = writeln!(stderr, "litenotch hooks: {message}");
             return 2;
         }
     };
-    match result {
-        Ok(message) => {
-            let _ = writeln!(stdout, "{message}");
-            0
-        }
-        Err(e) => {
-            let _ = writeln!(stderr, "litenotch hooks: {e}");
-            1
+    let dirs = env.dirs();
+    // Without --agent the messages are the ones Claude Code's alone had.
+    let plain = option(&rest[1..], "--agent").is_none();
+    let mut code = 0;
+    for agent in agents {
+        let path = dirs.config_path(agent).display().to_string();
+        let name = agent.name();
+        match action {
+            "install" => match hooks_file::install_agent(&dirs, agent, &env.exe) {
+                Ok(()) => {
+                    let note = if agent.can_approve() {
+                        ""
+                    } else {
+                        " (status only: it has no approval hook for the notch)"
+                    };
+                    let _ = if plain {
+                        writeln!(
+                            stdout,
+                            "Hooks registered in {path}. New Claude Code sessions will use them."
+                        )
+                    } else {
+                        writeln!(
+                            stdout,
+                            "Hooks registered for {name} in {path}. New sessions will use them{note}."
+                        )
+                    };
+                }
+                Err(e) => {
+                    let _ = writeln!(stderr, "litenotch hooks: {name}: {e}");
+                    code = 1;
+                }
+            },
+            "uninstall" => match hooks_file::uninstall_agent(&dirs, agent, &env.exe) {
+                Ok(()) => {
+                    let _ = if plain {
+                        writeln!(stdout, "Hooks removed from {path}.")
+                    } else {
+                        writeln!(stdout, "Hooks removed for {name} from {path}.")
+                    };
+                }
+                Err(e) => {
+                    let _ = writeln!(stderr, "litenotch hooks: {name}: {e}");
+                    code = 1;
+                }
+            },
+            _ => match hooks_file::agent_installed(&dirs, agent, &env.exe) {
+                Some(true) => {
+                    let _ = if plain {
+                        writeln!(stdout, "installed")
+                    } else {
+                        writeln!(stdout, "{name}: installed")
+                    };
+                }
+                Some(false) => {
+                    let _ = if plain {
+                        writeln!(stdout, "not installed")
+                    } else {
+                        writeln!(stdout, "{name}: not installed")
+                    };
+                    code = 1;
+                }
+                None => {
+                    let _ = writeln!(stderr, "litenotch hooks: cannot read {path}");
+                    code = 1;
+                }
+            },
         }
     }
+    code
 }

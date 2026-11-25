@@ -5,6 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use litenotch_core::agent::connector::{self, Agent};
 use litenotch_core::agent::statusline::{
     install_statusline, is_statusline_installed, other_statusline_clis, remove_other_statuslines,
     uninstall_statusline,
@@ -37,7 +38,11 @@ pub fn settings_path(claude_dir: &Path) -> PathBuf {
 }
 
 fn read(claude_dir: &Path) -> Result<String, HooksFileError> {
-    match fs::read_to_string(settings_path(claude_dir)) {
+    read_file(&settings_path(claude_dir))
+}
+
+fn read_file(path: &Path) -> Result<String, HooksFileError> {
+    match fs::read_to_string(path) {
         Ok(text) => Ok(text),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
         Err(e) => Err(HooksFileError::Io(e.to_string())),
@@ -121,7 +126,14 @@ fn rewrite(
     claude_dir: &Path,
     edit: impl FnOnce(&str) -> Result<String, String>,
 ) -> Result<(), HooksFileError> {
-    let before = read(claude_dir)?;
+    rewrite_file(&settings_path(claude_dir), edit)
+}
+
+fn rewrite_file(
+    path: &Path,
+    edit: impl FnOnce(&str) -> Result<String, String>,
+) -> Result<(), HooksFileError> {
+    let before = read_file(path)?;
     let after = edit(&before).map_err(HooksFileError::Settings)?;
     // Compare as JSON so a no-op edit never rewrites (or creates) the file.
     let parse = |text: &str| {
@@ -132,8 +144,9 @@ fn rewrite(
         return Ok(());
     }
     let io = |e: std::io::Error| HooksFileError::Io(e.to_string());
-    fs::create_dir_all(claude_dir).map_err(io)?;
-    let path = settings_path(claude_dir);
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(io)?;
+    }
     let backup = path.with_extension(format!("json.{BACKUP_SUFFIX}"));
     // Keep the first backup: it is the file from before LiteNotch touched it.
     // Settings can hold credentials, so the copy is private like the rest.
@@ -142,8 +155,72 @@ fn rewrite(
     }
     // Dotfile managers symlink this file; write to what the link points at
     // instead of replacing the link with a regular file.
-    let target = fs::canonicalize(&path).unwrap_or(path);
+    let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     crate::store::write_atomic(&target, after.as_bytes()).map_err(io)
+}
+
+/// Where each agent keeps the configuration LiteNotch registers its hooks in.
+#[derive(Debug, Clone)]
+pub struct AgentDirs {
+    /// Claude Code's directory (`~/.claude`, or `CLAUDE_CONFIG_DIR`).
+    pub claude: PathBuf,
+    /// Codex's home (`~/.codex`, or `CODEX_HOME`).
+    pub codex: PathBuf,
+    /// The directory Gemini CLI and Antigravity share (`~/.gemini`).
+    pub gemini: PathBuf,
+}
+
+impl AgentDirs {
+    pub fn new(home: &str, claude: Option<&str>, codex: Option<&str>) -> AgentDirs {
+        let home = Path::new(home);
+        AgentDirs {
+            claude: claude.map_or_else(|| home.join(".claude"), PathBuf::from),
+            codex: codex.map_or_else(|| home.join(".codex"), PathBuf::from),
+            gemini: home.join(".gemini"),
+        }
+    }
+
+    /// The file `agent`'s hooks live in.
+    pub fn config_path(&self, agent: Agent) -> PathBuf {
+        match agent {
+            Agent::Claude => settings_path(&self.claude),
+            Agent::Codex => self.codex.join("hooks.json"),
+            Agent::Gemini => self.gemini.join("settings.json"),
+            Agent::Antigravity => self.gemini.join("config").join("hooks.json"),
+        }
+    }
+
+    /// Whether the agent looks installed: its directory exists.
+    pub fn present(&self, agent: Agent) -> bool {
+        match agent {
+            Agent::Claude => self.claude.is_dir(),
+            Agent::Codex => self.codex.is_dir(),
+            Agent::Gemini | Agent::Antigravity => self.gemini.is_dir(),
+        }
+    }
+}
+
+/// `None` when the agent's config cannot be read.
+pub fn agent_installed(dirs: &AgentDirs, agent: Agent, cli_path: &str) -> Option<bool> {
+    read_file(&dirs.config_path(agent))
+        .ok()
+        .map(|text| connector::is_installed(agent, &text, cli_path))
+}
+
+pub fn install_agent(dirs: &AgentDirs, agent: Agent, cli_path: &str) -> Result<(), HooksFileError> {
+    rewrite_file(&dirs.config_path(agent), |text| {
+        connector::install(agent, text, cli_path).map_err(|e| e.to_string())
+    })
+}
+
+pub fn uninstall_agent(
+    dirs: &AgentDirs,
+    agent: Agent,
+    cli_path: &str,
+) -> Result<(), HooksFileError> {
+    rewrite_file(&dirs.config_path(agent), |text| {
+        connector::uninstall(agent, text, cli_path).map_err(|e| e.to_string())
+    })
 }
 
 #[cfg(test)]

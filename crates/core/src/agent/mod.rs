@@ -1,5 +1,8 @@
 //! Sessions and approvals for coding agents, driven by Claude Code hook payloads.
 
+pub mod connector;
+#[cfg(test)]
+mod connector_tests;
 pub mod hooks;
 pub mod install;
 pub mod statusline;

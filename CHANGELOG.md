@@ -9,7 +9,8 @@ the section in the pull request that bumps the version in `Cargo.toml`.
 ### New
 - **Codex, Gemini CLI and Antigravity in the notch.** Each shows its sessions
   like Claude Code does: working, waiting for you, finished, with a click to
-  bring the terminal forward. Register one from the terminal with
+  bring the terminal forward. Connect them in Settings › Agents (a row each,
+  with Connect / Disconnect), or from the terminal with
   `litenotch hooks install --agent codex|gemini|antigravity` (or `--agent all`
   for every one that is installed); `uninstall` and `status` take the same
   option. Plain `litenotch hooks install` is still Claude Code.
@@ -19,7 +20,8 @@ the section in the pull request that bumps the version in `Cargo.toml`.
     from outside, so the notch shows activity and "needs input" only; their
     own prompts stay in charge. Installing says so.
   - Your own hooks in those files are kept, and the first backup of each file
-    is left beside it. Settings has no switch for these yet.
+    is left beside it. Settings › Agents says which agents have no approval
+    hook, so nobody looks for buttons that are not there.
 
 ### Improved
 - **Long answer notes in questions are kept.** A choice's note over the old

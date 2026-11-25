@@ -18,7 +18,7 @@ struct AgentsTab: View {
             .frame(height: 24)
             switch model.agentsPane {
             case .sessions:
-                if vm.agents.sessions.isEmpty && !(vm.agents.hooksInstalled ?? false) {
+                if vm.agents.sessions.isEmpty && !AgentsText.anyConnected(vm.agents) {
                     EmptyState(
                         symbol: "terminal", title: "Not connected to Claude Code",
                         hint: "Connect it, then start Claude Code in a terminal to see its sessions and approve its requests here."

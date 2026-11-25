@@ -564,6 +564,8 @@ pub enum Input {
         missing: u32,
     },
     StatuslineInstalled(Option<bool>),
+    /// What was found for Codex, Gemini CLI and Antigravity.
+    Connectors(Vec<crate::agent::connector::ConnectorState>),
     /// A notification from the runtime itself (not from the socket).
     OwnNotify(NotificationInput),
     /// The newest release GitHub named (or why it could not be asked).
@@ -718,6 +720,9 @@ pub struct AgentsView {
     pub other_copies: u32,
     /// How many of those no longer exist on disk.
     pub other_copies_missing: u32,
+    /// Codex, Gemini CLI and Antigravity: whether each is there and connected.
+    #[serde(default)]
+    pub connectors: Vec<crate::agent::connector::ConnectorView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -790,6 +795,7 @@ pub struct Core {
     hooks_installed: Option<bool>,
     other_copies: (u32, u32),
     statusline_installed: Option<bool>,
+    connectors: Vec<crate::agent::connector::ConnectorView>,
     dirty: bool,
     peek: Option<Peek>,
     /// Time left on each countdown (`Clock`) at the last settle, so a peek
@@ -903,6 +909,7 @@ impl Core {
             hooks_installed: None,
             other_copies: (0, 0),
             statusline_installed: None,
+            connectors: Vec::new(),
             dirty: false,
             peek: None,
             clock_seen: [None; 2],
@@ -1053,6 +1060,12 @@ impl Core {
                 self.other_copies = (found, missing.min(found))
             }
             Input::StatuslineInstalled(state) => self.statusline_installed = state,
+            Input::Connectors(found) => {
+                self.connectors = found
+                    .iter()
+                    .filter_map(crate::agent::connector::ConnectorView::from_state)
+                    .collect()
+            }
             Input::OwnNotify(input) => self.post(input, now),
             Input::UpdateChecked(answer) => self.update_checked(answer, now),
             Input::InputIdle { secs } => self.input_idle(secs, now),
@@ -1927,6 +1940,7 @@ impl Core {
             other_copies: self.other_copies.0,
             other_copies_missing: self.other_copies.1,
             statusline_installed: self.statusline_installed,
+            connectors: self.connectors.clone(),
         };
         let caf = self.caffeine.snapshot(now);
         let caffeine = CaffeineView {
@@ -4816,6 +4830,53 @@ mod tests {
         assert_eq!(c.view(T0).agents.statusline_installed, None);
         c.apply(Input::StatuslineInstalled(Some(true)), T0);
         assert_eq!(c.view(T0).agents.statusline_installed, Some(true));
+    }
+
+    #[test]
+    fn connectors_are_listed_by_name_and_claude_code_has_its_own_row() {
+        use crate::agent::connector::ConnectorState;
+        let state = |agent: &str, present, installed| ConnectorState {
+            agent: agent.into(),
+            present,
+            installed,
+        };
+        let mut c = core();
+        assert!(c.view(T0).agents.connectors.is_empty());
+        c.apply(
+            Input::Connectors(vec![
+                state("codex", true, Some(true)),
+                state("gemini", true, Some(false)),
+                state("antigravity", false, None),
+                state("claude", true, Some(true)),
+                state("frobnicator", true, Some(true)),
+            ]),
+            T0,
+        );
+        let rows = c.view(T0).agents.connectors;
+        let seen: Vec<_> = rows
+            .iter()
+            .map(|r| {
+                (
+                    r.agent.as_str(),
+                    r.name.as_str(),
+                    r.present,
+                    r.installed,
+                    r.approvals,
+                )
+            })
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("codex", "Codex", true, Some(true), true),
+                ("gemini", "Gemini CLI", true, Some(false), false),
+                ("antigravity", "Antigravity", false, None, false),
+            ],
+            "only the three connectors, Allow/Deny only where the agent can answer"
+        );
+        // The next reading replaces the last.
+        c.apply(Input::Connectors(vec![]), T0);
+        assert!(c.view(T0).agents.connectors.is_empty());
     }
 
     fn newer() -> Release {

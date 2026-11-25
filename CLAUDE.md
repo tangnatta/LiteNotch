@@ -283,11 +283,17 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   what it always did). Tests run the documented payloads
   (`crates/core/tests/fixtures/connectors`, README there says which are
   quoted and which built from schemas) through the adapter into `Agents`,
-  and check the installed files against each doc's layout. Not yet done:
-  a Settings UI for these (CLI only), and a live run of each agent
-  (Gemini's `settings.json` may need hooks enabled in some versions;
-  Antigravity was never run). Cursor, Copilot CLI and Qwen Code have
-  Claude-style command hooks and would be the next connectors.
+  and check the installed files against each doc's layout. Settings ›
+  Agents has a row per connector (Connect / Disconnect, `connector_install` /
+  `connector_uninstall` with `agent` = the flag, handled in the runtime like
+  `hooks_install`; `agents.connectors` in the view model: name, `present` =
+  the agent's folder exists, `installed`, `approvals`), and a note naming the
+  agents with no approval hook (`AgentsText`). The runtime refuses Claude
+  Code and unknown names there, so nothing else reaches a file. Not yet
+  done: a live run of each agent (Gemini's `settings.json` may need hooks
+  enabled in some versions; Antigravity was never run). Cursor, Copilot CLI
+  and Qwen Code have Claude-style command hooks and would be the next
+  connectors.
 - **One copy's hooks only.** Each copy of the app registers its own CLI
   path, so test builds and moved installs used to pile up in
   `~/.claude/settings.json`: five hook processes per Claude Code event,

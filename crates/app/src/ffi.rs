@@ -47,6 +47,8 @@ impl StartConfig {
         Config {
             dir: PathBuf::from(dir),
             claude_dir: PathBuf::from(&self.home).join(".claude"),
+            codex_dir: PathBuf::from(&self.home).join(".codex"),
+            gemini_dir: PathBuf::from(&self.home).join(".gemini"),
             cli_path: self.cli_path,
             serve_socket: true,
             clipboard_poll_ms: 500,

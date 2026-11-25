@@ -149,14 +149,33 @@ jobs:
           export GIT_SSH_COMMAND="ssh -i $KEYS/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$KEYS/known_hosts -o StrictHostKeyChecking=yes"
           git clone -q --depth 1 git@github.com:tangnatta/homebrew-litenotch.git tap
           cd tap
-          sed -i -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" Casks/litenotch.rb
-          ruby -c Casks/litenotch.rb
-          if git diff --quiet; then
+          # Two channels: a plain version goes to `litenotch`, a version with a
+          # suffix (-beta, -rc.1) to `litenotch@beta`. The beta cask is made from
+          # the stable one the first time, and each conflicts with the other
+          # because both install LiteNotch.app.
+          CASK=litenotch
+          case "$VERSION" in *-*) CASK=litenotch@beta ;; esac
+          if [ ! -f Casks/litenotch@beta.rb ]; then
+            sed -e 's/^cask "litenotch" do/cask "litenotch@beta" do/' \
+                -e 's/^  name "LiteNotch"/  name "LiteNotch (beta)"/' \
+                Casks/litenotch.rb > Casks/litenotch@beta.rb
+          fi
+          for c in litenotch litenotch@beta; do
+            other=litenotch; [ "$c" = litenotch ] && other='litenotch@beta'
+            grep -q '^  conflicts_with' "Casks/$c.rb" || \
+              sed -i -E "s/^  depends_on arch: :arm64/  conflicts_with cask: \"$other\"\n  depends_on arch: :arm64/" "Casks/$c.rb"
+          done
+          sed -i -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" "Casks/$CASK.rb"
+          ruby -c "Casks/$CASK.rb"
+          ruby -c "Casks/litenotch.rb"
+          ruby -c "Casks/litenotch@beta.rb"
+          git add -A
+          if git diff --cached --quiet; then
             echo "cask already up to date"
           else
             git -c user.name="github-actions[bot]" \
                 -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-                commit -q -am "litenotch $VERSION"
+                commit -q -m "$CASK $VERSION"
             git push -q origin HEAD:main
           fi
           rm -rf "$KEYS"

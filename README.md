@@ -36,6 +36,13 @@ brew install --cask tangnatta/litenotch/litenotch
 open -a LiteNotch
 ```
 
+That is the stable channel. Pre-releases (`-beta`) come from a separate cask;
+it replaces the stable one, so uninstall that first:
+
+```sh
+brew install --cask tangnatta/litenotch/litenotch@beta
+```
+
 To update to the latest release:
 
 ```sh

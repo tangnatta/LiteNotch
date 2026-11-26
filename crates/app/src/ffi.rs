@@ -47,15 +47,8 @@ impl StartConfig {
         Config {
             dir: PathBuf::from(dir),
             claude_dir: PathBuf::from(&self.home).join(".claude"),
-            // The same places the CLI registers the other agents' hooks.
-            agent_dirs: Some(crate::hooks_file::AgentDirs::new(
-                &self.home,
-                None,
-                std::env::var("CODEX_HOME")
-                    .ok()
-                    .filter(|v| !v.is_empty())
-                    .as_deref(),
-            )),
+            codex_dir: PathBuf::from(&self.home).join(".codex"),
+            gemini_dir: PathBuf::from(&self.home).join(".gemini"),
             cli_path: self.cli_path,
             serve_socket: true,
             clipboard_poll_ms: 500,

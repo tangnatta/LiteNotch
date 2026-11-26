@@ -293,14 +293,17 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   what it always did). Tests run the documented payloads
   (`crates/core/tests/fixtures/connectors`, README there says which are
   quoted and which built from schemas) through the adapter into `Agents`,
-  and check the installed files against each doc's layout. Settings › Agents lists all four with their own Connect /
-  Disconnect (`agent_connect` / `agent_disconnect` with an `agent` flag;
-  Claude Code keeps `hooks_install`, which also handles other copies), and
-  the view model's `agents.connectors` says for each whether it is
-  installed here (its folder exists) and connected. Not yet done: a live run of each agent
-  (Gemini's `settings.json` may need hooks enabled in some versions;
-  Antigravity was never run). Cursor, Copilot CLI and Qwen Code have
-  Claude-style command hooks and would be the next connectors.
+  and check the installed files against each doc's layout. Settings ›
+  Agents has a row per connector (Connect / Disconnect, `connector_install` /
+  `connector_uninstall` with `agent` = the flag, handled in the runtime like
+  `hooks_install`; `agents.connectors` in the view model: name, `present` =
+  the agent's folder exists, `installed`, `approvals`), and a note naming the
+  agents with no approval hook (`AgentsText`). The runtime refuses Claude
+  Code and unknown names there, so nothing else reaches a file. Not yet
+  done: a live run of each agent (Gemini's `settings.json` may need hooks
+  enabled in some versions; Antigravity was never run). Cursor, Copilot CLI
+  and Qwen Code have Claude-style command hooks and would be the next
+  connectors.
 - **One copy's hooks only.** Each copy of the app registers its own CLI
   path, so test builds and moved installs used to pile up in
   `~/.claude/settings.json`: five hook processes per Claude Code event,
@@ -488,8 +491,12 @@ scripts/         build-app.sh, bench.sh, coverage.sh
 - `.github/workflows/release.yml` runs on a `v*` tag. The tag must equal the
   `version` in the root `Cargo.toml`. It tests, builds, zips
   `LiteNotch-<version>-arm64.zip`, publishes a GitHub pre-release, then
-  rewrites `version` and `sha256` in `Casks/litenotch.rb` of the tap
-  repository `tangnatta/homebrew-litenotch` and pushes that.
+  rewrites `version` and `sha256` of the tap repository
+  `tangnatta/homebrew-litenotch` and pushes that: a plain version updates
+  `Casks/litenotch.rb` (stable), one with a suffix (`-beta`) updates
+  `Casks/litenotch@beta.rb` (created from the stable cask the first time; the
+  two `conflicts_with` each other). Beta: `brew install --cask
+  tangnatta/litenotch/litenotch@beta`.
 - `main` is protected: every change goes through a branch and a pull request
   that passes CI (`rust`, `app`) and is reviewed; never push to `main`.
 - To release: bump `version` in `Cargo.toml` and add a `## <version>` section to
@@ -612,8 +619,18 @@ command after changing the core.
   comes back is only data: `update::checked` accepts a version and a release page
   under `RELEASES_PAGE` with a plain character set, and the shell opens only such a
   page and copies only its own fixed `brew update && brew upgrade --cask
-  litenotch` (same text as the core's `BREW_COMMAND`, checked by `ParityTests`).
-  Nothing is downloaded or run; the "update" notification source is reserved.
+  litenotch` or, on the beta channel, `… litenotch@beta` (the core's
+  `BREW_COMMAND` / `BREW_COMMAND_BETA`, checked by `ParityTests`).
+  **Channels:** a build's channel comes from its own version
+  (`update::Channel::of`: a label such as `-beta` means beta, a plain
+  version stable), which is how the release workflow files the casks
+  (`litenotch` / `litenotch@beta`). The request asks for the 20 newest
+  releases and `platform::update::parse_latest` takes the newest whose tag is
+  of the build's channel (the tag, not GitHub's `prerelease` flag); the core
+  also refuses a release of the other channel (`finish_on`), so a stable
+  build is never offered a beta nor a beta build a stable one. A beta build
+  is not told when a stable release appears: the beta cask only receives
+  labelled versions. Nothing is downloaded or run; the "update" notification source is reserved.
   There is no in-app updater (a Developer ID and notarization come first).
 - Analytics record feature-use counters per day only (`analytics::Feature`
   enum; no free-form strings). Uploading is opt-in and not implemented.

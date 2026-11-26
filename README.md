@@ -15,10 +15,48 @@ close it.
 
 ## Install
 
+### With Homebrew
+
+Recent Homebrew (7 and later) loads casks from a third-party tap only after
+you trust it. Do this once; without it `brew install`, `brew upgrade` and
+`brew info` stop with "Refusing to load cask … from untrusted tap":
+
+```sh
+brew trust tangnatta/litenotch
+```
+
+Then:
+
 ```sh
 brew install --cask tangnatta/litenotch/litenotch
 open -a LiteNotch
 ```
+
+That is the stable channel. Pre-releases (`-beta`) come from a separate cask;
+it replaces the stable one, so uninstall that first
+(`brew uninstall --cask litenotch`):
+
+```sh
+brew install --cask tangnatta/litenotch/litenotch@beta
+```
+
+`brew upgrade` never moves you between channels; to go back to stable,
+uninstall the beta cask and install `litenotch` again.
+
+To update to the latest release:
+
+```sh
+brew update
+brew upgrade --cask litenotch        # beta channel: litenotch@beta
+```
+
+Because this beta isn't notarized by Apple, the cask removes macOS's
+"downloaded from the internet" flag after installing, so Gatekeeper doesn't
+check the app. If you'd rather check it yourself, compare
+`shasum -a 256` of the zip with the `.sha256` file on the release page, or
+build from source. Older Homebrew versions (before 7.0.16) may print a
+warning that the cask's `postflight` is deprecated; that is this step, and it
+still works.
 
 Or download the zip from the
 [latest release](https://github.com/tangnatta/LiteNotch/releases), drag
@@ -27,9 +65,8 @@ so the first time macOS refuses: click **Open Anyway** in **System Settings ›
 Privacy & Security**.
 
 On first launch the notch opens once to show you around. LiteNotch has no Dock
-icon; quit it from **Settings › General**. To update:
-`brew update && brew upgrade --cask litenotch` (or **Check for updates** in
-**Settings › General**, which only tells you; it never installs anything).
+icon; quit it from **Settings › General**. **Check for updates** there only
+tells you about a new version; it never installs anything.
 
 ## What it does
 

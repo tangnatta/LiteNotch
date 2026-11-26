@@ -567,8 +567,6 @@ pub enum Input {
     },
     UtcOffset(i32),
     HooksInstalled(Option<bool>),
-    /// Which other agents are installed and connected (from their files).
-    Connectors(Vec<ConnectorView>),
     /// Other copies of LiteNotch found in Claude Code's settings, and how
     /// many of them are gone from disk.
     OtherCopies {
@@ -576,6 +574,8 @@ pub enum Input {
         missing: u32,
     },
     StatuslineInstalled(Option<bool>),
+    /// What was found for Codex, Gemini CLI and Antigravity.
+    Connectors(Vec<crate::agent::connector::ConnectorState>),
     /// A notification from the runtime itself (not from the socket).
     OwnNotify(NotificationInput),
     /// The newest release GitHub named (or why it could not be asked).
@@ -730,23 +730,9 @@ pub struct AgentsView {
     pub other_copies: u32,
     /// How many of those no longer exist on disk.
     pub other_copies_missing: u32,
-    /// The other agents LiteNotch can connect to, in a fixed order.
-    pub connectors: Vec<ConnectorView>,
-}
-
-/// One agent other than Claude Code, as Settings › Agents lists it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ConnectorView {
-    /// The `--agent` value (`codex`), which `agent_connect` takes back.
-    pub agent: String,
-    /// The name people know it by (`Codex`).
-    pub name: String,
-    /// Its folder exists, so it looks installed on this Mac.
-    pub present: bool,
-    /// LiteNotch's hooks are in its settings; `None` if unknown.
-    pub connected: Option<bool>,
-    /// Its requests can be allowed or denied from the notch.
-    pub can_approve: bool,
+    /// Codex, Gemini CLI and Antigravity: whether each is there and connected.
+    #[serde(default)]
+    pub connectors: Vec<crate::agent::connector::ConnectorView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -817,9 +803,9 @@ pub struct Core {
     /// Highest alert level already raised per usage window (5 h, 7 d).
     usage_alerted: [u8; 2],
     hooks_installed: Option<bool>,
-    connectors: Vec<ConnectorView>,
     other_copies: (u32, u32),
     statusline_installed: Option<bool>,
+    connectors: Vec<crate::agent::connector::ConnectorView>,
     dirty: bool,
     peek: Option<Peek>,
     /// Time left on each countdown (`Clock`) at the last settle, so a peek
@@ -931,9 +917,9 @@ impl Core {
             dnd: false,
             usage_alerted: [0; 2],
             hooks_installed: None,
-            connectors: Vec::new(),
             other_copies: (0, 0),
             statusline_installed: None,
+            connectors: Vec::new(),
             dirty: false,
             peek: None,
             clock_seen: [None; 2],
@@ -1086,11 +1072,16 @@ impl Core {
             } => self.clamshell(closed, external_display, &mut fx),
             Input::UtcOffset(secs) => self.set_utc_offset(secs),
             Input::HooksInstalled(state) => self.hooks_installed = state,
-            Input::Connectors(list) => self.connectors = list,
             Input::OtherCopies { found, missing } => {
                 self.other_copies = (found, missing.min(found))
             }
             Input::StatuslineInstalled(state) => self.statusline_installed = state,
+            Input::Connectors(found) => {
+                self.connectors = found
+                    .iter()
+                    .filter_map(crate::agent::connector::ConnectorView::from_state)
+                    .collect()
+            }
             Input::OwnNotify(input) => self.post(input, now),
             Input::UpdateChecked(answer) => self.update_checked(answer, now),
             Input::InputIdle { secs } => self.input_idle(secs, now),
@@ -4968,10 +4959,58 @@ mod tests {
         assert_eq!(c.view(T0).agents.statusline_installed, Some(true));
     }
 
+    #[test]
+    fn connectors_are_listed_by_name_and_claude_code_has_its_own_row() {
+        use crate::agent::connector::ConnectorState;
+        let state = |agent: &str, present, installed| ConnectorState {
+            agent: agent.into(),
+            present,
+            installed,
+        };
+        let mut c = core();
+        assert!(c.view(T0).agents.connectors.is_empty());
+        c.apply(
+            Input::Connectors(vec![
+                state("codex", true, Some(true)),
+                state("gemini", true, Some(false)),
+                state("antigravity", false, None),
+                state("claude", true, Some(true)),
+                state("frobnicator", true, Some(true)),
+            ]),
+            T0,
+        );
+        let rows = c.view(T0).agents.connectors;
+        let seen: Vec<_> = rows
+            .iter()
+            .map(|r| {
+                (
+                    r.agent.as_str(),
+                    r.name.as_str(),
+                    r.present,
+                    r.installed,
+                    r.approvals,
+                )
+            })
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("codex", "Codex", true, Some(true), true),
+                ("gemini", "Gemini CLI", true, Some(false), false),
+                ("antigravity", "Antigravity", false, None, false),
+            ],
+            "only the three connectors, Allow/Deny only where the agent can answer"
+        );
+        // The next reading replaces the last.
+        c.apply(Input::Connectors(vec![]), T0);
+        assert!(c.view(T0).agents.connectors.is_empty());
+    }
+
     fn newer() -> Release {
+        let version = crate::update::here("999.0.0");
         Release {
-            version: "999.0.0".into(),
-            url: format!("{}/tag/v999.0.0", crate::update::RELEASES_PAGE),
+            url: format!("{}/tag/v{version}", crate::update::RELEASES_PAGE),
+            version,
         }
     }
 
@@ -5009,7 +5048,7 @@ mod tests {
         c.apply(Input::UpdateChecked(Ok(newer())), T0 + 2);
         let v = c.view(T0 + 2).update;
         assert_eq!(v.status, crate::update::UpdateStatus::Available);
-        assert_eq!(v.latest.as_deref(), Some("999.0.0"));
+        assert_eq!(v.latest.as_deref(), Some(newer().version.as_str()));
         assert!(
             c.view(T0 + 2).inbox.banner.is_none(),
             "the user is looking: no banner"
@@ -5041,7 +5080,10 @@ mod tests {
         );
         c.apply(Input::UpdateChecked(Ok(newer())), T0 + 3);
         let banner = c.view(T0 + 3).inbox.banner.expect("announced");
-        assert_eq!(banner.title, "LiteNotch 999.0.0 is available");
+        assert_eq!(
+            banner.title,
+            format!("LiteNotch {} is available", newer().version)
+        );
         assert_eq!(banner.source, "update");
         assert_eq!(
             banner.open,

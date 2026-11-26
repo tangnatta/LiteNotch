@@ -869,28 +869,22 @@ public struct AgentsView: Codable, Equatable {
     public var otherCopies: Int? = nil
     /// How many of those no longer exist on disk.
     public var otherCopiesMissing: Int? = nil
-    /// Codex, Gemini CLI and Antigravity: installed here, and connected?
-    public var connectors: [AgentConnector]? = nil
+    /// Codex, Gemini CLI and Antigravity; nil from a core that predates them.
+    public var connectors: [ConnectorView]? = nil
 }
 
-/// An agent other than Claude Code, as Settings › Agents lists it.
-public struct AgentConnector: Codable, Equatable, Identifiable {
-    /// The value `agent_connect` takes (`codex`).
+/// One of the other agents Settings can connect.
+public struct ConnectorView: Codable, Equatable, Identifiable {
+    /// `codex`, `gemini` or `antigravity`: what the connector commands take.
     public var agent: String
     public var name: String
-    /// Its folder exists on this Mac.
+    /// Its configuration folder exists, so it is probably installed.
     public var present: Bool
-    public var connected: Bool?
-    /// Allow and Deny work from the notch.
-    public var canApprove: Bool
+    /// LiteNotch is registered with it; nil when its file cannot be read.
+    public var installed: Bool?
+    /// Allow / Deny works from the notch; otherwise it only shows activity.
+    public var approvals: Bool
     public var id: String { agent }
-}
-
-extension AgentsView {
-    /// Some agent is connected, Claude Code or another.
-    public var anyConnected: Bool {
-        (hooksInstalled ?? false) || (connectors ?? []).contains { $0.connected == true }
-    }
 }
 
 public struct RateWindow: Codable, Equatable {
@@ -1199,6 +1193,14 @@ public enum UpdateStatus: String, LenientEnum, CaseIterable {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// Which stream of releases this build follows (`update.channel`): a plain
+/// version is stable, one with a label (`-beta`) is beta.
+public enum UpdateChannel: String, LenientEnum, CaseIterable {
+    case stable, beta, unknown
+    static var unknownCase: UpdateChannel { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
 /// This build's version and what the last check found (`update`).
 public struct UpdateView: Codable, Equatable {
     public var current: String
@@ -1210,6 +1212,8 @@ public struct UpdateView: Codable, Equatable {
     public var checkedMs: Int?
     /// What to run to update a Homebrew install (fixed text from the core).
     public var command: String
+    /// The channel this build follows; nil from a core that predates channels.
+    public var channel: UpdateChannel? = nil
 
     public static let none = UpdateView(
         current: "", status: .idle, latest: nil, url: nil,

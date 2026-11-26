@@ -23,6 +23,7 @@ use super::install::{
     render, InstallError,
 };
 use super::Decision;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 /// A coding agent LiteNotch can listen to.
@@ -69,6 +70,45 @@ impl Agent {
     /// Whether the agent can hold a permission request open for the notch.
     pub fn can_approve(self) -> bool {
         matches!(self, Agent::Claude | Agent::Codex)
+    }
+}
+
+/// The agents Settings can connect besides Claude Code, in the order shown.
+pub const OTHER_AGENTS: [Agent; 3] = [Agent::Codex, Agent::Gemini, Agent::Antigravity];
+
+/// What the runtime found out about one connector on disk.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectorState {
+    /// `Agent::flag`.
+    pub agent: String,
+    /// The agent's configuration directory exists, so it is probably installed.
+    pub present: bool,
+    /// LiteNotch is registered with it; `None` when its file cannot be read.
+    pub installed: Option<bool>,
+}
+
+/// One row of Settings › Agents.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectorView {
+    pub agent: String,
+    pub name: String,
+    pub present: bool,
+    pub installed: Option<bool>,
+    /// Allow / Deny in the notch works; otherwise it only shows activity.
+    pub approvals: bool,
+}
+
+impl ConnectorView {
+    /// `None` for Claude Code (it has its own row) and for names we do not know.
+    pub fn from_state(state: &ConnectorState) -> Option<ConnectorView> {
+        let agent = Agent::from_flag(&state.agent).filter(|a| OTHER_AGENTS.contains(a))?;
+        Some(ConnectorView {
+            agent: agent.flag().to_owned(),
+            name: agent.name().to_owned(),
+            present: state.present,
+            installed: state.installed,
+            approvals: agent.can_approve(),
+        })
     }
 }
 

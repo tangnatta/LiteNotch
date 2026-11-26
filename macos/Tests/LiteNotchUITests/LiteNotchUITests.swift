@@ -240,8 +240,6 @@ final class CommandTests: XCTestCase {
             (.refresh, #"{"cmd":"refresh"}"#),
             (.hooksInstall, #"{"cmd":"hooks_install"}"#),
             (.hooksUninstall, #"{"cmd":"hooks_uninstall"}"#),
-            (.agentConnect(agent: "codex"), #"{"cmd":"agent_connect","agent":"codex"}"#),
-            (.agentDisconnect(agent: "gemini"), #"{"cmd":"agent_disconnect","agent":"gemini"}"#),
         ]
         for (cmd, expected) in cases {
             XCTAssertEqual(try obj(cmd.encode()), try obj(expected), expected)
@@ -737,30 +735,6 @@ final class FormatTests: XCTestCase {
         XCTAssertEqual(Format.agentName(sessionId: "my-codex:1"), "Claude Code")
         let sessions = try loadFixture("media").agents.sessions
         XCTAssertEqual(Set(sessions.map { Format.agentName(sessionId: $0.id) }), ["Claude Code", "Codex"])
-    }
-
-    func testSettingsListsEveryAgentWithWhatItCanDo() throws {
-        var agents = try loadFixture("media").agents
-        let list = try XCTUnwrap(agents.connectors)
-        XCTAssertEqual(list.map(\.name), ["Codex", "Gemini CLI", "Antigravity"])
-        XCTAssertEqual(
-            list.map(AgentsText.connectorCaption),
-            [
-                "Connected \u{00B7} sessions and approvals", "Not connected", "Not installed on this Mac",
-            ])
-        var gemini = list[1]
-        gemini.connected = true
-        XCTAssertEqual(AgentsText.connectorCaption(gemini), "Connected \u{00B7} sessions; approve in its own window")
-        // Only Codex connected still counts as connected.
-        agents.hooksInstalled = false
-        XCTAssertTrue(agents.anyConnected)
-        agents.connectors = list.map {
-            var c = $0; c.connected = false; return c
-        }
-        XCTAssertFalse(agents.anyConnected)
-        // An app older than the core: no list at all.
-        agents.connectors = nil
-        XCTAssertFalse(agents.anyConnected)
     }
 
     func testCodexLimitsDecodeAndNameTheirWindows() throws {

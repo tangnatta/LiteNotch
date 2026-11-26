@@ -171,6 +171,80 @@ final class AgentAttentionTests: XCTestCase {
         XCTAssertEqual(seen(bridge), ["a"])
     }
 
+    // MARK: Other agents
+
+    private func connector(
+        _ agent: String, _ name: String, present: Bool = true, installed: Bool? = false, approvals: Bool = false
+    ) -> ConnectorView {
+        ConnectorView(agent: agent, name: name, present: present, installed: installed, approvals: approvals)
+    }
+
+    func testConnectorCommandsNameTheAgent() {
+        XCTAssertEqual(
+            ShellCommand.connectorInstall(agent: "codex").encode(),
+            #"{"agent":"codex","cmd":"connector_install"}"#)
+        XCTAssertEqual(
+            ShellCommand.connectorUninstall(agent: "gemini").encode(),
+            #"{"agent":"gemini","cmd":"connector_uninstall"}"#)
+    }
+
+    func testConnectorsDecodeFromTheCoreAndAnOlderCoreHasNone() throws {
+        XCTAssertEqual(try fixture("idle").agents.connectors, [], "what the core sends before it has looked")
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        let json = #"""
+            {"sessions":[],"pending":[],"hooks_installed":false,"connectors":[
+              {"agent":"codex","name":"Codex","present":true,"installed":true,"approvals":true},
+              {"agent":"antigravity","name":"Antigravity","present":false,"installed":null,"approvals":false}]}
+            """#
+        let agents = try d.decode(AgentsView.self, from: Data(json.utf8))
+        XCTAssertEqual(
+            agents.connectors,
+            [
+                connector("codex", "Codex", installed: true, approvals: true),
+                connector("antigravity", "Antigravity", present: false, installed: nil),
+            ])
+        XCTAssertEqual(agents.connectors?.map(\.id), ["codex", "antigravity"])
+        let older = try d.decode(AgentsView.self, from: Data(#"{"sessions":[],"pending":[],"hooks_installed":true}"#.utf8))
+        XCTAssertNil(older.connectors)
+    }
+
+    func testConnectorCaptionsAndTheNoApprovalNote() {
+        XCTAssertEqual(AgentsText.connectorCaption(connector("codex", "Codex", installed: true)), "Connected")
+        XCTAssertEqual(AgentsText.connectorCaption(connector("codex", "Codex")), "Not connected")
+        XCTAssertEqual(
+            AgentsText.connectorCaption(connector("gemini", "Gemini CLI", present: false, installed: nil)),
+            "Not found on this Mac")
+        XCTAssertEqual(
+            AgentsText.connectorCaption(connector("gemini", "Gemini CLI", present: false, installed: true)),
+            "Connected", "registered wins over the folder check")
+
+        let codex = connector("codex", "Codex", approvals: true)
+        let gemini = connector("gemini", "Gemini CLI")
+        let anti = connector("antigravity", "Antigravity")
+        XCTAssertNil(AgentsText.activityOnlyNote([]))
+        XCTAssertNil(AgentsText.activityOnlyNote([codex]), "nothing to warn about")
+        XCTAssertEqual(
+            AgentsText.activityOnlyNote([codex, gemini]),
+            "Gemini CLI has no approval hook, so the notch shows its activity and when it needs you, not Allow and Deny.")
+        XCTAssertEqual(
+            AgentsText.activityOnlyNote([codex, gemini, anti]),
+            "Gemini CLI and Antigravity have no approval hook, so the notch shows their activity and when they need you, not Allow and Deny."
+        )
+    }
+
+    func testAnyConnectedCountsEveryAgent() throws {
+        var agents = try fixture("idle").agents
+        agents.hooksInstalled = false
+        agents.connectors = [connector("codex", "Codex", installed: false)]
+        XCTAssertFalse(AgentsText.anyConnected(agents))
+        agents.connectors = [connector("codex", "Codex", installed: true)]
+        XCTAssertTrue(AgentsText.anyConnected(agents), "Codex alone is enough to stop asking for Claude Code")
+        agents.connectors = nil
+        agents.hooksInstalled = true
+        XCTAssertTrue(AgentsText.anyConnected(agents))
+    }
+
     // MARK: Extra hooks
 
     /// Reported: Claude Code's settings held the hooks of five copies of

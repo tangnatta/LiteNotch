@@ -1,7 +1,7 @@
 # Changelog
 
 What changed in each release. The release workflow copies the section whose
-heading is the version (`## 0.2.4-beta`) into the GitHub release notes, so add
+heading is the version (`## 0.2.4`) into the GitHub release notes, so add
 the section in the pull request that bumps the version in `Cargo.toml`.
 
 ## 0.2.7-beta
@@ -21,8 +21,6 @@ the section in the pull request that bumps the version in `Cargo.toml`.
   - Clicking a calendar reminder, or the event on Home, opens that event.
   - A link in an invitation is shown with a **Copy** button; LiteNotch never
     opens it.
-- **Settings › Agents connects Codex, Gemini CLI and Antigravity** with a
-  button each, next to Claude Code, and says which are installed on this Mac.
 - **Codex's usage limits** in Agents › Usage, read from Codex's own session
   logs (no request leaves your Mac).
 - **A welcome on first launch**: the panel opens once and says how to open,
@@ -46,14 +44,14 @@ the section in the pull request that bumps the version in `Cargo.toml`.
   Accessibility permission.
 - Reading Codex's logs skips anything that is not a plain file, and a log
   dated in the future no longer holds back the real limits.
-- Connecting an agent that is not installed no longer creates its folder.
 
 ## 0.2.6-beta
 
 ### New
 - **Codex, Gemini CLI and Antigravity in the notch.** Each shows its sessions
   like Claude Code does: working, waiting for you, finished, with a click to
-  bring the terminal forward. Register one from the terminal with
+  bring the terminal forward. Connect them in Settings › Agents (a row each,
+  with Connect / Disconnect), or from the terminal with
   `litenotch hooks install --agent codex|gemini|antigravity` (or `--agent all`
   for every one that is installed); `uninstall` and `status` take the same
   option. Plain `litenotch hooks install` is still Claude Code.
@@ -63,9 +61,16 @@ the section in the pull request that bumps the version in `Cargo.toml`.
     from outside, so the notch shows activity and "needs input" only; their
     own prompts stay in charge. Installing says so.
   - Your own hooks in those files are kept, and the first backup of each file
-    is left beside it. Settings has no switch for these yet.
+    is left beside it. Settings › Agents says which agents have no approval
+    hook, so nobody looks for buttons that are not there.
 
 ### Improved
+- **Updates know about both Homebrew channels.** Settings › General › Check
+  for updates now follows your own channel: a beta build looks for the newest
+  beta and copies `brew upgrade --cask litenotch@beta`; a stable build looks
+  for the newest stable release and copies `brew upgrade --cask litenotch`.
+  Before, a stable build would have been offered a beta it could not install,
+  and a beta build a command for the wrong cask.
 - **Long answer notes in questions are kept.** A choice's note over the old
   limit is no longer dropped: the notch shows the first 200 characters with an
   inline More / Less.
@@ -74,7 +79,7 @@ the section in the pull request that bumps the version in `Cargo.toml`.
 - Tests check every connector against the payloads and config layouts in each
   agent's documentation.
 
-## 0.2.5-beta
+## 0.2.5
 
 ### New
 - **Launch at login.** Settings › General › Launch at login starts LiteNotch

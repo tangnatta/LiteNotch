@@ -1,5 +1,6 @@
 {
   "brew_command": "brew update && brew upgrade --cask litenotch",
+  "brew_command_beta": "brew update && brew upgrade --cask litenotch@beta",
   "enums": {
     "activity_kind": [
       "idle",
@@ -108,6 +109,10 @@
       "system",
       "dark",
       "light"
+    ],
+    "update_channel": [
+      "stable",
+      "beta"
     ],
     "update_status": [
       "idle",

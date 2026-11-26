@@ -107,13 +107,15 @@ public enum ShellCommand: Equatable {
     /// Not part of the Rust `Command` enum: the app's bridge handles these
     /// (writing/removing the Claude Code hook entries) itself.
     case hooksInstall, hooksUninstall
-    /// Codex, Gemini CLI or Antigravity, by its `agent` value.
-    case agentConnect(agent: String), agentDisconnect(agent: String)
     /// Removes the hooks of other copies of LiteNotch from Claude Code's settings.
     case hooksClean
     /// Makes LiteNotch Claude Code's status line (wrapping the one there),
     /// which is where usage limits come from; and the reverse.
     case statuslineInstall, statuslineUninstall
+    /// Registers LiteNotch with (or removes it from) Codex, Gemini CLI or
+    /// Antigravity; `agent` is `ConnectorView.agent`.
+    case connectorInstall(agent: String)
+    case connectorUninstall(agent: String)
 
     var object: [String: Any] {
         func c(_ name: String, _ extra: [String: Any] = [:]) -> [String: Any] {
@@ -182,11 +184,11 @@ public enum ShellCommand: Equatable {
         case .colorPicked(let hex): return c("color_picked", ["hex": hex])
         case .hooksInstall: return c("hooks_install")
         case .hooksUninstall: return c("hooks_uninstall")
-        case .agentConnect(let agent): return c("agent_connect", ["agent": agent])
-        case .agentDisconnect(let agent): return c("agent_disconnect", ["agent": agent])
         case .hooksClean: return c("hooks_clean")
         case .statuslineInstall: return c("statusline_install")
         case .statuslineUninstall: return c("statusline_uninstall")
+        case .connectorInstall(let agent): return c("connector_install", ["agent": agent])
+        case .connectorUninstall(let agent): return c("connector_uninstall", ["agent": agent])
         }
     }
 

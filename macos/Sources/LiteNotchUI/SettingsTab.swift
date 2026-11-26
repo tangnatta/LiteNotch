@@ -309,9 +309,9 @@ struct SettingsTab: View {
             row("Version \(latest) is available") {
                 HStack(spacing: 6) {
                     TextPill(title: "Copy update command", tint: .black, background: NT.allow, height: 22) {
-                        model.app?.copyText(UpdateText.brewCommand)
+                        model.app?.copyText(UpdateText.command(u))
                     }
-                    .help(UpdateText.brewCommand)
+                    .help(UpdateText.command(u))
                     if let page = UpdateText.releasePage(u.url) {
                         TextPill(title: "Release page", tint: NT.text1, height: 22) { model.app?.openURL(page) }
                     }
@@ -611,13 +611,15 @@ struct SettingsTab: View {
         }
         ForEach(vm.agents.connectors ?? []) { c in
             row(c.name, caption: AgentsText.connectorCaption(c), tint: c.present ? NT.text1 : NT.text2) {
-                if c.present {
-                    connectPill(
-                        connected: c.connected == true, name: c.name,
-                        connect: { send(.agentConnect(agent: c.agent)) },
-                        disconnect: { send(.agentDisconnect(agent: c.agent)) })
-                }
+                connectPill(
+                    connected: c.installed ?? false, name: c.name,
+                    connect: { send(.connectorInstall(agent: c.agent)) },
+                    disconnect: { send(.connectorUninstall(agent: c.agent)) })
             }
+        }
+        if let note = AgentsText.activityOnlyNote(vm.agents.connectors ?? []) {
+            VText(note).nfont(.caption).foregroundStyle(NT.text2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         Hairline().padding(.vertical, 2)
         toggle(
@@ -944,13 +946,32 @@ struct SoundPicker: View {
 
 /// Text for the Agents settings; pure so it can be unit tested.
 public enum AgentsText {
-    /// What a row in Settings › Agents says under the agent's name.
-    public static func connectorCaption(_ c: AgentConnector) -> String {
-        if !c.present { return "Not installed on this Mac" }
-        guard c.connected == true else { return "Not connected" }
-        return c.canApprove
-            ? "Connected \u{00B7} sessions and approvals"
-            : "Connected \u{00B7} sessions; approve in its own window"
+    /// The line under a connector's name.
+    public static func connectorCaption(_ c: ConnectorView) -> String {
+        if c.installed ?? false { return "Connected" }
+        return c.present ? "Not connected" : "Not found on this Mac"
+    }
+
+    /// Says which connected-or-connectable agents cannot show Allow / Deny,
+    /// so nobody looks for buttons that are not there; nil when all can.
+    public static func activityOnlyNote(_ connectors: [ConnectorView]) -> String? {
+        let names = connectors.filter { !$0.approvals }.map(\.name)
+        guard !names.isEmpty else { return nil }
+        let list: String
+        switch names.count {
+        case 1: list = names[0]
+        case 2: list = "\(names[0]) and \(names[1])"
+        default: list = names.dropLast().joined(separator: ", ") + " and " + names[names.count - 1]
+        }
+        let (verb, their) = names.count == 1 ? ("has", "its") : ("have", "their")
+        let need = names.count == 1 ? "it needs" : "they need"
+        return "\(list) \(verb) no approval hook, so the notch shows \(their) activity "
+            + "and when \(need) you, not Allow and Deny."
+    }
+
+    /// Whether any agent, Claude Code or another, is connected.
+    public static func anyConnected(_ agents: AgentsView) -> Bool {
+        (agents.hooksInstalled ?? false) || (agents.connectors ?? []).contains { $0.installed ?? false }
     }
 
     /// The warning when other copies of LiteNotch are registered with Claude

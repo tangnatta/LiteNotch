@@ -6,7 +6,7 @@ struct AgentsTab: View {
     @Environment(\.clockOffsetMs) private var offset
 
     private var send: (ShellCommand) -> Void { model.send }
-    private var anyConnected: Bool { vm.agents.anyConnected }
+    private var anyConnected: Bool { AgentsText.anyConnected(vm.agents) }
 
     var body: some View {
         VStack(spacing: 8) {

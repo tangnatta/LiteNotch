@@ -24,11 +24,10 @@ fn main() {
         claude_dir: std::env::var("CLAUDE_CONFIG_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from(&home).join(".claude")),
-        agent_dirs: Some(litenotch_app::hooks_file::AgentDirs::new(
-            &home,
-            std::env::var("CLAUDE_CONFIG_DIR").ok().as_deref(),
-            std::env::var("CODEX_HOME").ok().as_deref(),
-        )),
+        codex_dir: std::env::var("CODEX_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(&home).join(".codex")),
+        gemini_dir: PathBuf::from(&home).join(".gemini"),
         dir,
         cli_path: "litenotch".into(),
         serve_socket: true,

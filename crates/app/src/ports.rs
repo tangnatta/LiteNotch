@@ -56,7 +56,8 @@ pub trait Ports: Send {
     /// Asks GitHub for the newest release; `done` is called from another
     /// thread with its version and page, or why that failed. Called only
     /// when the core asks (`Effect::CheckUpdate`).
-    fn check_update(&mut self, done: UpdateDone);
+    /// Asks for the newest release of the beta channel (`beta`) or the stable one.
+    fn check_update(&mut self, beta: bool, done: UpdateDone);
     /// Seconds since the keyboard or mouse was last used; `None` where it
     /// cannot be read. Called only when the core asks (`Core::wants_idle`).
     fn input_idle_secs(&mut self) -> Option<u32>;
@@ -332,10 +333,11 @@ impl Ports for MacPorts {
         litenotch_platform::sound::play(name);
     }
 
-    fn check_update(&mut self, done: UpdateDone) {
+    fn check_update(&mut self, beta: bool, done: UpdateDone) {
         std::thread::spawn(move || {
             done(
-                litenotch_platform::update::latest().map(|(version, url)| Release { version, url }),
+                litenotch_platform::update::latest(beta)
+                    .map(|(version, url)| Release { version, url }),
             );
         });
     }

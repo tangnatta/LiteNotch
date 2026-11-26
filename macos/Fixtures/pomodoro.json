@@ -175,22 +175,22 @@
         "agent": "codex",
         "name": "Codex",
         "present": true,
-        "connected": true,
-        "can_approve": true
+        "installed": true,
+        "approvals": true
       },
       {
         "agent": "gemini",
         "name": "Gemini CLI",
         "present": true,
-        "connected": false,
-        "can_approve": false
+        "installed": false,
+        "approvals": false
       },
       {
         "agent": "antigravity",
         "name": "Antigravity",
         "present": false,
-        "connected": false,
-        "can_approve": false
+        "installed": false,
+        "approvals": false
       }
     ]
   },
@@ -407,7 +407,8 @@
     "latest": null,
     "url": null,
     "checked_ms": null,
-    "command": "brew update && brew upgrade --cask litenotch"
+    "channel": "beta",
+    "command": "brew update && brew upgrade --cask litenotch@beta"
   },
   "settings": {
     "general": {

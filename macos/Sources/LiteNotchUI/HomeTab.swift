@@ -331,7 +331,7 @@ struct HomeTab: View {
         let detail = Format.agentsDetail(vm.usage)
         // Before an agent is connected "No active sessions · 0 tokens" read
         // as if one already were; say what the row is for instead.
-        let unconnected = vm.agents.sessions.isEmpty && !vm.agents.anyConnected
+        let unconnected = vm.agents.sessions.isEmpty && !AgentsText.anyConnected(vm.agents)
         return HomeRow(symbol: "terminal", tint: waiting ? NT.accent : NT.text2) {
             VText(unconnected ? "No coding agent yet" : Format.agentsHeadline(vm.agents.sessions))
                 .nfont(.emphasis).foregroundStyle(unconnected ? NT.text2 : NT.text1).lineLimit(1)

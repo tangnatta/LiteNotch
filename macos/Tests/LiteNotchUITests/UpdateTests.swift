@@ -21,14 +21,51 @@ final class UpdateTests: XCTestCase {
 
         let found = try fixture("update-available").update
         XCTAssertEqual(found.status, .available)
-        XCTAssertEqual(found.latest, "0.3.0-beta")
-        XCTAssertEqual(found.command, UpdateText.brewCommand, "the core's text is the one the shell copies")
+        XCTAssertEqual(found.latest?.hasPrefix("0.3.0"), true)
+        XCTAssertEqual(found.command, UpdateText.command(found), "the core's text is the one the shell copies")
         XCTAssertNotNil(UpdateText.releasePage(found.url), "the core's page opens")
 
         let current = try fixture("update-current").update
         XCTAssertEqual(current.status, .upToDate)
         XCTAssertNil(current.latest)
-        XCTAssertEqual(UpdateText.caption(current), "You have the latest version.")
+        XCTAssertEqual(
+            UpdateText.caption(current),
+            current.channel == .beta ? "You have the latest beta." : "You have the latest version.")
+    }
+
+    // MARK: Channels
+
+    private func view(_ channel: UpdateChannel?, _ status: UpdateStatus = .idle) -> UpdateView {
+        UpdateView(
+            current: "0.2.6", status: status, latest: nil, url: nil, checkedMs: nil, command: "",
+            channel: channel)
+    }
+
+    func testEachChannelCopiesItsOwnCaskCommand() {
+        XCTAssertEqual(UpdateText.command(view(.stable)), "brew update && brew upgrade --cask litenotch")
+        XCTAssertEqual(UpdateText.command(view(.beta)), "brew update && brew upgrade --cask litenotch@beta")
+        XCTAssertEqual(UpdateText.command(view(nil)), UpdateText.brewCommand, "a core without channels is stable")
+        XCTAssertEqual(UpdateText.command(view(.unknown)), UpdateText.brewCommand, "never guesses the beta cask")
+    }
+
+    func testCaptionsNameTheBetaChannel() {
+        XCTAssertEqual(UpdateText.caption(view(.beta, .upToDate)), "You have the latest beta.")
+        XCTAssertEqual(UpdateText.caption(view(.beta, .available)), "A newer beta is available.")
+        XCTAssertEqual(UpdateText.caption(view(.stable, .upToDate)), "You have the latest version.")
+        XCTAssertEqual(UpdateText.caption(view(.stable, .available)), "A newer version is available.")
+        XCTAssertEqual(UpdateText.caption(view(nil, .available)), "A newer version is available.")
+    }
+
+    func testTheChannelDecodesFromTheCoreAndAnOlderCoreHasNone() throws {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        let json = #"{"current":"0.2.6-beta","status":"idle","command":"x","channel":"beta"}"#
+        XCTAssertEqual(try d.decode(UpdateView.self, from: Data(json.utf8)).channel, .beta)
+        let older = #"{"current":"0.2.5","status":"idle","command":"x"}"#
+        XCTAssertNil(try d.decode(UpdateView.self, from: Data(older.utf8)).channel)
+        let future = #"{"current":"1.0.0","status":"idle","command":"x","channel":"nightly"}"#
+        XCTAssertEqual(try d.decode(UpdateView.self, from: Data(future.utf8)).channel, .unknown)
+        XCTAssertNotNil(try fixture("idle").update.channel, "the core says which channel it is")
     }
 
     func testTheButtonSendsTheCheckCommand() throws {

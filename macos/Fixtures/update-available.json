@@ -350,7 +350,8 @@
     "latest": "0.3.0-beta",
     "url": "https://github.com/tangnatta/LiteNotch/releases/tag/v0.3.0-beta",
     "checked_ms": 1794400000002,
-    "command": "brew update && brew upgrade --cask litenotch"
+    "channel": "beta",
+    "command": "brew update && brew upgrade --cask litenotch@beta"
   },
   "settings": {
     "general": {

@@ -571,8 +571,18 @@ command after changing the core.
   comes back is only data: `update::checked` accepts a version and a release page
   under `RELEASES_PAGE` with a plain character set, and the shell opens only such a
   page and copies only its own fixed `brew update && brew upgrade --cask
-  litenotch` (same text as the core's `BREW_COMMAND`, checked by `ParityTests`).
-  Nothing is downloaded or run; the "update" notification source is reserved.
+  litenotch` or, on the beta channel, `… litenotch@beta` (the core's
+  `BREW_COMMAND` / `BREW_COMMAND_BETA`, checked by `ParityTests`).
+  **Channels:** a build's channel comes from its own version
+  (`update::Channel::of`: a label such as `-beta` means beta, a plain
+  version stable), which is how the release workflow files the casks
+  (`litenotch` / `litenotch@beta`). The request asks for the 20 newest
+  releases and `platform::update::parse_latest` takes the newest whose tag is
+  of the build's channel (the tag, not GitHub's `prerelease` flag); the core
+  also refuses a release of the other channel (`finish_on`), so a stable
+  build is never offered a beta nor a beta build a stable one. A beta build
+  is not told when a stable release appears: the beta cask only receives
+  labelled versions. Nothing is downloaded or run; the "update" notification source is reserved.
   There is no in-app updater (a Developer ID and notarization come first).
 - Analytics record feature-use counters per day only (`analytics::Feature`
   enum; no free-form strings). Uploading is opt-in and not implemented.

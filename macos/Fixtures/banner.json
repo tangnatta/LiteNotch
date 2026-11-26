@@ -375,7 +375,8 @@
     "latest": null,
     "url": null,
     "checked_ms": null,
-    "command": "brew update && brew upgrade --cask litenotch"
+    "channel": "beta",
+    "command": "brew update && brew upgrade --cask litenotch@beta"
   },
   "settings": {
     "general": {

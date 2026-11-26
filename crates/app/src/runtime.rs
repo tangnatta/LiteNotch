@@ -730,9 +730,14 @@ impl Loop {
                 Effect::DisableLid => self.ports.disable_lid(),
                 Effect::CheckUpdate => {
                     let tx = self.tx.clone();
-                    self.ports.check_update(Box::new(move |answer| {
-                        let _ = tx.send(Msg::UpdateResult(answer));
-                    }));
+                    let beta = litenotch_core::update::Channel::current()
+                        == litenotch_core::update::Channel::Beta;
+                    self.ports.check_update(
+                        beta,
+                        Box::new(move |answer| {
+                            let _ = tx.send(Msg::UpdateResult(answer));
+                        }),
+                    );
                 }
                 Effect::WriteClipboard(text) => self.ports.write_clipboard(&text),
                 Effect::WriteClipboardImage(path) => self.ports.write_clipboard_image(&path),
@@ -891,9 +896,13 @@ pub(crate) mod testing {
         fn sleep_display(&mut self) {
             self.0.lock().unwrap().calls.push("display:sleep".into());
         }
-        fn check_update(&mut self, done: crate::ports::UpdateDone) {
+        fn check_update(&mut self, beta: bool, done: crate::ports::UpdateDone) {
             let mut os = self.0.lock().unwrap();
             os.calls.push("update:check".into());
+            os.calls.push(format!(
+                "update:channel:{}",
+                if beta { "beta" } else { "stable" }
+            ));
             match os.update_answer.clone() {
                 Some(answer) => {
                     drop(os);
@@ -1552,10 +1561,20 @@ mod tests {
 
     #[test]
     fn checking_for_updates_goes_through_the_platform_and_the_answer_reaches_the_view() {
+        use litenotch_core::update::Channel;
+        // A release of this build's own channel, whichever that is.
+        let suffix = if Channel::current() == Channel::Beta {
+            "-beta"
+        } else {
+            ""
+        };
         let os = FakeOs {
             update_answer: Some(Ok(Release {
-                version: "999.0.0".into(),
-                url: format!("{}/tag/v999.0.0", litenotch_core::update::RELEASES_PAGE),
+                version: format!("999.0.0{suffix}"),
+                url: format!(
+                    "{}/tag/v999.0.0{suffix}",
+                    litenotch_core::update::RELEASES_PAGE
+                ),
             })),
             ..FakeOs::default()
         };
@@ -1568,9 +1587,21 @@ mod tests {
         let v = h
             .views
             .wait("update found", |v| v["update"]["status"] == "available");
-        assert_eq!(v["update"]["latest"], "999.0.0");
-        assert_eq!(v["update"]["command"], litenotch_core::update::BREW_COMMAND);
+        assert_eq!(v["update"]["latest"], format!("999.0.0{suffix}"));
+        assert_eq!(v["update"]["command"], Channel::current().command());
+        assert_eq!(
+            v["update"]["channel"],
+            if suffix.is_empty() { "stable" } else { "beta" }
+        );
         assert_eq!(h.calls().iter().filter(|c| *c == "update:check").count(), 1);
+        assert!(
+            h.calls().contains(&format!(
+                "update:channel:{}",
+                if suffix.is_empty() { "stable" } else { "beta" }
+            )),
+            "the platform is asked for this build's channel: {:?}",
+            h.calls()
+        );
     }
 
     #[test]

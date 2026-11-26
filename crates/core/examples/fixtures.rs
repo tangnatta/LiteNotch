@@ -368,7 +368,14 @@ fn main() {
     let mut c = populated();
     c.apply(Input::Command(Command::UpdateCheck), T0);
     views.push(("update-checking", c.view(T0 + 1)));
-    c.apply(Input::UpdateChecked(Ok(release("0.3.0-beta"))), T0 + 2);
+    // A release of this build's own channel: a stable build is never shown a beta.
+    let found =
+        if litenotch_core::update::Channel::current() == litenotch_core::update::Channel::Beta {
+            "0.3.0-beta"
+        } else {
+            "0.3.0"
+        };
+    c.apply(Input::UpdateChecked(Ok(release(found))), T0 + 2);
     views.push(("update-available", c.view(T0 + 3)));
     let mut c = populated();
     c.apply(Input::Command(Command::UpdateCheck), T0);

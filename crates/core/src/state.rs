@@ -4880,9 +4880,10 @@ mod tests {
     }
 
     fn newer() -> Release {
+        let version = crate::update::here("999.0.0");
         Release {
-            version: "999.0.0".into(),
-            url: format!("{}/tag/v999.0.0", crate::update::RELEASES_PAGE),
+            url: format!("{}/tag/v{version}", crate::update::RELEASES_PAGE),
+            version,
         }
     }
 
@@ -4920,7 +4921,7 @@ mod tests {
         c.apply(Input::UpdateChecked(Ok(newer())), T0 + 2);
         let v = c.view(T0 + 2).update;
         assert_eq!(v.status, crate::update::UpdateStatus::Available);
-        assert_eq!(v.latest.as_deref(), Some("999.0.0"));
+        assert_eq!(v.latest.as_deref(), Some(newer().version.as_str()));
         assert!(
             c.view(T0 + 2).inbox.banner.is_none(),
             "the user is looking: no banner"
@@ -4952,7 +4953,10 @@ mod tests {
         );
         c.apply(Input::UpdateChecked(Ok(newer())), T0 + 3);
         let banner = c.view(T0 + 3).inbox.banner.expect("announced");
-        assert_eq!(banner.title, "LiteNotch 999.0.0 is available");
+        assert_eq!(
+            banner.title,
+            format!("LiteNotch {} is available", newer().version)
+        );
         assert_eq!(banner.source, "update");
         assert_eq!(
             banner.open,

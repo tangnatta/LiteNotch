@@ -1127,6 +1127,14 @@ public enum UpdateStatus: String, LenientEnum, CaseIterable {
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
 
+/// Which stream of releases this build follows (`update.channel`): a plain
+/// version is stable, one with a label (`-beta`) is beta.
+public enum UpdateChannel: String, LenientEnum, CaseIterable {
+    case stable, beta, unknown
+    static var unknownCase: UpdateChannel { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
 /// This build's version and what the last check found (`update`).
 public struct UpdateView: Codable, Equatable {
     public var current: String
@@ -1138,6 +1146,8 @@ public struct UpdateView: Codable, Equatable {
     public var checkedMs: Int?
     /// What to run to update a Homebrew install (fixed text from the core).
     public var command: String
+    /// The channel this build follows; nil from a core that predates channels.
+    public var channel: UpdateChannel? = nil
 
     public static let none = UpdateView(
         current: "", status: .idle, latest: nil, url: nil,

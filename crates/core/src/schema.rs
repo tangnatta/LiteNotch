@@ -20,7 +20,7 @@ use crate::state::{
     ActivityKind, ClosedNotch, Command, Core, Input, Material, NotchStyle, PeekKind, Settings,
     Shrink, Tab, ThemeChoice, SOUNDS,
 };
-use crate::update::{UpdateStatus, BREW_COMMAND};
+use crate::update::{Channel, UpdateStatus, BREW_COMMAND, BREW_COMMAND_BETA};
 
 /// A value no setting accepts: what is kept is the upper limit.
 const HUGE: u64 = 4_000_000_000;
@@ -105,6 +105,7 @@ pub fn schema() -> Value {
         "limits": limits(),
         "sounds": SOUNDS,
         "brew_command": BREW_COMMAND,
+        "brew_command_beta": BREW_COMMAND_BETA,
         "enums": {
             "theme": variants!(ThemeChoice: System, Dark, Light),
             "notch_style": variants!(NotchStyle: Attached, Island),
@@ -121,6 +122,7 @@ pub fn schema() -> Value {
             "phase": variants!(Phase: Idle, Focus, ShortBreak, LongBreak),
             "run_state": variants!(RunState: Stopped, Running, Paused),
             "update_status": variants!(UpdateStatus: Idle, Checking, UpToDate, Available, Failed),
+            "update_channel": variants!(Channel: Stable, Beta),
             "tab": variants!(Tab: Home, Music, Timer, Clipboard, Agents, Inbox, Settings),
             "peek_kind": variants!(PeekKind: TrackChanged, TimeWarning, EyeBreak, Move, Quote, StillWorking),
             "activity_kind": variants!(ActivityKind: Idle, Approval, Banner, Pomodoro, Media, Caffeine, Agent,

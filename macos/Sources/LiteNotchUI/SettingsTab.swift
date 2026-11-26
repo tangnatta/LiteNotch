@@ -273,9 +273,9 @@ struct SettingsTab: View {
             row("Version \(latest) is available") {
                 HStack(spacing: 6) {
                     TextPill(title: "Copy update command", tint: .black, background: NT.allow, height: 22) {
-                        model.app?.copyText(UpdateText.brewCommand)
+                        model.app?.copyText(UpdateText.command(u))
                     }
-                    .help(UpdateText.brewCommand)
+                    .help(UpdateText.command(u))
                     if let page = UpdateText.releasePage(u.url) {
                         TextPill(title: "Release page", tint: NT.text1, height: 22) { model.app?.openURL(page) }
                     }

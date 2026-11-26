@@ -24,6 +24,12 @@ the section in the pull request that bumps the version in `Cargo.toml`.
     hook, so nobody looks for buttons that are not there.
 
 ### Improved
+- **Updates know about both Homebrew channels.** Settings › General › Check
+  for updates now follows your own channel: a beta build looks for the newest
+  beta and copies `brew upgrade --cask litenotch@beta`; a stable build looks
+  for the newest stable release and copies `brew upgrade --cask litenotch`.
+  Before, a stable build would have been offered a beta it could not install,
+  and a beta build a command for the wrong cask.
 - **Long answer notes in questions are kept.** A choice's note over the old
   limit is no longer dropped: the notch shows the first 200 characters with an
   inline More / Less.

@@ -1,5 +1,11 @@
 //! Checking for a newer LiteNotch.
 //!
+//! There are two Homebrew channels and a build belongs to one by its version:
+//! a plain `0.2.6` is **stable** (cask `litenotch`), anything with a label
+//! (`0.2.6-beta`, `0.3.0-rc.1`) is **beta** (cask `litenotch@beta`), which
+//! is how the release workflow files them. A build only looks for releases of
+//! its own channel, and is given its own channel's update command.
+//!
 //! Pure rules and state; the platform layer does the one network request
 //! (`Effect::CheckUpdate`) and hands back the newest release's version and
 //! page (`Input::UpdateChecked`). Nothing is fetched unless the user presses
@@ -13,9 +19,56 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Where releases are published; a release page must be under it.
 pub const RELEASES_PAGE: &str = "https://github.com/tangnatta/LiteNotch/releases";
 
-/// What updates a Homebrew install. Fixed text: the shell copies it, it is
-/// never built from anything received.
+/// What updates a stable Homebrew install. Fixed text: the shell copies it,
+/// it is never built from anything received.
 pub const BREW_COMMAND: &str = "brew update && brew upgrade --cask litenotch";
+
+/// The same for the beta channel's cask.
+pub const BREW_COMMAND_BETA: &str = "brew update && brew upgrade --cask litenotch@beta";
+
+/// Which stream of releases a build follows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Channel {
+    #[default]
+    Stable,
+    Beta,
+}
+
+impl Channel {
+    /// The channel a version belongs to: a label (`-beta`, `-rc.1`) means
+    /// beta. Anything that is not a version counts as stable, but nothing
+    /// that is not a version is ever shown (`checked`).
+    pub fn of(version: &str) -> Channel {
+        match parse(version) {
+            Some((_, _, _, Some(_))) => Channel::Beta,
+            _ => Channel::Stable,
+        }
+    }
+
+    /// This build's channel.
+    pub fn current() -> Channel {
+        Channel::of(VERSION)
+    }
+
+    /// What updates a Homebrew install of this channel.
+    pub fn command(self) -> &'static str {
+        match self {
+            Channel::Stable => BREW_COMMAND,
+            Channel::Beta => BREW_COMMAND_BETA,
+        }
+    }
+}
+
+/// `version` with the label this build's channel carries, for tests that
+/// need a release of the build's own channel whichever it is.
+#[cfg(test)]
+pub(crate) fn here(version: &str) -> String {
+    match Channel::current() {
+        Channel::Stable => version.to_owned(),
+        Channel::Beta => format!("{version}-beta"),
+    }
+}
 
 /// The daily check, and the retry after a failed one.
 const EVERY_MS: u64 = 24 * 3_600_000;
@@ -54,7 +107,9 @@ pub struct UpdateView {
     pub url: Option<String>,
     /// When the last answer came.
     pub checked_ms: Option<u64>,
-    /// What to run to update a Homebrew install.
+    /// The channel this build follows.
+    pub channel: Channel,
+    /// What to run to update a Homebrew install of this channel.
     pub command: String,
 }
 
@@ -178,6 +233,19 @@ impl Update {
         on: bool,
         now_ms: u64,
     ) -> Option<Release> {
+        self.finish_on(Channel::current(), answer, on, now_ms)
+    }
+
+    /// `finish` for a build of `channel`. A release of the other channel is
+    /// not an update for it however high its number: a stable build is not
+    /// offered a beta, and a beta build's command would not fetch a stable one.
+    fn finish_on(
+        &mut self,
+        channel: Channel,
+        answer: Result<Release, String>,
+        on: bool,
+        now_ms: u64,
+    ) -> Option<Release> {
         self.checked_ms = Some(now_ms);
         let by_timer = std::mem::take(&mut self.by_timer);
         let release = answer.ok().and_then(checked);
@@ -188,7 +256,7 @@ impl Update {
         };
         self.next_auto_ms = on.then(|| now_ms.saturating_add(wait));
         match release {
-            Some(r) if is_newer(&r.version, VERSION) => {
+            Some(r) if Channel::of(&r.version) == channel && is_newer(&r.version, VERSION) => {
                 self.status = UpdateStatus::Available;
                 let first = self.announced.as_deref() != Some(r.version.as_str());
                 self.latest = Some(r.clone());
@@ -210,6 +278,10 @@ impl Update {
     }
 
     pub fn view(&self) -> UpdateView {
+        self.view_on(Channel::current())
+    }
+
+    fn view_on(&self, channel: Channel) -> UpdateView {
         let available = self.status == UpdateStatus::Available;
         UpdateView {
             current: VERSION.to_owned(),
@@ -225,7 +297,8 @@ impl Update {
                 .filter(|_| available)
                 .map(|r| r.url.clone()),
             checked_ms: self.checked_ms,
-            command: BREW_COMMAND.to_owned(),
+            channel,
+            command: channel.command().to_owned(),
         }
     }
 }
@@ -317,17 +390,21 @@ mod tests {
         assert!(u.start(false));
         assert!(!u.start(false), "one check at a time");
         assert_eq!(u.view().status, UpdateStatus::Checking);
-        u.finish(Ok(release("999.0.0")), false, 10);
+        u.finish(Ok(release(&here("999.0.0"))), false, 10);
         let v = u.view();
         assert_eq!(
             (v.status, v.latest.as_deref(), v.checked_ms),
-            (UpdateStatus::Available, Some("999.0.0"), Some(10))
+            (
+                UpdateStatus::Available,
+                Some(here("999.0.0").as_str()),
+                Some(10)
+            )
         );
         assert!(v
             .url
             .as_deref()
             .is_some_and(|u| u.starts_with(RELEASES_PAGE)));
-        assert_eq!(v.command, BREW_COMMAND);
+        assert_eq!(v.command, Channel::current().command());
 
         assert!(u.start(false));
         u.finish(Ok(release(VERSION)), false, 20);
@@ -344,7 +421,7 @@ mod tests {
         for answer in [
             Err("offline".to_string()),
             Ok(Release {
-                version: "999.0.0".into(),
+                version: here("999.0.0"),
                 url: "https://evil.example/".into(),
             }),
         ] {
@@ -384,29 +461,116 @@ mod tests {
         let mut u = Update::default();
         u.start(false);
         assert_eq!(
-            u.finish(Ok(release("999.0.0")), true, 1),
+            u.finish(Ok(release(&here("999.0.0"))), true, 1),
             None,
             "the user is looking"
         );
         u.start(true);
         assert_eq!(
-            u.finish(Ok(release("999.0.0")), true, 2),
+            u.finish(Ok(release(&here("999.0.0"))), true, 2),
             None,
             "the manual check already showed it: announced"
         );
         let mut u = Update::default();
         u.start(true);
-        assert!(u.finish(Ok(release("999.0.0")), true, 1).is_some());
+        assert!(u.finish(Ok(release(&here("999.0.0"))), true, 1).is_some());
         u.start(true);
         assert_eq!(
-            u.finish(Ok(release("999.0.0")), true, 2),
+            u.finish(Ok(release(&here("999.0.0"))), true, 2),
             None,
             "once per version"
         );
         u.start(true);
         assert!(
-            u.finish(Ok(release("999.0.1")), true, 3).is_some(),
+            u.finish(Ok(release(&here("999.0.1"))), true, 3).is_some(),
             "a later one is new again"
         );
+    }
+
+    // --- channels ----------------------------------------------------------
+
+    #[test]
+    fn a_label_means_beta_and_no_label_means_stable() {
+        for (v, channel) in [
+            ("0.2.5", Channel::Stable),
+            ("v0.2.5", Channel::Stable),
+            ("0.2.6-beta", Channel::Beta),
+            ("v0.2.6-beta", Channel::Beta),
+            ("0.3.0-rc.1", Channel::Beta),
+            ("not a version", Channel::Stable),
+        ] {
+            assert_eq!(Channel::of(v), channel, "{v}");
+        }
+        assert_eq!(
+            Channel::current() == Channel::Beta,
+            VERSION.contains('-'),
+            "this build: {VERSION}"
+        );
+    }
+
+    #[test]
+    fn each_channel_has_its_own_cask_in_its_command() {
+        assert_eq!(
+            Channel::Stable.command(),
+            "brew update && brew upgrade --cask litenotch"
+        );
+        assert_eq!(
+            Channel::Beta.command(),
+            "brew update && brew upgrade --cask litenotch@beta"
+        );
+        // The names the release workflow writes the casks under.
+        assert!(!BREW_COMMAND.contains('@'));
+        assert!(BREW_COMMAND_BETA.ends_with("litenotch@beta"));
+    }
+
+    fn checked_on(channel: Channel, found: &str, by_timer: bool) -> (UpdateView, Option<Release>) {
+        let mut u = Update::default();
+        u.start(by_timer);
+        let announced = u.finish_on(channel, Ok(release(found)), true, 1);
+        (u.view_on(channel), announced)
+    }
+
+    #[test]
+    fn a_stable_build_is_offered_stable_releases_only() {
+        let (v, _) = checked_on(Channel::Stable, "999.0.0", false);
+        assert_eq!(
+            (v.status, v.latest.as_deref(), v.channel),
+            (UpdateStatus::Available, Some("999.0.0"), Channel::Stable)
+        );
+        assert_eq!(v.command, BREW_COMMAND);
+
+        // A beta with a higher number is not an update: the stable cask
+        // would not install it, and the command would do nothing.
+        let (v, announced) = checked_on(Channel::Stable, "999.0.0-beta", true);
+        assert_eq!(
+            (v.status, v.latest, v.url, announced),
+            (UpdateStatus::UpToDate, None, None, None),
+            "not shown and not announced"
+        );
+    }
+
+    #[test]
+    fn a_beta_build_is_offered_betas_only_and_the_beta_command() {
+        let (v, _) = checked_on(Channel::Beta, "999.0.0-beta", false);
+        assert_eq!(
+            (v.status, v.latest.as_deref(), v.channel),
+            (UpdateStatus::Available, Some("999.0.0-beta"), Channel::Beta)
+        );
+        assert_eq!(v.command, BREW_COMMAND_BETA);
+
+        let (v, announced) = checked_on(Channel::Beta, "999.0.0", true);
+        assert_eq!(
+            (v.status, v.latest, announced),
+            (UpdateStatus::UpToDate, None, None),
+            "the beta cask does not carry stable releases"
+        );
+        assert_eq!(v.command, BREW_COMMAND_BETA, "still this channel's command");
+    }
+
+    #[test]
+    fn the_view_of_this_build_follows_its_own_channel() {
+        let v = Update::default().view();
+        assert_eq!(v.channel, Channel::current());
+        assert_eq!(v.command, Channel::current().command());
     }
 }

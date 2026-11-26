@@ -4,6 +4,11 @@ What changed in each release. The release workflow copies the section whose
 heading is the version (`## 0.2.4`) into the GitHub release notes, so add
 the section in the pull request that bumps the version in `Cargo.toml`.
 
+## 0.2.6-beta
+
+### Changed
+- **Questions:** long option notes are kept; the first 200 characters show with a More / Less button.
+
 ## 0.2.5
 
 ### New

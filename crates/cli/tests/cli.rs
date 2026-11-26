@@ -555,3 +555,217 @@ fn the_terminal_device_is_a_pty_name_or_absent() {
         assert!(litenotch_core::agent::valid_tty(&t), "{t}");
     }
 }
+
+// --- other agents ----------------------------------------------------------
+
+fn connector_fixture(agent: &str, name: &str) -> String {
+    let path = format!(
+        "{}/../core/tests/fixtures/connectors/{agent}/{name}.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    std::fs::read_to_string(path).unwrap()
+}
+
+fn hook_of(fx: &Fixture, index: usize) -> serde_json::Value {
+    match &fx.seen.lock().unwrap()[index] {
+        Request::Hook { payload } => payload.clone(),
+        other => panic!("not a hook: {other:?}"),
+    }
+}
+
+#[test]
+fn codex_permission_is_forwarded_in_claude_form_and_answered_in_codex_form() {
+    let fx = serve("cli-codex", |_| {
+        Some(Response::Decision {
+            decision: Decision::Allow,
+        })
+    });
+    let input = connector_fixture("codex", "PermissionRequest");
+    let output = run(&fx, &["hook", "--agent", "codex"], &input);
+    assert_eq!(output.status.code(), Some(0));
+    let answer: serde_json::Value = serde_json::from_str(out(&output).trim()).unwrap();
+    assert_eq!(
+        answer,
+        json!({"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}})
+    );
+    let sent = hook_of(&fx, 0);
+    assert_eq!(sent["hook_event_name"], "PermissionRequest");
+    assert_eq!(sent["tool_name"], "Bash");
+    assert_eq!(
+        sent["session_id"],
+        "codex:019e0000-aaaa-7bbb-8ccc-000000000001"
+    );
+    assert_eq!(sent["litenotch_app"], "com.example.Terminal");
+}
+
+#[test]
+fn an_answered_question_is_never_printed_for_codex() {
+    let fx = serve("cli-codex-answer", |_| {
+        Some(Response::Answer {
+            updated_input: json!({"answers": {"q": "a"}}),
+        })
+    });
+    let input = connector_fixture("codex", "PermissionRequest");
+    let output = run(&fx, &["hook", "--agent", "codex"], &input);
+    assert_eq!((output.status.code(), out(&output).as_str()), (Some(0), ""));
+}
+
+#[test]
+fn gemini_notification_reaches_the_app_and_prints_nothing() {
+    let fx = serve("cli-gemini", |_| Some(Response::Ok));
+    let input = connector_fixture("gemini", "Notification");
+    let output = run(&fx, &["hook", "--agent", "gemini"], &input);
+    assert_eq!((output.status.code(), out(&output).as_str()), (Some(0), ""));
+    let sent = hook_of(&fx, 0);
+    assert_eq!(sent["hook_event_name"], "Notification");
+    assert_eq!(sent["notification_type"], "agent_needs_input");
+    assert_eq!(
+        sent["session_id"],
+        "gemini:5f2c1e9a-7d3b-4c1e-9f55-0a1b2c3d4e5f"
+    );
+    assert_eq!(sent["cwd"], "/Users/me/proj");
+
+    // Events nobody shows are not even sent.
+    let output = run(
+        &fx,
+        &["hook", "--agent", "gemini"],
+        &connector_fixture("gemini", "BeforeModel"),
+    );
+    assert_eq!((output.status.code(), out(&output).as_str()), (Some(0), ""));
+    assert_eq!(fx.seen.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn antigravity_gets_the_json_it_requires_with_or_without_the_app() {
+    let live = serve("cli-antigravity", |_| Some(Response::Ok));
+    let down = offline("cli-antigravity-offline");
+    for fx in [&live, &down] {
+        let tool = run(
+            fx,
+            &["hook", "--agent", "antigravity", "--event", "PreToolUse"],
+            &connector_fixture("antigravity", "PreToolUse"),
+        );
+        assert_eq!(out(&tool).trim(), r#"{"decision":"allow"}"#);
+        let stop = run(
+            fx,
+            &["hook", "--agent", "antigravity", "--event", "Stop"],
+            &connector_fixture("antigravity", "Stop"),
+        );
+        assert_eq!(out(&stop).trim(), r#"{"decision":"stop"}"#);
+        let start = run(
+            fx,
+            &["hook", "--agent", "antigravity", "--event", "SessionStart"],
+            &connector_fixture("antigravity", "SessionStart"),
+        );
+        assert_eq!(out(&start).trim(), "{}");
+        for o in [&tool, &stop, &start] {
+            assert_eq!(o.status.code(), Some(0));
+        }
+        // Garbage still gets an answer it can parse.
+        let junk = run(
+            fx,
+            &["hook", "--agent", "antigravity", "--event", "Stop"],
+            "not json",
+        );
+        assert_eq!(out(&junk).trim(), r#"{"decision":"stop"}"#);
+    }
+    // A conversation that is still busy is not reported as finished.
+    let sent = live.seen.lock().unwrap().len();
+    run(
+        &live,
+        &["hook", "--agent", "antigravity", "--event", "Stop"],
+        &connector_fixture("antigravity", "Stop-busy"),
+    );
+    assert_eq!(live.seen.lock().unwrap().len(), sent);
+    let first = hook_of(&live, 0);
+    assert_eq!(
+        first["session_id"],
+        "antigravity:ec33ebf9-0cba-4100-8142-c61503f6c587"
+    );
+    assert_eq!(first["hook_event_name"], "PreToolUse");
+    assert_eq!(first["tool_input"]["CommandLine"], "npm test");
+}
+
+#[test]
+fn an_unknown_agent_is_silent_and_ignored() {
+    let fx = serve("cli-unknown-agent", |_| Some(Response::Ok));
+    let output = run(&fx, &["hook", "--agent", "frobnicator"], "{}");
+    assert_eq!((output.status.code(), out(&output).as_str()), (Some(0), ""));
+    assert!(fx.seen.lock().unwrap().is_empty());
+}
+
+#[test]
+fn hooks_install_status_and_uninstall_for_each_agent() {
+    let fx = offline("cli-hooks-agents");
+    let paths = [
+        ("codex", fx.dir.join(".codex/hooks.json")),
+        ("gemini", fx.dir.join(".gemini/settings.json")),
+        ("antigravity", fx.dir.join(".gemini/config/hooks.json")),
+    ];
+    for (agent, path) in &paths {
+        let output = run(&fx, &["hooks", "status", "--agent", agent], "");
+        assert_eq!(output.status.code(), Some(1), "{agent}");
+        assert!(out(&output).contains("not installed"));
+
+        let output = run(&fx, &["hooks", "install", "--agent", agent], "");
+        assert_eq!(output.status.code(), Some(0), "{agent}: {}", err(&output));
+        assert!(path.exists(), "{agent}: {}", path.display());
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(
+            text.contains(&format!("'{BIN}' hook --agent {agent}")),
+            "{text}"
+        );
+
+        let output = run(&fx, &["hooks", "status", "--agent", agent], "");
+        assert_eq!(output.status.code(), Some(0), "{agent}");
+        assert!(out(&output).contains("installed") && !out(&output).contains("not"));
+    }
+    // Gemini and Antigravity say plainly that they cannot approve.
+    let output = run(&fx, &["hooks", "install", "--agent", "gemini"], "");
+    assert!(out(&output).contains("status only"));
+    let output = run(&fx, &["hooks", "install", "--agent", "codex"], "");
+    assert!(!out(&output).contains("status only"));
+
+    for (agent, path) in &paths {
+        let output = run(&fx, &["hooks", "uninstall", "--agent", agent], "");
+        assert_eq!(output.status.code(), Some(0), "{agent}");
+        assert!(!std::fs::read_to_string(path).unwrap().contains("litenotch"));
+    }
+    // Claude Code's file was never touched.
+    assert!(!fx.dir.join("claude/settings.json").exists());
+}
+
+#[test]
+fn hooks_all_acts_on_the_agents_that_are_installed() {
+    let fx = offline("cli-hooks-all");
+    let output = run(&fx, &["hooks", "install", "--agent", "all"], "");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(err(&output).contains("no supported coding agent"));
+
+    std::fs::create_dir_all(fx.dir.join(".codex")).unwrap();
+    std::fs::create_dir_all(fx.dir.join("claude")).unwrap();
+    let output = run(&fx, &["hooks", "install", "--agent", "all"], "");
+    assert_eq!(output.status.code(), Some(0), "{}", err(&output));
+    assert!(fx.dir.join(".codex/hooks.json").exists());
+    assert!(fx.dir.join("claude/settings.json").exists());
+    assert!(!fx.dir.join(".gemini").exists(), "Gemini is not there");
+
+    let output = run(&fx, &["hooks", "install", "--agent", "cursor"], "");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(err(&output).contains("unknown agent"));
+}
+
+#[test]
+fn codex_home_moves_the_codex_config() {
+    let fx = offline("cli-codex-home");
+    let elsewhere = fx.dir.join("custom-codex");
+    let output = Command::new(BIN)
+        .args(["hooks", "install", "--agent", "codex"])
+        .env("HOME", &fx.dir)
+        .env("CODEX_HOME", &elsewhere)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    assert!(elsewhere.join("hooks.json").exists());
+    assert!(!fx.dir.join(".codex").exists());
+}

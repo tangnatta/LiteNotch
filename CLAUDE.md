@@ -262,6 +262,38 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   The shell form is `QuestionView.swift` (`QuestionDraft` holds the rules:
   single choice sends on click, several questions are a stepper, an open
   question is a typing box).
+- **Other agents** (`core::agent::connector`): `litenotch hook --agent
+  codex|gemini|antigravity [--event NAME]` turns that agent's payload into
+  the Claude Code shape (`normalize`; session ids become `codex:<id>` so two
+  agents never merge) and writes what the agent expects back, so the core,
+  the dot and the session rows need no change. Only what each agent's
+  documentation promises is claimed: **Codex** has the same
+  `PermissionRequest` answer as Claude Code (Allow/Deny from the notch; an
+  `updatedInput` is never sent, Codex fails closed on it); **Gemini CLI**'s
+  `Notification` hook is observe-only and **Antigravity** has no approval
+  event, so those two show sessions and "needs input"/"finished" but no
+  buttons (`Agent::can_approve`). Antigravity's payloads do not name their
+  event, so its commands carry `--event`, and it must always get JSON back
+  (`default_output`: `{"decision":"allow"}` only delegates to its own
+  policy). Files: `~/.codex/hooks.json` (`CODEX_HOME`),
+  `~/.gemini/settings.json` (milliseconds), `~/.gemini/config/hooks.json`
+  (entry named `litenotch`). `litenotch hooks install|uninstall|status
+  [--agent claude|codex|gemini|antigravity|all]` (`all` = the ones whose
+  directory exists; plain `hooks install` is still Claude Code and prints
+  what it always did). Tests run the documented payloads
+  (`crates/core/tests/fixtures/connectors`, README there says which are
+  quoted and which built from schemas) through the adapter into `Agents`,
+  and check the installed files against each doc's layout. Settings ›
+  Agents has a row per connector (Connect / Disconnect, `connector_install` /
+  `connector_uninstall` with `agent` = the flag, handled in the runtime like
+  `hooks_install`; `agents.connectors` in the view model: name, `present` =
+  the agent's folder exists, `installed`, `approvals`), and a note naming the
+  agents with no approval hook (`AgentsText`). The runtime refuses Claude
+  Code and unknown names there, so nothing else reaches a file. Not yet
+  done: a live run of each agent (Gemini's `settings.json` may need hooks
+  enabled in some versions; Antigravity was never run). Cursor, Copilot CLI
+  and Qwen Code have Claude-style command hooks and would be the next
+  connectors.
 - **One copy's hooks only.** Each copy of the app registers its own CLI
   path, so test builds and moved installs used to pile up in
   `~/.claude/settings.json`: five hook processes per Claude Code event,

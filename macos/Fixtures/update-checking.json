@@ -151,7 +151,8 @@
     "hooks_installed": true,
     "statusline_installed": null,
     "other_copies": 0,
-    "other_copies_missing": 0
+    "other_copies_missing": 0,
+    "connectors": []
   },
   "usage": {
     "five_hour": {
@@ -344,7 +345,7 @@
     }
   ],
   "update": {
-    "current": "0.2.3-beta",
+    "current": "0.2.6-beta",
     "status": "checking",
     "latest": null,
     "url": null,

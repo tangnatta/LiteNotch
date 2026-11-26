@@ -4,6 +4,34 @@ What changed in each release. The release workflow copies the section whose
 heading is the version (`## 0.2.4`) into the GitHub release notes, so add
 the section in the pull request that bumps the version in `Cargo.toml`.
 
+## 0.2.6-beta
+
+### New
+- **Codex, Gemini CLI and Antigravity in the notch.** Each shows its sessions
+  like Claude Code does: working, waiting for you, finished, with a click to
+  bring the terminal forward. Connect them in Settings › Agents (a row each,
+  with Connect / Disconnect), or from the terminal with
+  `litenotch hooks install --agent codex|gemini|antigravity` (or `--agent all`
+  for every one that is installed); `uninstall` and `status` take the same
+  option. Plain `litenotch hooks install` is still Claude Code.
+  - **Codex** also gets Allow / Deny in the notch: it answers a permission
+    request the way Claude Code does.
+  - **Gemini CLI and Antigravity** have no hook that can answer an approval
+    from outside, so the notch shows activity and "needs input" only; their
+    own prompts stay in charge. Installing says so.
+  - Your own hooks in those files are kept, and the first backup of each file
+    is left beside it. Settings › Agents says which agents have no approval
+    hook, so nobody looks for buttons that are not there.
+
+### Improved
+- **Long answer notes in questions are kept.** A choice's note over the old
+  limit is no longer dropped: the notch shows the first 200 characters with an
+  inline More / Less.
+
+### Fixed and under the hood
+- Tests check every connector against the payloads and config layouts in each
+  agent's documentation.
+
 ## 0.2.5
 
 ### New

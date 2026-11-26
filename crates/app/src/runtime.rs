@@ -37,6 +37,10 @@ pub struct Config {
     pub dir: PathBuf,
     /// Claude Code's configuration directory (normally `~/.claude`).
     pub claude_dir: PathBuf,
+    /// Codex's home (normally `~/.codex`).
+    pub codex_dir: PathBuf,
+    /// The directory Gemini CLI and Antigravity share (normally `~/.gemini`).
+    pub gemini_dir: PathBuf,
     /// Absolute path of the `litenotch` CLI, as registered in hooks.
     pub cli_path: String,
     pub serve_socket: bool,
@@ -54,6 +58,15 @@ pub fn clips_dir(data_dir: &Path) -> PathBuf {
 }
 
 impl Config {
+    /// Where each agent keeps the file LiteNotch's hooks go in.
+    pub fn agent_dirs(&self) -> hooks_file::AgentDirs {
+        hooks_file::AgentDirs {
+            claude: self.claude_dir.clone(),
+            codex: self.codex_dir.clone(),
+            gemini: self.gemini_dir.clone(),
+        }
+    }
+
     pub fn socket_path(&self) -> PathBuf {
         PathBuf::from(litenotch_core::ipc::socket_path(
             &self.dir.to_string_lossy(),
@@ -74,6 +87,14 @@ enum ShellCommand {
     /// Route Claude Code's status line through LiteNotch (usage limits).
     StatuslineInstall,
     StatuslineUninstall,
+    /// Register with, or remove from, Codex, Gemini CLI or Antigravity
+    /// (`agent` is `Agent::flag`).
+    ConnectorInstall {
+        agent: String,
+    },
+    ConnectorUninstall {
+        agent: String,
+    },
     #[serde(untagged)]
     Core(Command),
 }
@@ -373,6 +394,12 @@ impl Loop {
                 );
                 self.report_hooks(result, "Usage limits turned off", now);
             }
+            Msg::Shell(ShellCommand::ConnectorInstall { agent }) => {
+                self.change_connector(&agent, true, now);
+            }
+            Msg::Shell(ShellCommand::ConnectorUninstall { agent }) => {
+                self.change_connector(&agent, false, now);
+            }
             Msg::Server(ServerEvent::Request {
                 request,
                 conn,
@@ -569,14 +596,54 @@ impl Loop {
         done: &str,
         now: u64,
     ) {
+        self.report_agent_change("Claude Code", result, done, now);
+    }
+
+    /// Connects or disconnects Codex, Gemini CLI or Antigravity. Claude Code
+    /// and names we do not know are refused: they must not reach a file.
+    fn change_connector(&mut self, flag: &str, install: bool, now: u64) {
+        use litenotch_core::agent::connector::{Agent, OTHER_AGENTS};
+        let Some(agent) = Agent::from_flag(flag).filter(|a| OTHER_AGENTS.contains(a)) else {
+            self.report_agent_change(
+                "Agent",
+                Err(hooks_file::HooksFileError::Settings(format!(
+                    "'{flag}' is not an agent LiteNotch can connect"
+                ))),
+                "",
+                now,
+            );
+            return;
+        };
+        let dirs = self.config.agent_dirs();
+        let (result, done) = if install {
+            (
+                hooks_file::install_agent(&dirs, agent, &self.config.cli_path),
+                format!("Connected to {}", agent.name()),
+            )
+        } else {
+            (
+                hooks_file::uninstall_agent(&dirs, agent, &self.config.cli_path),
+                format!("Disconnected from {}", agent.name()),
+            )
+        };
+        self.report_agent_change(agent.name(), result, &done, now);
+    }
+
+    fn report_agent_change(
+        &mut self,
+        name: &str,
+        result: Result<(), hooks_file::HooksFileError>,
+        done: &str,
+        now: u64,
+    ) {
         let (title, body, priority) = match result {
             Ok(()) => (
                 done.to_string(),
-                "Takes effect in new Claude Code sessions.".to_string(),
+                format!("Takes effect in new {name} sessions."),
                 Priority::Normal,
             ),
             Err(e) => (
-                "Claude Code settings not changed".to_string(),
+                format!("{name} settings not changed"),
                 e.to_string(),
                 Priority::High,
             ),
@@ -633,6 +700,16 @@ impl Loop {
         let (found, missing) =
             hooks_file::other_copies_count(&self.config.claude_dir, &self.config.cli_path);
         self.apply(Input::OtherCopies { found, missing }, now);
+        let dirs = self.config.agent_dirs();
+        let connectors = litenotch_core::agent::connector::OTHER_AGENTS
+            .into_iter()
+            .map(|agent| litenotch_core::agent::connector::ConnectorState {
+                agent: agent.flag().to_owned(),
+                present: dirs.present(agent),
+                installed: hooks_file::agent_installed(&dirs, agent, &self.config.cli_path),
+            })
+            .collect();
+        self.apply(Input::Connectors(connectors), now);
     }
 
     fn apply(&mut self, input: Input, now: u64) {
@@ -930,6 +1007,8 @@ pub(crate) mod testing {
             let config = Config {
                 dir: dir.join("data"),
                 claude_dir: dir.join("claude"),
+                codex_dir: dir.join("codex"),
+                gemini_dir: dir.join("gemini"),
                 cli_path: "/opt/litenotch/litenotch".into(),
                 serve_socket: true,
                 clipboard_poll_ms: 20,
@@ -1634,6 +1713,81 @@ mod tests {
             .wait("removed", |v| v["agents"]["hooks_installed"] == false);
     }
 
+    fn connector<'a>(view: &'a serde_json::Value, agent: &str) -> &'a serde_json::Value {
+        view["agents"]["connectors"]
+            .as_array()
+            .and_then(|rows| rows.iter().find(|r| r["agent"] == agent))
+            .unwrap_or_else(|| panic!("no connector row for {agent}: {view}"))
+    }
+
+    #[test]
+    fn codex_gemini_and_antigravity_are_connected_from_settings() {
+        let dir = crate::store::temp_dir("rt-connectors");
+        // Codex has a home; Gemini and Antigravity (one directory) do not.
+        std::fs::create_dir_all(dir.join("codex")).unwrap();
+        std::fs::write(dir.join("codex/hooks.json"), r#"{"hooks":{}}"#).unwrap();
+        let h = Harness::start_in(dir, FakeOs::default());
+        let view = h.views.last();
+        assert_eq!(connector(&view, "codex")["present"], true);
+        assert_eq!(connector(&view, "codex")["installed"], false);
+        assert_eq!(connector(&view, "codex")["approvals"], true);
+        assert_eq!(connector(&view, "gemini")["present"], false);
+        assert_eq!(connector(&view, "antigravity")["approvals"], false);
+
+        h.send(r#"{"cmd":"connector_install","agent":"codex"}"#);
+        let view = h.views.wait("codex connected", |v| {
+            v["agents"]["connectors"][0]["installed"] == true
+        });
+        assert_eq!(view["inbox"]["banner"]["title"], "Connected to Codex");
+        let text = std::fs::read_to_string(h.dir.join("codex/hooks.json")).unwrap();
+        assert!(
+            text.contains("/opt/litenotch/litenotch' hook --agent codex"),
+            "{text}"
+        );
+        assert_eq!(
+            connector(&view, "gemini")["installed"],
+            false,
+            "Gemini untouched"
+        );
+
+        h.send(r#"{"cmd":"connector_install","agent":"antigravity"}"#);
+        h.views.wait("antigravity connected", |v| {
+            connector(v, "antigravity")["installed"] == true
+        });
+        assert!(h.dir.join("gemini/config/hooks.json").exists());
+        assert_eq!(
+            connector(&h.views.last(), "gemini")["installed"],
+            false,
+            "the same directory, but Gemini's own file is not touched"
+        );
+
+        h.send(r#"{"cmd":"connector_uninstall","agent":"codex"}"#);
+        let view = h.views.wait("codex disconnected", |v| {
+            v["agents"]["connectors"][0]["installed"] == false
+        });
+        assert_eq!(view["inbox"]["banner"]["title"], "Disconnected from Codex");
+    }
+
+    #[test]
+    fn a_connector_command_for_claude_or_an_unknown_agent_touches_no_file() {
+        let h = Harness::start("rt-connector-refused");
+        for agent in ["claude", "frobnicator", "../../etc"] {
+            h.send(&format!(
+                r#"{{"cmd":"connector_install","agent":"{agent}"}}"#
+            ));
+            let view = h.views.wait("refused", |v| {
+                v["inbox"]["banner"]["title"] == "Agent settings not changed"
+            });
+            assert!(view["inbox"]["banner"]["body"]
+                .as_str()
+                .unwrap()
+                .contains("not an agent LiteNotch can connect"));
+        }
+        for sub in ["claude", "codex", "gemini"] {
+            assert!(!h.dir.join(sub).exists(), "{sub} must not be created");
+        }
+    }
+
     /// Reported: Claude Code's settings held the hooks of several copies of
     /// LiteNotch. The app says so at start, and removes them when asked.
     #[test]
@@ -1840,6 +1994,8 @@ mod tests {
         let config = Config {
             dir: h.dir.join("data"),
             claude_dir: h.dir.join("claude"),
+            codex_dir: h.dir.join("codex"),
+            gemini_dir: h.dir.join("gemini"),
             cli_path: "x".into(),
             serve_socket: true,
             clipboard_poll_ms: 0,

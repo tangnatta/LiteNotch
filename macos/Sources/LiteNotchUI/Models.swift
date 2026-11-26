@@ -869,6 +869,22 @@ public struct AgentsView: Codable, Equatable {
     public var otherCopies: Int? = nil
     /// How many of those no longer exist on disk.
     public var otherCopiesMissing: Int? = nil
+    /// Codex, Gemini CLI and Antigravity; nil from a core that predates them.
+    public var connectors: [ConnectorView]? = nil
+}
+
+/// One of the other agents Settings can connect.
+public struct ConnectorView: Codable, Equatable, Identifiable {
+    /// `codex`, `gemini` or `antigravity`: what the connector commands take.
+    public var agent: String
+    public var name: String
+    /// Its configuration folder exists, so it is probably installed.
+    public var present: Bool
+    /// LiteNotch is registered with it; nil when its file cannot be read.
+    public var installed: Bool?
+    /// Allow / Deny works from the notch; otherwise it only shows activity.
+    public var approvals: Bool
+    public var id: String { agent }
 }
 
 public struct RateWindow: Codable, Equatable {

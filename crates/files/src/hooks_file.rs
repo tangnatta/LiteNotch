@@ -25,8 +25,9 @@ pub enum HooksFileError {
 impl std::fmt::Display for HooksFileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HooksFileError::Io(e) => write!(f, "could not update Claude Code settings: {e}"),
-            HooksFileError::Settings(e) => write!(f, "Claude Code settings are not usable: {e}"),
+            // Also used for the other agents' files, so it names none.
+            HooksFileError::Io(e) => write!(f, "could not update the settings file: {e}"),
+            HooksFileError::Settings(e) => write!(f, "the settings file is not usable: {e}"),
         }
     }
 }

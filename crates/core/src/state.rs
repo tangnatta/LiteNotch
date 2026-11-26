@@ -388,6 +388,7 @@ pub enum Tab {
     Agents,
     Inbox,
     Settings,
+    Calendar,
 }
 
 /// Everything the shell can ask for. Serialized as `{"cmd": "...", ...}`.
@@ -473,6 +474,13 @@ pub enum Command {
     CalendarEvents {
         events: Vec<EventInput>,
     },
+    /// One event in full, read by the shell when the user opened it in the
+    /// Calendar tab. Replaces any event shown before.
+    CalendarDetail {
+        detail: Box<crate::calendar::EventDetailInput>,
+    },
+    /// The Calendar tab went back to its list.
+    CalendarDetailClose,
     AgentDecide {
         request_id: String,
         decision: Decision,
@@ -539,6 +547,8 @@ pub enum Input {
         day_start_ms: u64,
         day_end_ms: u64,
     },
+    /// Codex's latest usage limits, read from its session logs.
+    CodexLimits(crate::usage::AgentLimits),
     /// What the system reports as playing; `None` when nothing is.
     NowPlaying(Option<NowPlaying>),
     UsageResetToday,
@@ -557,6 +567,8 @@ pub enum Input {
     },
     UtcOffset(i32),
     HooksInstalled(Option<bool>),
+    /// Which other agents are installed and connected (from their files).
+    Connectors(Vec<ConnectorView>),
     /// Other copies of LiteNotch found in Claude Code's settings, and how
     /// many of them are gone from disk.
     OtherCopies {
@@ -718,6 +730,23 @@ pub struct AgentsView {
     pub other_copies: u32,
     /// How many of those no longer exist on disk.
     pub other_copies_missing: u32,
+    /// The other agents LiteNotch can connect to, in a fixed order.
+    pub connectors: Vec<ConnectorView>,
+}
+
+/// One agent other than Claude Code, as Settings › Agents lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectorView {
+    /// The `--agent` value (`codex`), which `agent_connect` takes back.
+    pub agent: String,
+    /// The name people know it by (`Codex`).
+    pub name: String,
+    /// Its folder exists, so it looks installed on this Mac.
+    pub present: bool,
+    /// LiteNotch's hooks are in its settings; `None` if unknown.
+    pub connected: Option<bool>,
+    /// Its requests can be allowed or denied from the notch.
+    pub can_approve: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -788,6 +817,7 @@ pub struct Core {
     /// Highest alert level already raised per usage window (5 h, 7 d).
     usage_alerted: [u8; 2],
     hooks_installed: Option<bool>,
+    connectors: Vec<ConnectorView>,
     other_copies: (u32, u32),
     statusline_installed: Option<bool>,
     dirty: bool,
@@ -901,6 +931,7 @@ impl Core {
             dnd: false,
             usage_alerted: [0; 2],
             hooks_installed: None,
+            connectors: Vec::new(),
             other_copies: (0, 0),
             statusline_installed: None,
             dirty: false,
@@ -1042,6 +1073,12 @@ impl Core {
                     self.track_changed(now);
                 }
             }
+            Input::CodexLimits(mut limits) => {
+                // A reading dated in the future (a bad line, a wrong clock)
+                // would otherwise hold off every later one until restart.
+                limits.updated_ms = limits.updated_ms.min(now.saturating_add(60_000));
+                self.usage.set_codex_limits(limits);
+            }
             Input::UsageResetToday => self.usage.reset_today(),
             Input::Clamshell {
                 closed,
@@ -1049,6 +1086,7 @@ impl Core {
             } => self.clamshell(closed, external_display, &mut fx),
             Input::UtcOffset(secs) => self.set_utc_offset(secs),
             Input::HooksInstalled(state) => self.hooks_installed = state,
+            Input::Connectors(list) => self.connectors = list,
             Input::OtherCopies { found, missing } => {
                 self.other_copies = (found, missing.min(found))
             }
@@ -1238,6 +1276,8 @@ impl Core {
             }
             Command::NotifySystem { app, title, body } => self.system_notify(app, title, body, now),
             Command::CalendarEvents { events } => self.calendar.set_events(events, now),
+            Command::CalendarDetail { detail } => self.calendar.set_detail(*detail),
+            Command::CalendarDetailClose => self.calendar.close_detail(),
             Command::ClipCopyPlain { id } => {
                 if let Some(item) = self.clipboard.get(id).filter(|i| i.kind != ClipKind::Image) {
                     fx.push(Effect::WriteClipboard(item.text.clone()));
@@ -1381,6 +1421,7 @@ impl Core {
                     Tab::Agents => Feature::TabAgents,
                     Tab::Inbox => Feature::TabInbox,
                     Tab::Settings => Feature::TabSettings,
+                    Tab::Calendar => Feature::TabCalendar,
                 },
                 now,
             ),
@@ -1778,7 +1819,11 @@ impl Core {
             "litenotch" => tab("agents", Some("sessions")),
             "caffeine" => tab("settings", Some("keep_awake")),
             "color" => tab("clipboard", None),
-            "calendar" => tab("home", None),
+            // The event's own page: the pane is `<start>-<id>`, as in the group.
+            "calendar" => tab(
+                "calendar",
+                n.group.as_deref().and_then(|g| g.strip_prefix("calendar-")),
+            ),
             "update" => tab("settings", Some("general")),
             _ => None,
         }
@@ -1927,6 +1972,7 @@ impl Core {
             other_copies: self.other_copies.0,
             other_copies_missing: self.other_copies.1,
             statusline_installed: self.statusline_installed,
+            connectors: self.connectors.clone(),
         };
         let caf = self.caffeine.snapshot(now);
         let caffeine = CaffeineView {
@@ -2260,9 +2306,10 @@ mod tests {
         assert_eq!(
             banner.open,
             Some(OpenTarget::Tab {
-                tab: "home".into(),
-                pane: None
-            })
+                tab: "calendar".into(),
+                pane: Some(format!("{start}-e1"))
+            }),
+            "a click on the notice opens that event in the Calendar tab"
         );
         assert_eq!(uses(&c, Feature::CalendarAlert), 1);
 
@@ -2328,6 +2375,108 @@ mod tests {
         );
         assert!(c.view(T0).calendar.events.is_empty());
         assert_eq!(c.next_deadline(), None);
+    }
+
+    #[test]
+    fn an_opened_event_is_shown_in_full_until_closed_deleted_or_turned_off() {
+        let mut c = with_calendar();
+        let start = T0 + 30 * 60_000;
+        let events = vec![event("e1", "Stand-up", start, 15)];
+        cmd(
+            &mut c,
+            Command::CalendarEvents {
+                events: events.clone(),
+            },
+            T0,
+        );
+        let detail: Command = serde_json::from_value(json!({
+            "cmd": "calendar_detail",
+            "detail": {"id": "e1", "title": "Stand-up", "start_ms": start, "end_ms": start + 900_000,
+                       "notes": "Agenda\n\n\n\u{202E}line two", "url": "https://meet.example/abc",
+                       "attendees": [{"name": "Ann", "status": "accepted", "me": true},
+                                     {"name": "Bo", "status": "maybe-later"}],
+                       "can_edit": true, "recurring": true}
+        }))
+        .expect("parses");
+        cmd(&mut c, detail, T0);
+        let d = c.view(T0).calendar.detail.expect("shown");
+        assert_eq!(
+            d.notes, "Agenda\n\n\u{FFFD}line two",
+            "blank runs collapse, bidi is replaced"
+        );
+        assert_eq!(d.url, "https://meet.example/abc");
+        assert_eq!(
+            d.attendees[1].status,
+            crate::calendar::AttendeeStatus::Unknown
+        );
+        assert!(d.can_edit && d.recurring);
+        assert!(c.view(T0).calendar.events.len() == 1);
+
+        cmd(&mut c, Command::CalendarDetailClose, T0);
+        assert_eq!(c.view(T0).calendar.detail, None);
+
+        // Deleted in the calendar (or here): the next read closes its page.
+        cmd(&mut c, detail_cmd("e1", start), T0);
+        assert!(c.view(T0).calendar.detail.is_some());
+        cmd(&mut c, Command::CalendarEvents { events: vec![] }, T0);
+        assert_eq!(c.view(T0).calendar.detail, None);
+
+        // Turning the calendar off forgets it, and nothing is taken meanwhile.
+        cmd(&mut c, Command::CalendarEvents { events }, T0);
+        cmd(&mut c, detail_cmd("e1", start), T0);
+        set(&mut c, |s| s.calendar.enabled = false);
+        assert_eq!(c.view(T0).calendar.detail, None);
+        cmd(&mut c, detail_cmd("e1", start), T0);
+        assert_eq!(c.view(T0).calendar.detail, None);
+        // The detail is never saved.
+        assert!(!serde_json::to_string(&c.persisted())
+            .unwrap()
+            .contains("Stand-up"));
+    }
+
+    fn detail_cmd(id: &str, start: u64) -> Command {
+        Command::CalendarDetail {
+            detail: Box::new(crate::calendar::EventDetailInput {
+                id: id.into(),
+                title: "Stand-up".into(),
+                start_ms: start,
+                end_ms: start + 900_000,
+                ..Default::default()
+            }),
+        }
+    }
+
+    #[test]
+    fn the_socket_cannot_open_or_change_an_event() {
+        // Only the shell's own commands carry calendar details; a script's
+        // notification posing as one opens nothing (see above), and no
+        // socket request reaches `Command` at all.
+        let n: Result<crate::ipc::Request, _> = serde_json::from_value(json!({
+            "type": "calendar_detail", "detail": {"id": "e1"}
+        }));
+        assert!(n.is_err());
+    }
+
+    #[test]
+    fn a_codex_reading_from_the_future_does_not_hold_off_later_ones() {
+        use crate::usage::{AgentLimits, LimitWindow};
+        let reading = |updated_ms, pct| AgentLimits {
+            primary: Some(LimitWindow {
+                used_pct: pct,
+                window_mins: 300,
+                resets_at_ms: None,
+            }),
+            secondary: None,
+            updated_ms,
+        };
+        let mut c = core();
+        c.apply(Input::CodexLimits(reading(T0 + 365 * 86_400_000, 10.0)), T0);
+        c.apply(
+            Input::CodexLimits(reading(T0 + 120_000, 20.0)),
+            T0 + 120_000,
+        );
+        let codex = c.view(T0 + 120_000).usage.codex.expect("read");
+        assert_eq!(codex.primary.map(|p| p.used_pct), Some(20.0));
     }
 
     #[test]
@@ -3873,11 +4022,12 @@ mod tests {
             Tab::Agents,
             Tab::Inbox,
             Tab::Settings,
+            Tab::Calendar,
         ] {
             cmd(&mut c, Command::TabOpened { tab }, T0);
         }
         cmd(&mut c, Command::Refresh, T0);
-        assert_eq!(c.view(T0).analytics.len(), 8);
+        assert_eq!(c.view(T0).analytics.len(), 9);
         cmd(&mut c, Command::AnalyticsClear, T0);
         assert!(c.view(T0).analytics.is_empty());
         assert!(c.take_dirty());

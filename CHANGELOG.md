@@ -4,6 +4,50 @@ What changed in each release. The release workflow copies the section whose
 heading is the version (`## 0.2.4-beta`) into the GitHub release notes, so add
 the section in the pull request that bumps the version in `Cargo.toml`.
 
+## 0.2.7-beta
+
+### New
+- **A Calendar tab.** With Settings › Calendar on, a calendar icon sits
+  beside the inbox. It lists the next two days by day; click an event to see
+  everything in it: when and how long, the calendar, the place, its link,
+  the organizer, who is coming and who has not answered, and the notes.
+  - **New event, Edit and Delete** change your calendar from the notch:
+    title, start, end, calendar and place. Moving the start keeps the length.
+    For a repeating event, a change or delete applies to that one occurrence.
+    Delete asks once more before it acts.
+  - An event with guests (yours or someone else's invitation), or one in a
+    calendar that cannot be changed, shows **Open Calendar** instead: changing
+    a meeting sends every guest an update, which Calendar asks you about.
+  - Clicking a calendar reminder, or the event on Home, opens that event.
+  - A link in an invitation is shown with a **Copy** button; LiteNotch never
+    opens it.
+- **Settings › Agents connects Codex, Gemini CLI and Antigravity** with a
+  button each, next to Claude Code, and says which are installed on this Mac.
+- **Codex's usage limits** in Agents › Usage, read from Codex's own session
+  logs (no request leaves your Mac).
+- **A welcome on first launch**: the panel opens once and says how to open,
+  close and quit LiteNotch.
+
+### Improved
+- Settings lists its sections most-used first, and General folds the choices
+  that need explaining under **More options**.
+- The colour eyedropper moved to the Clipboard tab, where picked colours land.
+- The README is shorter, with the details in a separate guide.
+
+### Fixed and under the hood
+- Calendar text from invitations (notes, links, names) is cleaned of
+  invisible and direction-changing characters and capped before it is shown,
+  like event titles already were.
+- The macOS permission prompt for calendars now says LiteNotch can change
+  events, and when.
+- `litenotch status` no longer includes the text the closed notch shows
+  (a notification's or an event's title), only what kind of thing it is:
+  any program of yours could ask it, including ones without the calendar or
+  Accessibility permission.
+- Reading Codex's logs skips anything that is not a plain file, and a log
+  dated in the future no longer holds back the real limits.
+- Connecting an agent that is not installed no longer creates its folder.
+
 ## 0.2.6-beta
 
 ### New

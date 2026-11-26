@@ -9,14 +9,21 @@ public enum SnapshotRenderer {
     @MainActor
     public static func renderAll(fixturesDir: URL, outDir: URL) throws -> [URL] {
         try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        // Draw every control of Settings › General, folded ones too.
+        SettingsTab.showMoreOptions = true
+        defer { SettingsTab.showMoreOptions = false }
         let files = try FileManager.default.contentsOfDirectory(at: fixturesDir, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+            // schema.json is the core's limits for ParityTests, not a view model.
+            .filter { $0.pathExtension == "json" && $0.lastPathComponent != "schema.json" }.sorted {
+                $0.lastPathComponent < $1.lastPathComponent
+            }
         var written: [URL] = []
         let canvas = CGSize(width: 680, height: 320)
         func add(
             _ name: String, _ vm: ViewModel, expanded: Bool = true, tab: Tab = .home,
             section: SettingsSection = .general, pane: AgentsPane = .sessions,
             timerPane: TimerPane = .focus, clipPreview: Int? = nil,
+            calendarPage: CalendarPage = .list,
             accessibilityNeeded: Bool = false, notchless: Bool = false
         ) throws {
             // A pending approval opens the panel whatever `expanded` says;
@@ -25,7 +32,7 @@ public enum SnapshotRenderer {
             let size = open ? canvas : CGSize(width: canvas.width, height: 110)
             if let u = try write(
                 vm, expanded: expanded, tab: tab, section: section, pane: pane,
-                timerPane: timerPane, clipPreview: clipPreview,
+                timerPane: timerPane, clipPreview: clipPreview, calendarPage: calendarPage,
                 accessibilityNeeded: accessibilityNeeded, notchless: notchless, size: size,
                 to: outDir.appendingPathComponent("\(name).png"))
             {
@@ -91,6 +98,19 @@ public enum SnapshotRenderer {
             }
             if name == "calendar" {
                 try add("calendar-expanded-settings-calendar", vm, tab: .settings, section: .calendar)
+                try add("calendar-expanded-calendar", vm, tab: .calendar)
+                try add("calendar-expanded-calendar-new", vm, tab: .calendar, calendarPage: .new)
+                var light = vm
+                light.settings.appearance.theme = .light
+                try add("light-calendar-expanded-calendar", light, tab: .calendar)
+            }
+            if name == "calendar-detail", let d = vm.calendar.detail {
+                try add("calendar-detail-expanded-calendar-event", vm, tab: .calendar, calendarPage: .event(d.key))
+                try add("calendar-detail-expanded-calendar-edit", vm, tab: .calendar, calendarPage: .edit(d.key))
+                var invite = vm
+                invite.calendar.detail?.canEdit = false
+                invite.calendar.detail?.recurring = false
+                try add("calendar-invite-expanded-calendar-event", invite, tab: .calendar, calendarPage: .event(d.key))
             }
             if name == "day" {
                 // An 8-hour day seen at four times: morning, midday,
@@ -111,7 +131,6 @@ public enum SnapshotRenderer {
                     try add("day-tree-\(label)-closed", tree, expanded: false)
                     try add("day-tree-\(label)-expanded-home", tree)
                 }
-                try add("day-expanded-settings-home", vm, tab: .settings, section: .home)
                 var treeSettings = vm
                 treeSettings.settings.day.enabled = true
                 treeSettings.settings.day.icons = .tree
@@ -289,6 +308,14 @@ public enum SnapshotRenderer {
                 try add("media-expanded-music-long", paused, tab: .music)
                 try add("media-expanded-home-long", paused, tab: .home)
             }
+            if name == "media", var codex = vm.usage.codex {
+                // Codex last used long ago: every window has reset since.
+                codex.primary?.resetsAtMs = snapshotNowMs - 60_000
+                codex.secondary?.resetsAtMs = snapshotNowMs - 60_000
+                var quiet = vm
+                quiet.usage.codex = codex
+                try add("codex-reset-expanded-agents-usage", quiet, tab: .agents, pane: .usage)
+            }
             if name == "idle" {
                 var empty = vm
                 empty.usage.week = []
@@ -363,8 +390,9 @@ public enum SnapshotRenderer {
     static func write(
         _ vm: ViewModel, expanded: Bool, tab: Tab, section: SettingsSection = .general,
         pane: AgentsPane = .sessions, timerPane: TimerPane = .focus, clipPreview: Int? = nil,
-        accessibilityNeeded: Bool = false, notchless: Bool = false,
+        calendarPage: CalendarPage = .list, accessibilityNeeded: Bool = false, notchless: Bool = false,
         nowMs: Int = snapshotNowMs, backdrop: Bool = false,
+        zoom: CGFloat = 1, marqueeShift: Int = 0,
         size: CGSize, to url: URL
     ) throws -> URL? {
         let model = AppModel(bridge: MockBridge())
@@ -375,7 +403,7 @@ public enum SnapshotRenderer {
         }
         model.setForSnapshot(
             vm, expanded: expanded, tab: tab, section: section, pane: pane,
-            timerPane: timerPane, clipPreview: clipPreview,
+            timerPane: timerPane, clipPreview: clipPreview, calendarPage: calendarPage,
             accessibilityNeeded: accessibilityNeeded)
         let offset = nowMs - Int(Date().timeIntervalSince1970 * 1000)
         // "System" renders dark; light variants set the theme explicitly.
@@ -384,6 +412,10 @@ public enum SnapshotRenderer {
             .environment(\.colorScheme, scheme)
             .environment(\.isSnapshot, true)
             .environment(\.clockOffsetMs, offset)
+            .environment(\.marqueeShift, marqueeShift)
+            // Laid out at its real size, then enlarged from the top edge.
+            .frame(width: size.width / zoom, height: size.height / zoom, alignment: .top)
+            .scaleEffect(zoom, anchor: .top)
             .frame(width: size.width, height: size.height, alignment: .top)
             .background(backdrop ? AnyView(PreviewRenderer.backdrop) : AnyView(Color(white: 0.5)))
         let renderer = ImageRenderer(content: root)

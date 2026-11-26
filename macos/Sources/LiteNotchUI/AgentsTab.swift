@@ -6,6 +6,7 @@ struct AgentsTab: View {
     @Environment(\.clockOffsetMs) private var offset
 
     private var send: (ShellCommand) -> Void { model.send }
+    private var anyConnected: Bool { vm.agents.anyConnected }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -14,19 +15,17 @@ struct AgentsTab: View {
                     options: [(AgentsPane.sessions, "Sessions"), (AgentsPane.usage, "Usage")],
                     selection: $model.agentsPane, label: "Agents view")
                 Spacer(minLength: 4)
+                // Disconnecting lives in Settings › Agents; here only the way in.
+                if model.agentsPane == .sessions && !anyConnected && !vm.agents.sessions.isEmpty {
+                    connectButton
+                }
             }
             .frame(height: 24)
             switch model.agentsPane {
             case .sessions:
-                if vm.agents.sessions.isEmpty && !(vm.agents.hooksInstalled ?? false) {
-                    EmptyState(
-                        symbol: "terminal", title: "Not connected to Claude Code",
-                        hint: "Connect it, then start Claude Code in a terminal to see its sessions and approve its requests here."
-                    ) {
-                        connectButton
-                    }
+                if vm.agents.sessions.isEmpty {
+                    empty
                 } else {
-                    hooksLine
                     sessions
                 }
             case .usage:
@@ -35,65 +34,49 @@ struct AgentsTab: View {
         }
     }
 
-    @ViewBuilder private var hooksLine: some View {
-        let installed = vm.agents.hooksInstalled ?? false
-        HStack(spacing: 8) {
-            Image(systemName: installed ? "checkmark.circle" : "link.badge.plus")
-                .glyph(11)
-                .foregroundStyle(installed ? NT.text3 : NT.accentText)
-            Text(
-                verbatim: installed
-                    ? "Connected to Claude Code"
-                    : "Connect Claude Code to see its sessions and approve requests here."
-            )
-            .nfont(.body).foregroundStyle(installed ? NT.text3 : NT.text2).lineLimit(1)
-            .minimumScaleFactor(0.9)
-            Spacer(minLength: 4)
-            if installed {
-                TextPill(title: "Disconnect", tint: NT.text2, height: 22) { send(.hooksUninstall) }
-                    .help("Stop sending Claude Code sessions to LiteNotch")
-            } else {
+    @ViewBuilder private var empty: some View {
+        if anyConnected {
+            EmptyState(
+                symbol: "terminal", title: "No sessions yet",
+                hint: "Start a connected agent in a terminal and it shows up here.")
+        } else {
+            EmptyState(
+                symbol: "terminal", title: "No coding agent connected",
+                hint: "Connect Claude Code, Codex, Gemini CLI or Antigravity to see their sessions here."
+            ) {
                 connectButton
             }
         }
-        .frame(height: 24)
     }
 
     private var connectButton: some View {
-        TextPill(title: "Connect Claude Code", tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold) {
-            send(.hooksInstall)
+        TextPill(title: "Connect an agent", tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold) {
+            model.openSettings(.agents)
         }
-        .help("Adds LiteNotch to Claude Code\u{2019}s settings. New sessions show up here.")
+        .help("Opens Settings \u{203A} Agents, with every agent LiteNotch can connect to")
     }
 
     private var sessions: some View {
         let now = nowMs(Date(), offset: offset)
-        return Group {
-            if vm.agents.sessions.isEmpty {
-                EmptyState(
-                    symbol: "terminal", title: "No sessions",
-                    hint: "Start Claude Code in a terminal to see it here.")
-            } else {
-                NotchScroll {
-                    ForEach(Array(vm.agents.sessions.enumerated()), id: \.element.id) { i, s in
-                        Button {
-                            model.openSession(s)
-                        } label: {
-                            SessionRow(session: s, now: now)
-                        }
-                        .buttonStyle(.plain)
-                        .rowHover()
-                        .help(s.app == nil ? "Its terminal is not known yet" : "Show this session\u{2019}s window")
-                        if i < vm.agents.sessions.count - 1 { Hairline().padding(.horizontal, 6) }
-                    }
-                    .padding(.horizontal, 6)
+        return NotchScroll {
+            ForEach(Array(vm.agents.sessions.enumerated()), id: \.element.id) { i, s in
+                Button {
+                    model.openSession(s)
+                } label: {
+                    SessionRow(session: s, now: now)
                 }
-                .padding(.horizontal, -6)
+                .buttonStyle(.plain)
+                .rowHover()
+                .help(s.app == nil ? "Its terminal is not known yet" : "Show this session\u{2019}s window")
+                if i < vm.agents.sessions.count - 1 { Hairline().padding(.horizontal, 6) }
             }
+            .padding(.horizontal, 6)
         }
+        .padding(.horizontal, -6)
     }
 }
 
+/// Project, state and age; under them which agent it is and its last words.
 struct SessionRow: View {
     let session: AgentSession
     let now: Int
@@ -111,8 +94,12 @@ struct SessionRow: View {
                         .foregroundStyle(NT.text3)
                 }
             }
-            if let m = session.lastMessage, !m.isEmpty {
-                VText(m).nfont(.body).foregroundStyle(NT.text2).lineLimit(1)
+            HStack(spacing: 6) {
+                Text(verbatim: Format.agentName(sessionId: session.id))
+                    .nfont(.captionStrong).foregroundStyle(NT.text3).fixedSize()
+                if let m = session.lastMessage, !m.isEmpty {
+                    VText(m).nfont(.body).foregroundStyle(NT.text2).lineLimit(1)
+                }
             }
         }
         .padding(.vertical, 7)
@@ -152,10 +139,11 @@ enum UsageText {
     static let offer = "Show your Claude Code usage limits here."
     static let waiting = "Usage limits appear after your next Claude Code message."
     static let tokensHint = "Token totals appear after your first Claude Code message today."
+    static let codexWaiting = "Limits reset. They update after Codex\u{2019}s next reply."
 }
 
-/// Rate limits on the left; the summary, the week and today's breakdown on
-/// the right.
+/// Limits on the left, one group per agent that reports them; Claude
+/// Code's tokens this week on the right.
 struct UsagePane: View {
     let usage: UsageSnapshot
     /// Whether LiteNotch is Claude Code's status line; nil when unknown.
@@ -163,10 +151,11 @@ struct UsagePane: View {
     var send: (ShellCommand) -> Void = { _ in }
     @Environment(\.clockOffsetMs) private var offset
 
-    private var hasLimits: Bool { usage.fiveHour != nil || usage.sevenDay != nil }
+    private var hasClaudeLimits: Bool { usage.fiveHour != nil || usage.sevenDay != nil }
+    private var hasCodexLimits: Bool { usage.codex?.primary != nil || usage.codex?.secondary != nil }
 
     var body: some View {
-        if !hasLimits && !Format.hasTokenData(usage) {
+        if !hasClaudeLimits && !hasCodexLimits && !Format.hasTokenData(usage) {
             if statusline == true {
                 EmptyState(
                     symbol: "chart.bar", title: "No usage yet",
@@ -181,7 +170,7 @@ struct UsagePane: View {
             }
         } else {
             HStack(alignment: .top, spacing: 12) {
-                limits.frame(width: 196)
+                limits.frame(width: 220)
                 breakdown.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
@@ -192,22 +181,42 @@ struct UsagePane: View {
     private var limits: some View {
         Card(padding: 12, expand: true) {
             let now = nowMs(Date(), offset: offset)
-            VStack(alignment: .leading, spacing: 10) {
-                if !hasLimits {
-                    Text(verbatim: statusline == true ? UsageText.waiting : UsageText.offer)
-                        .nfont(.caption).foregroundStyle(NT.text3).fixedSize(horizontal: false, vertical: true)
-                    if statusline != true { showLimitsButton }
+            NotchScroll {
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        SectionLabel(text: "Claude Code")
+                        if let w = usage.fiveHour {
+                            windowRow("5-hour", w.usedPct, w.resetsAtMs, now)
+                        }
+                        if let w = usage.sevenDay {
+                            windowRow("7-day", w.usedPct, w.resetsAtMs, now)
+                        }
+                        if !hasClaudeLimits {
+                            Text(verbatim: statusline == true ? UsageText.waiting : UsageText.offer)
+                                .nfont(.caption).foregroundStyle(NT.text3).fixedSize(horizontal: false, vertical: true)
+                            if statusline != true { showLimitsButton }
+                        }
+                    }
+                    if let codex = usage.codex, hasCodexLimits {
+                        let windows = [codex.primary, codex.secondary].compactMap { $0 }
+                        VStack(alignment: .leading, spacing: 7) {
+                            SectionLabel(text: "Codex")
+                            // Readings come only with Codex's replies: after
+                            // a quiet spell every window has reset since.
+                            if windows.allSatisfy({ ($0.resetsAtMs ?? Int.max) <= now }) {
+                                Text(verbatim: UsageText.codexWaiting)
+                                    .nfont(.caption).foregroundStyle(NT.text3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } else {
+                                ForEach(Array(windows.enumerated()), id: \.offset) { _, w in
+                                    windowRow(Format.windowName(minutes: w.windowMins), w.usedPct, w.resetsAtMs, now)
+                                }
+                            }
+                        }
+                    }
                 }
-                if let w = usage.fiveHour { windowRow("5-hour", w, now) }
-                if let w = usage.sevenDay { windowRow("7-day", w, now) }
-                Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: 3) {
-                    stat("Today", "\(Format.tokens(usage.today.input + usage.today.output)) tokens")
-                    if let c = usage.contextPct { stat("Conversation", "\(Format.percent(c)) full") }
-                    if let m = usage.model { stat("Model", m) }
-                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
@@ -222,27 +231,24 @@ struct UsagePane: View {
         pct >= 95 ? NT.deny : (pct >= 80 ? NT.accent : NT.text1)
     }
 
-    private func windowRow(_ title: String, _ w: RateWindow, _ now: Int) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+    /// One line (name, reset, share) over a thin bar. A window whose reset
+    /// time has passed shows as reset: its share is from before.
+    private func windowRow(_ title: String, _ pct: Double, _ resetsAt: Int?, _ now: Int) -> some View {
+        let reset = resetsAt.map { $0 <= now } ?? false
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
                 Text(verbatim: title).nfont(.bodyMedium).foregroundStyle(NT.text2)
-                Spacer()
-                Text(verbatim: Format.percent(w.usedPct)).nfont(.emphasis).monospacedDigit()
+                if let r = resetsAt {
+                    Text(verbatim: reset ? "reset" : Format.resetsIn(resetsAtMs: r, nowMs: now))
+                        .nfont(.caption).foregroundStyle(NT.text3).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Text(verbatim: reset ? "\u{2013}" : Format.percent(pct)).nfont(.emphasis).monospacedDigit()
                     .foregroundStyle(NT.text1)
             }
-            ProgressBar(value: w.usedPct / 100, tint: tint(w.usedPct))
-            if let r = w.resetsAtMs {
-                Text(verbatim: Format.resetsIn(resetsAtMs: r, nowMs: now).capitalizedFirst).nfont(.caption).foregroundStyle(NT.text3)
-            }
+            ProgressBar(value: reset ? 0 : pct / 100, tint: tint(pct))
         }
-    }
-
-    private func stat(_ k: String, _ v: String) -> some View {
-        HStack {
-            Text(verbatim: k).nfont(.caption).foregroundStyle(NT.text3)
-            Spacer(minLength: 6)
-            VText(v).nfont(.caption).monospacedDigit().foregroundStyle(NT.text2).lineLimit(1)
-        }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Breakdown
@@ -250,10 +256,8 @@ struct UsagePane: View {
     @ViewBuilder private var breakdown: some View {
         if Format.hasTokenData(usage) {
             VStack(alignment: .leading, spacing: 8) {
-                if !usage.summary.isEmpty {
-                    VText(usage.summary).nfont(.body).foregroundStyle(NT.text1)
-                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                }
+                // Today's total is the number on the last bar.
+                SectionLabel(text: "Claude Code tokens this week")
                 if !usage.week.isEmpty {
                     WeekChart(days: usage.week)
                 }
@@ -277,7 +281,7 @@ struct UsagePane: View {
             if items.isEmpty {
                 Text(verbatim: "Nothing yet today").nfont(.caption).foregroundStyle(NT.text3)
             }
-            ForEach(Array(items.prefix(4).enumerated()), id: \.offset) { _, s in
+            ForEach(Array(items.prefix(3).enumerated()), id: \.offset) { _, s in
                 HStack(spacing: 6) {
                     VText(s.name).nfont(.caption).foregroundStyle(NT.text2).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 4)

@@ -9,11 +9,12 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use litenotch_core::agent::connector::Agent;
 use litenotch_core::agent::{Decision, HookOutcome};
 use litenotch_core::ipc::{Request, Response};
 use litenotch_core::media::parse_helper_line;
 use litenotch_core::notify::{NotificationInput, Priority};
-use litenotch_core::state::{Command, Core, Effect, Input};
+use litenotch_core::state::{Command, ConnectorView, Core, Effect, Input};
 use litenotch_core::update::Release;
 use litenotch_core::usage::{statusline_text, UsageRecord};
 use serde::Deserialize;
@@ -21,7 +22,7 @@ use serde::Deserialize;
 use crate::clock::SteadyClock;
 use crate::ports::Ports;
 use crate::server::{Server, ServerEvent};
-use crate::transcripts::{day_start_ms, TranscriptScanner};
+use crate::transcripts::{day_start_ms, CodexLimitsReader, TranscriptScanner};
 use crate::{hooks_file, store};
 
 /// How long a change may sit in memory before it is written to disk.
@@ -37,6 +38,9 @@ pub struct Config {
     pub dir: PathBuf,
     /// Claude Code's configuration directory (normally `~/.claude`).
     pub claude_dir: PathBuf,
+    /// Where the other agents keep their settings (and Codex its session
+    /// logs, which hold its usage limits); `None` leaves them alone.
+    pub agent_dirs: Option<hooks_file::AgentDirs>,
     /// Absolute path of the `litenotch` CLI, as registered in hooks.
     pub cli_path: String,
     pub serve_socket: bool,
@@ -68,6 +72,13 @@ impl Config {
 enum ShellCommand {
     HooksInstall,
     HooksUninstall,
+    /// Connect another agent (`codex`, `gemini`, `antigravity`).
+    AgentConnect {
+        agent: String,
+    },
+    AgentDisconnect {
+        agent: String,
+    },
     /// Remove the hooks of other copies of LiteNotch from Claude Code's
     /// settings.
     HooksClean,
@@ -79,6 +90,7 @@ enum ShellCommand {
 }
 
 enum Msg {
+    CodexLimits(litenotch_core::usage::AgentLimits),
     Shell(ShellCommand),
     Server(ServerEvent),
     LidResult(bool),
@@ -117,7 +129,11 @@ impl Runtime {
             None
         };
         let core = Core::new(store::load(&config.dir));
-        let scan_tx = spawn_transcript_scanner(config.claude_dir.join("projects"), tx.clone());
+        let scan_tx = spawn_transcript_scanner(
+            config.claude_dir.join("projects"),
+            config.agent_dirs.as_ref().map(|d| d.codex.join("sessions")),
+            tx.clone(),
+        );
         let mut state = Loop {
             core,
             ports,
@@ -167,13 +183,24 @@ impl Drop for Runtime {
 }
 
 /// Transcript files can be large, so they are read off the core thread.
-fn spawn_transcript_scanner(projects_dir: PathBuf, tx: Sender<Msg>) -> Sender<u64> {
+fn spawn_transcript_scanner(
+    projects_dir: PathBuf,
+    codex_sessions: Option<PathBuf>,
+    tx: Sender<Msg>,
+) -> Sender<u64> {
     let (scan_tx, scan_rx) = mpsc::channel::<u64>();
     let _ = std::thread::Builder::new()
         .name("litenotch-usage".into())
         .spawn(move || {
             let mut scanner = TranscriptScanner::new(projects_dir);
+            let mut codex = codex_sessions.map(CodexLimitsReader::new);
             while let Ok(day_start) = scan_rx.recv() {
+                // Same moments as the transcripts: after an agent's hook.
+                if let Some(limits) = codex.as_mut().and_then(CodexLimitsReader::read) {
+                    if tx.send(Msg::CodexLimits(limits)).is_err() {
+                        break;
+                    }
+                }
                 let scan = scanner.scan(day_start);
                 if (scan.reset || !scan.records.is_empty())
                     && tx
@@ -354,6 +381,12 @@ impl Loop {
                     hooks_file::uninstall_hooks(&self.config.claude_dir, &self.config.cli_path);
                 self.report_hooks(result, "Disconnected from Claude Code", now);
             }
+            Msg::Shell(ShellCommand::AgentConnect { agent }) => {
+                self.connect_agent(&agent, true, now)
+            }
+            Msg::Shell(ShellCommand::AgentDisconnect { agent }) => {
+                self.connect_agent(&agent, false, now)
+            }
             Msg::Shell(ShellCommand::HooksClean) => {
                 let result =
                     hooks_file::remove_other_copies(&self.config.claude_dir, &self.config.cli_path);
@@ -401,6 +434,7 @@ impl Loop {
             }
             Msg::LidResult(ok) => self.apply(Input::LidResult { ok }, now),
             Msg::UpdateResult(answer) => self.apply(Input::UpdateChecked(answer), now),
+            Msg::CodexLimits(limits) => self.apply(Input::CodexLimits(limits), now),
             Msg::Transcripts { reset, records } => {
                 if reset {
                     self.apply(Input::UsageResetToday, now);
@@ -548,12 +582,19 @@ impl Loop {
         }
     }
 
-    /// What `litenotch status` shows. Clipboard and notification text stay
-    /// out of it: the socket is for commands, not for reading user data.
+    /// What `litenotch status` shows. Clipboard, notification, calendar
+    /// and track text stay out of it: the socket is for commands, not for
+    /// reading user data, and any process of the user can ask (one without
+    /// the Calendar or Accessibility permission LiteNotch has). So the
+    /// closed notch is described by kind and timing only.
     fn status(&self, now: u64) -> serde_json::Value {
         let view = self.core.view(now);
+        let c = &view.compact;
         serde_json::json!({
-            "compact": view.compact,
+            "compact": {
+                "kind": c.kind, "ends_at_ms": c.ends_at_ms,
+                "total_secs": c.total_secs, "count": c.count,
+            },
             "pomodoro": view.pomodoro,
             "caffeine": view.caffeine,
             "usage": view.usage,
@@ -624,7 +665,78 @@ impl Loop {
         );
     }
 
+    /// Connects or disconnects one of the other agents. Claude Code has
+    /// its own commands, which also deal with other copies' hooks.
+    fn connect_agent(&mut self, flag: &str, on: bool, now: u64) {
+        let (Some(dirs), Some(agent)) = (self.config.agent_dirs.clone(), Agent::from_flag(flag))
+        else {
+            return;
+        };
+        // Connecting needs the agent installed: otherwise its folder would
+        // be created and it would look installed from then on.
+        if agent == Agent::Claude || (on && !dirs.present(agent)) {
+            return;
+        }
+        let result = if on {
+            hooks_file::install_agent(&dirs, agent, &self.config.cli_path)
+        } else {
+            hooks_file::uninstall_agent(&dirs, agent, &self.config.cli_path)
+        };
+        let name = agent.name();
+        let (title, body, priority) = match result {
+            Ok(()) if on => (
+                format!("Connected to {name}"),
+                format!("Takes effect in new {name} sessions."),
+                Priority::Normal,
+            ),
+            Ok(()) => (
+                format!("Disconnected from {name}"),
+                format!("New {name} sessions no longer report here."),
+                Priority::Normal,
+            ),
+            Err(e) => (
+                format!("{name} settings not changed"),
+                e.to_string(),
+                Priority::High,
+            ),
+        };
+        self.refresh_hooks_installed(now);
+        self.apply(
+            Input::OwnNotify(NotificationInput {
+                source: "litenotch".into(),
+                title,
+                body,
+                priority,
+                group: Some("hooks".into()),
+                ttl_secs: None,
+            }),
+            now,
+        );
+    }
+
     fn refresh_hooks_installed(&mut self, now: u64) {
+        if let Some(dirs) = &self.config.agent_dirs {
+            let list = [Agent::Codex, Agent::Gemini, Agent::Antigravity]
+                .into_iter()
+                .map(|agent| {
+                    let present = dirs.present(agent);
+                    ConnectorView {
+                        agent: agent.flag().into(),
+                        name: agent.name().into(),
+                        present,
+                        // An agent that is not there is not connected, even
+                        // when its settings file cannot be read.
+                        connected: if present {
+                            hooks_file::agent_installed(dirs, agent, &self.config.cli_path)
+                        } else {
+                            Some(false)
+                        },
+                        can_approve: agent.can_approve(),
+                    }
+                })
+                .collect();
+            self.apply(Input::Connectors(list), now);
+        }
         let state = hooks_file::installed(&self.config.claude_dir, &self.config.cli_path);
         self.apply(Input::HooksInstalled(state), now);
         let state =
@@ -930,6 +1042,11 @@ pub(crate) mod testing {
             let config = Config {
                 dir: dir.join("data"),
                 claude_dir: dir.join("claude"),
+                agent_dirs: Some(hooks_file::AgentDirs::new(
+                    &dir.to_string_lossy(),
+                    Some(&dir.join("claude").to_string_lossy()),
+                    Some(&dir.join("codex").to_string_lossy()),
+                )),
                 cli_path: "/opt/litenotch/litenotch".into(),
                 serve_socket: true,
                 clipboard_poll_ms: 20,
@@ -1388,8 +1505,12 @@ mod tests {
         assert_eq!(view["compact"]["kind"], "banner");
         assert_eq!(view["pending_approvals"], 0);
         let text = view.to_string();
+        // From review: the banner's title used to come back in `compact`,
+        // which would hand other apps' and calendar text to any process.
         assert!(
-            !text.contains("secret clipboard") && !text.contains("private body"),
+            !text.contains("secret clipboard")
+                && !text.contains("private body")
+                && !text.contains("Deploy done"),
             "{text}"
         );
     }
@@ -1688,6 +1809,76 @@ mod tests {
     }
 
     #[test]
+    fn other_agents_are_connected_and_disconnected_from_the_shell() {
+        let dir = crate::store::temp_dir("rt-connect");
+        std::fs::create_dir_all(dir.join("codex")).unwrap();
+        let h = Harness::start_in(dir.clone(), FakeOs::default());
+        let view = h.views.wait("listed", |v| {
+            v["agents"]["connectors"]
+                .as_array()
+                .is_some_and(|a| a.len() == 3)
+        });
+        let names: Vec<&str> = view["agents"]["connectors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["Codex", "Gemini CLI", "Antigravity"]);
+        assert_eq!(view["agents"]["connectors"][0]["present"], true);
+        assert_eq!(view["agents"]["connectors"][0]["can_approve"], true);
+        // Not on this Mac: shown as such, never connected.
+        assert_eq!(view["agents"]["connectors"][1]["present"], false);
+        assert_eq!(view["agents"]["connectors"][1]["connected"], false);
+
+        h.send(r#"{"cmd":"agent_connect","agent":"codex"}"#);
+        h.views.wait("connected", |v| {
+            v["agents"]["connectors"][0]["connected"] == true
+        });
+        let hooks = std::fs::read_to_string(dir.join("codex/hooks.json")).unwrap();
+        assert!(hooks.contains("/opt/litenotch/litenotch"));
+        h.send(r#"{"cmd":"agent_disconnect","agent":"codex"}"#);
+        h.views.wait("disconnected", |v| {
+            v["agents"]["connectors"][0]["connected"] == false
+        });
+        // Claude Code keeps its own commands; an unknown name does nothing.
+        h.send(r#"{"cmd":"agent_connect","agent":"claude"}"#);
+        h.send(r#"{"cmd":"agent_connect","agent":"vim"}"#);
+        // From review: connecting one that is not installed created its
+        // folder, and it looked installed from then on.
+        h.send(r#"{"cmd":"agent_connect","agent":"gemini"}"#);
+        h.send(r#"{"cmd":"notify_mark_read"}"#);
+        let last = h
+            .views
+            .wait("still", |v| v["agents"]["hooks_installed"] == false);
+        assert_eq!(last["agents"]["connectors"][0]["connected"], false);
+        assert_eq!(last["agents"]["connectors"][1]["present"], false);
+        assert!(!dir.join(".gemini").exists());
+    }
+
+    #[test]
+    fn codex_limits_are_read_from_its_newest_session_log() {
+        let dir = crate::store::temp_dir("rt-codex");
+        let day = dir.join("codex/sessions/2026/11/26");
+        std::fs::create_dir_all(&day).unwrap();
+        let line = json!({"timestamp":"2026-11-26T08:00:00Z","type":"event_msg","payload":{
+            "type":"token_count","rate_limits":{
+                "primary":{"used_percent":12.5,"window_minutes":300,"resets_at":1_795_000_000u64},
+                "secondary":{"used_percent":40.0,"window_minutes":10080,"resets_at":1_795_500_000u64}}}});
+        std::fs::write(day.join("rollout-a.jsonl"), format!("{line}\n")).unwrap();
+        let h = Harness::start_in(dir, FakeOs::default());
+        let view = h
+            .views
+            .wait("codex limits", |v| !v["usage"]["codex"].is_null());
+        assert_eq!(view["usage"]["codex"]["primary"]["used_pct"], 12.5);
+        assert_eq!(view["usage"]["codex"]["primary"]["window_mins"], 300);
+        assert_eq!(
+            view["usage"]["codex"]["secondary"]["resets_at_ms"],
+            1_795_500_000_000u64
+        );
+    }
+
+    #[test]
     fn todays_tokens_are_read_from_transcripts() {
         let dir = crate::store::temp_dir("rt-usage");
         let project = dir.join("claude/projects/-work-api");
@@ -1840,6 +2031,7 @@ mod tests {
         let config = Config {
             dir: h.dir.join("data"),
             claude_dir: h.dir.join("claude"),
+            agent_dirs: None,
             cli_path: "x".into(),
             serve_socket: true,
             clipboard_poll_ms: 0,

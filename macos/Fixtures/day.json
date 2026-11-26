@@ -40,7 +40,8 @@
     "hooks_installed": null,
     "statusline_installed": null,
     "other_copies": 0,
-    "other_copies_missing": 0
+    "other_copies_missing": 0,
+    "connectors": []
   },
   "usage": {
     "five_hour": null,
@@ -95,7 +96,8 @@
     ],
     "models": [],
     "projects": [],
-    "summary": ""
+    "summary": "",
+    "codex": null
   },
   "caffeine": {
     "mode": "off",
@@ -193,7 +195,7 @@
     }
   ],
   "update": {
-    "current": "0.2.3-beta",
+    "current": "0.2.7-beta",
     "status": "idle",
     "latest": null,
     "url": null,

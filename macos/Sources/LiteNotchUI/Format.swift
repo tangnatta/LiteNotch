@@ -358,6 +358,20 @@ public enum Format {
     }
 
     /// False when the token breakdown has nothing to draw.
+    /// The agent a session belongs to. The CLI's connectors scope the other
+    /// agents' ids (`codex:<id>`); Claude Code's are left as they are.
+    public static func agentName(sessionId: String) -> String {
+        let prefixes = [("codex:", "Codex"), ("gemini:", "Gemini CLI"), ("antigravity:", "Antigravity")]
+        return prefixes.first { sessionId.hasPrefix($0.0) }?.1 ?? "Claude Code"
+    }
+
+    /// A limit window named by its length: `5-hour`, `7-day`, `90-min`.
+    public static func windowName(minutes m: Int) -> String {
+        if m >= 1440 && m % 1440 == 0 { return "\(m / 1440)-day" }
+        if m >= 60 && m % 60 == 0 { return "\(m / 60)-hour" }
+        return "\(m)-min"
+    }
+
     public static func hasTokenData(_ u: UsageSnapshot) -> Bool {
         u.week.contains { $0.tokens > 0 } || !u.models.isEmpty || !u.projects.isEmpty
             || u.today.input + u.today.output > 0

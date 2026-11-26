@@ -409,10 +409,15 @@ struct ClosedActivityView: View {
 struct MarqueeText: View {
     let text: String
     @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.marqueeShift) private var shift
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        if snapshot || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        if snapshot && shift > 0 {
+            // A preview frame partway through the scroll: the same layout,
+            // starting a few words in.
+            VText(text.split(separator: " ").dropFirst(shift).joined(separator: " ")).wingText(mono: false)
+        } else if snapshot || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             VText(text).wingText(mono: false)
         } else {
             MarqueeLayer(text: text, color: NSColor(NT.text1).resolved(dark: scheme == .dark))
@@ -749,9 +754,10 @@ struct ToastView: View {
     var act: (BannerAction) -> Void = { _ in }
 
     /// The pomodoro's banners are about breaks (one starts, one is being
-    /// worked through, one is over): a cup, like the break reminders.
+    /// worked through, one is over): the leaf the closed notch shows during
+    /// a break. Not a cup: the cup is keep awake in the tab bar.
     static func symbol(_ banner: NotificationItem) -> String {
-        banner.source == "pomodoro" ? "cup.and.saucer.fill" : "bell.fill"
+        banner.source == "pomodoro" ? "leaf.fill" : "bell.fill"
     }
 
     var body: some View {
@@ -842,6 +848,7 @@ struct ExpandedView: View {
                         case .agents: AgentsTab(vm: vm, model: model)
                         case .inbox: InboxTab(vm: vm, model: model)
                         case .settings: SettingsTab(vm: vm, model: model)
+                        case .calendar: CalendarTab(vm: vm, model: model)
                         }
                     }
                     .id(model.tab)
@@ -869,6 +876,7 @@ extension Tab {
         case .agents: return "terminal"
         case .inbox: return "bell"
         case .settings: return "gearshape"
+        case .calendar: return "calendar"
         }
     }
 
@@ -882,6 +890,7 @@ extension Tab {
         case .agents: return "Agents: Claude Code sessions and usage"
         case .inbox: return "Inbox: notifications"
         case .settings: return "Settings"
+        case .calendar: return "Calendar: your next events"
         }
     }
 
@@ -894,26 +903,29 @@ extension Tab {
         case .agents: return "Agents"
         case .inbox: return "Inbox"
         case .settings: return "Settings"
+        case .calendar: return "Calendar"
         }
     }
 }
 
 /// Icon-only tabs on both sides of the physical notch. Left: the pages.
-/// Right: the keep-awake switch, inbox and settings.
+/// Right: the keep-awake switch, calendar (while it is on), inbox and
+/// settings. Calendar sits right because the left side has no room for a
+/// sixth icon beside a hardware notch.
 struct TabBar: View {
     @ObservedObject var model: PanelState
     let ear: CGFloat
 
     static let left: [Tab] = [.home, .music, .timer, .clipboard, .agents]
-    static let right: [Tab] = [.inbox, .settings]
+    static func right(calendar: Bool) -> [Tab] { calendar ? [.calendar, .inbox, .settings] : [.inbox, .settings] }
+    private var right: [Tab] { Self.right(calendar: model.view?.settings.calendar.enabled ?? false) }
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Self.left, id: \.self) { tabButton($0) }
             Spacer(minLength: model.layout.island ? 0 : model.notch.width + 24)
-            pickerButton
             keepAwakeButton
-            ForEach(Self.right, id: \.self) { tabButton($0) }
+            ForEach(right, id: \.self) { tabButton($0) }
         }
         .padding(.horizontal, ear + 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -929,23 +941,6 @@ struct TabBar: View {
         case .agents: return model.view?.agents.pending.count ?? 0
         default: return 0
         }
-    }
-
-    /// Closes the panel and samples a colour from the screen.
-    private var pickerButton: some View {
-        Button {
-            model.pickColor()
-        } label: {
-            Image(systemName: "eyedropper")
-                .glyph(13)
-                .foregroundStyle(NT.text3)
-                .frame(width: 30, height: 24)
-                .contentShape(Capsule())
-                .controlHover(Capsule())
-        }
-        .buttonStyle(.plain)
-        .help("Pick a colour from the screen and copy it")
-        .accessibilityLabel(Text(verbatim: "Pick a colour from the screen"))
     }
 
     /// Filled and in the accent while on; the tooltip says for how long.

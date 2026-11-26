@@ -22,6 +22,12 @@
       "idle",
       "ended"
     ],
+    "attendee_status": [
+      "accepted",
+      "declined",
+      "tentative",
+      "pending"
+    ],
     "awake_mode": [
       "off",
       "system",
@@ -95,7 +101,8 @@
       "clipboard",
       "agents",
       "inbox",
-      "settings"
+      "settings",
+      "calendar"
     ],
     "theme": [
       "system",

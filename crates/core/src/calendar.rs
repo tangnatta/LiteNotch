@@ -103,6 +103,164 @@ pub enum CalendarAlert {
 pub struct CalendarView {
     /// Events that have not ended, soonest first.
     pub events: Vec<CalendarEvent>,
+    /// The one event the Calendar tab is showing in full, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<EventDetail>,
+}
+
+/// Most characters of an event's notes shown.
+pub const NOTES_CHARS: usize = 2000;
+/// Most lines of an event's notes shown.
+pub const NOTES_LINES: usize = 40;
+/// Most attendees listed; the rest are counted.
+pub const MAX_ATTENDEES: usize = 30;
+const URL_CHARS: usize = 300;
+const NAME_CHARS: usize = 80;
+
+/// An attendee's answer to the invitation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttendeeStatus {
+    Accepted,
+    Declined,
+    Tentative,
+    Pending,
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AttendeeInput {
+    pub name: String,
+    pub status: AttendeeStatus,
+    /// This attendee is the user.
+    pub me: bool,
+}
+
+/// Everything the shell read about one event, when the user opened it.
+/// Like `EventInput` it is invitation text, so it is sanitized here.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct EventDetailInput {
+    pub id: String,
+    pub title: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub calendar: String,
+    pub color: Option<String>,
+    pub location: String,
+    pub notes: String,
+    /// The event's link (a video call, say). Shown as text, never opened.
+    pub url: String,
+    pub organizer: String,
+    pub attendees: Vec<AttendeeInput>,
+    /// One occurrence of a repeating event.
+    pub recurring: bool,
+    /// The user may change it here: a calendar that allows changes, and
+    /// not someone else's invitation.
+    pub can_edit: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Attendee {
+    pub name: String,
+    pub status: AttendeeStatus,
+    pub me: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventDetail {
+    pub id: String,
+    pub title: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub calendar: String,
+    pub color: Option<String>,
+    pub location: String,
+    /// Line breaks kept; each line sanitized.
+    pub notes: String,
+    /// The notes were longer than shown.
+    pub notes_truncated: bool,
+    pub url: String,
+    pub organizer: String,
+    pub attendees: Vec<Attendee>,
+    /// How many attendees were left out of `attendees`.
+    pub attendees_more: u32,
+    pub recurring: bool,
+    pub can_edit: bool,
+}
+
+/// Notes kept on several lines: each line sanitized on its own (a newline
+/// is a control character to `sanitize`), runs of blank lines collapsed to
+/// one, and the whole capped by lines and characters.
+fn notes_text(text: &str) -> (String, bool) {
+    let mut lines: Vec<String> = Vec::new();
+    let mut cut = false;
+    for raw in text.lines() {
+        let line = sanitize(raw.trim_end());
+        let blank = line.trim().is_empty();
+        if blank && lines.last().is_none_or(|l| l.is_empty()) {
+            continue;
+        }
+        if lines.len() == NOTES_LINES {
+            cut = true;
+            break;
+        }
+        lines.push(if blank { String::new() } else { line });
+    }
+    while lines.last().is_some_and(|l| l.is_empty()) {
+        lines.pop();
+    }
+    let joined = lines.join("\n");
+    let capped = truncate_chars(&joined, NOTES_CHARS);
+    cut |= capped != joined;
+    (capped, cut)
+}
+
+impl EventDetail {
+    fn from_input(e: EventDetailInput) -> Option<Self> {
+        let id = truncate_chars(&e.id, ID_CHARS);
+        if id.is_empty() || e.end_ms <= e.start_ms {
+            return None;
+        }
+        let title = one_line(&e.title, TITLE_CHARS);
+        let (notes, notes_truncated) = notes_text(&e.notes);
+        let total = e.attendees.len();
+        let attendees: Vec<Attendee> = e
+            .attendees
+            .into_iter()
+            .take(MAX_ATTENDEES)
+            .map(|a| Attendee {
+                name: one_line(&a.name, NAME_CHARS),
+                status: a.status,
+                me: a.me,
+            })
+            .collect();
+        let more = total - attendees.len();
+        Some(Self {
+            id,
+            title: if title.is_empty() {
+                "Event".into()
+            } else {
+                title
+            },
+            start_ms: e.start_ms,
+            end_ms: e.end_ms,
+            calendar: one_line(&e.calendar, DETAIL_CHARS),
+            color: e.color.as_deref().and_then(normalize_hex),
+            location: one_line(&e.location, DETAIL_CHARS * 2),
+            notes,
+            notes_truncated,
+            url: one_line(&e.url, URL_CHARS),
+            organizer: one_line(&e.organizer, NAME_CHARS),
+            attendees,
+            attendees_more: u32::try_from(more).unwrap_or(u32::MAX),
+            recurring: e.recurring,
+            can_edit: e.can_edit,
+        })
+    }
 }
 
 /// Sanitized, on one line (an address is often several), capped.
@@ -126,6 +284,8 @@ pub struct Calendar {
     /// Not all-day, not ended, by start time.
     events: Vec<CalendarEvent>,
     given: BTreeSet<Given>,
+    /// The event open in the Calendar tab. In memory only.
+    detail: Option<EventDetail>,
 }
 
 impl Calendar {
@@ -134,6 +294,34 @@ impl Calendar {
             config: config.clamped(),
             events: Vec::new(),
             given: BTreeSet::new(),
+            detail: None,
+        }
+    }
+
+    /// The shell read one event in full. Ignored while the calendar is off
+    /// or when it makes no sense (no id, ends before it starts).
+    pub fn set_detail(&mut self, input: EventDetailInput) {
+        if self.config.enabled {
+            self.detail = EventDetail::from_input(input);
+        }
+    }
+
+    pub fn close_detail(&mut self) {
+        self.detail = None;
+    }
+
+    /// The open event was deleted or has ended: its page closes. A moved
+    /// event is opened again by the shell under its new start.
+    fn drop_stale_detail(&mut self, now: u64) {
+        let keep = self.detail.as_ref().is_some_and(|d| {
+            d.end_ms > now
+                && self
+                    .events
+                    .iter()
+                    .any(|e| e.id == d.id && e.start_ms == d.start_ms)
+        });
+        if !keep {
+            self.detail = None;
         }
     }
 
@@ -146,6 +334,7 @@ impl Calendar {
         if !self.config.enabled {
             self.events.clear();
             self.given.clear();
+            self.detail = None;
         }
     }
 
@@ -192,6 +381,7 @@ impl Calendar {
         }
         self.events = events;
         self.forget_gone();
+        self.drop_stale_detail(now);
     }
 
     fn forget_gone(&mut self) {
@@ -237,6 +427,7 @@ impl Calendar {
         self.events.retain(|e| e.end_ms > now);
         if self.events.len() != before {
             self.forget_gone();
+            self.drop_stale_detail(now);
         }
         alerts
     }
@@ -279,6 +470,7 @@ impl Calendar {
                 .take(VIEW_EVENTS)
                 .cloned()
                 .collect(),
+            detail: self.detail.clone(),
         }
     }
 }
@@ -306,6 +498,99 @@ mod tests {
             end_ms: start + mins * MIN,
             ..EventInput::default()
         }
+    }
+
+    fn detail(notes: &str) -> EventDetailInput {
+        EventDetailInput {
+            id: "e1".into(),
+            title: "Plan".into(),
+            start_ms: T0,
+            end_ms: T0 + 30 * MIN,
+            notes: notes.into(),
+            ..EventDetailInput::default()
+        }
+    }
+
+    #[test]
+    fn notes_keep_their_lines_but_are_sanitized_and_capped() {
+        let (text, cut) = notes_text("\n\nOne\u{7}\r\n\n\n\nTwo \u{2066}x\n\n");
+        assert_eq!(text, "One\u{FFFD}\n\nTwo \u{FFFD}x");
+        assert!(!cut);
+
+        let many = (0..100)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (text, cut) = notes_text(&many);
+        assert_eq!(text.lines().count(), NOTES_LINES);
+        assert!(cut);
+
+        let long = "x".repeat(NOTES_CHARS * 2);
+        let (text, cut) = notes_text(&long);
+        assert!(text.chars().count() <= NOTES_CHARS);
+        assert!(cut);
+    }
+
+    #[test]
+    fn a_detail_is_sanitized_like_the_list_and_bounded() {
+        let mut c = on();
+        let mut d = detail("");
+        d.title = "  Evil\u{202E}gpj.exe \n title ".into();
+        d.url = "https://a.example/x\ny".into();
+        d.organizer = "x".repeat(500);
+        d.color = Some("not a colour".into());
+        d.attendees = (0..40)
+            .map(|i| AttendeeInput {
+                name: format!("P{i}"),
+                ..AttendeeInput::default()
+            })
+            .collect();
+        c.set_detail(d);
+        let v = c.view(T0).detail.expect("kept");
+        assert_eq!(v.title, "Evil\u{FFFD}gpj.exe title");
+        assert_eq!(v.url, "https://a.example/x y");
+        assert!(v.organizer.chars().count() <= NAME_CHARS);
+        assert_eq!(v.color, None);
+        assert_eq!(v.attendees.len(), MAX_ATTENDEES);
+        assert_eq!(v.attendees_more, 10);
+    }
+
+    #[test]
+    fn a_detail_that_makes_no_sense_is_dropped() {
+        let mut c = on();
+        let mut d = detail("");
+        d.id = String::new();
+        c.set_detail(d);
+        assert_eq!(c.view(T0).detail, None);
+        let mut d = detail("");
+        d.end_ms = d.start_ms;
+        c.set_detail(d);
+        assert_eq!(c.view(T0).detail, None);
+        // An empty title reads as "Event", as in the list.
+        let mut d = detail("");
+        d.title = " ".into();
+        c.set_detail(d);
+        assert_eq!(c.view(T0).detail.map(|d| d.title).as_deref(), Some("Event"));
+    }
+
+    #[test]
+    fn the_open_event_closes_once_it_has_ended_or_moved() {
+        let mut c = on();
+        c.set_events(vec![input("e1", T0 + MIN, 30)], T0);
+        let mut d = detail("");
+        d.start_ms = T0 + MIN;
+        d.end_ms = T0 + 31 * MIN;
+        c.set_detail(d.clone());
+        c.tick(T0 + 2 * MIN);
+        assert!(c.view(T0 + 2 * MIN).detail.is_some());
+        c.tick(T0 + 32 * MIN);
+        assert_eq!(c.view(T0 + 32 * MIN).detail, None);
+
+        // Moved: the old occurrence is gone from the list.
+        c.set_events(vec![input("e1", T0 + MIN, 30)], T0);
+        c.set_detail(d);
+        c.set_events(vec![input("e1", T0 + 60 * MIN, 30)], T0);
+        assert_eq!(c.view(T0).detail, None);
     }
 
     fn kinds(alerts: &[CalendarAlert]) -> Vec<String> {

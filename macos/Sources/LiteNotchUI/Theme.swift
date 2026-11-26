@@ -207,6 +207,7 @@ extension AppearanceConfig {
 private struct SnapshotKey: EnvironmentKey { static let defaultValue = false }
 private struct ClockOffsetKey: EnvironmentKey { static let defaultValue = 0 }
 private struct DayIconsKey: EnvironmentKey { static let defaultValue = DayIcons.sun }
+private struct MarqueeShiftKey: EnvironmentKey { static let defaultValue = 0 }
 private struct KeyboardRequestKey: EnvironmentKey {
     static let defaultValue: (Bool) -> Void = { _ in }
 }
@@ -222,6 +223,13 @@ extension EnvironmentValues {
     var clockOffsetMs: Int {
         get { self[ClockOffsetKey.self] }
         set { self[ClockOffsetKey.self] = newValue }
+    }
+    /// How many leading words a scrolling title has moved past, for
+    /// snapshots only: the README's previews step it per frame so a long
+    /// line is read, not cut off.
+    var marqueeShift: Int {
+        get { self[MarqueeShiftKey.self] }
+        set { self[MarqueeShiftKey.self] = newValue }
     }
     /// How the closed notch draws day progress (`settings.day.icons`).
     var dayIcons: DayIcons {

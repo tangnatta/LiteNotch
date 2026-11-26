@@ -24,6 +24,11 @@ fn main() {
         claude_dir: std::env::var("CLAUDE_CONFIG_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from(&home).join(".claude")),
+        agent_dirs: Some(litenotch_app::hooks_file::AgentDirs::new(
+            &home,
+            std::env::var("CLAUDE_CONFIG_DIR").ok().as_deref(),
+            std::env::var("CODEX_HOME").ok().as_deref(),
+        )),
         dir,
         cli_path: "litenotch".into(),
         serve_socket: true,
@@ -51,7 +56,8 @@ fn main() {
         println!(
             "{}",
             serde_json::json!({"compact": view["compact"], "pending": view["agents"]["pending"],
-                "media": view["media"], "week": view["usage"]["week"], "summary": view["usage"]["summary"]})
+                "media": view["media"], "week": view["usage"]["week"], "summary": view["usage"]["summary"],
+                "codex": view["usage"]["codex"]})
         );
         let (Some(decision), Some(pending)) = (&auto, view["agents"]["pending"].as_array()) else {
             continue;

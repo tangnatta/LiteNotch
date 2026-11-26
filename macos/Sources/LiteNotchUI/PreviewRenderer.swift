@@ -22,12 +22,21 @@ public enum PreviewRenderer {
         /// The clock at the shot's first frame, where the scene's own
         /// running clock would be wrong for the fixture.
         var at: Int?
+        /// Words a scrolling title moves on per frame (it scrolls in the
+        /// app; a still frame would cut it off).
+        var scroll = 0
     }
+
+    /// A closed notch is a thin strip in a 680 pt wide frame; enlarged it
+    /// can be read at the README's width.
+    static let closedZoom: CGFloat = 1.6
 
     struct Scene {
         var name: String
         /// 110 for previews that never open the panel.
         var height: CGFloat = 320
+        /// How much a closed notch is enlarged; a peek is too wide for more.
+        var zoom: CGFloat = closedZoom
         var shots: [Shot]
     }
 
@@ -60,11 +69,13 @@ public enum PreviewRenderer {
                     let url = dir.appendingPathComponent(String(format: "f-%04d.png", frame))
                     QuestionForm.previewDraft = shot.draft
                     defer { QuestionForm.previewDraft = nil }
+                    let open = NotchPresentation.mode(expanded: shot.expanded, view: shot.vm) == .expanded
                     _ = try SnapshotRenderer.write(
                         shot.vm, expanded: shot.expanded, tab: shot.tab, section: shot.section,
                         pane: shot.pane, timerPane: shot.timerPane, clipPreview: shot.clipPreview,
                         notchless: shot.notchless,
                         nowMs: clock, backdrop: true,
+                        zoom: open ? 1 : scene.zoom, marqueeShift: shot.scroll * i,
                         size: CGSize(width: 680, height: scene.height), to: url)
                 }
             }
@@ -80,12 +91,8 @@ public enum PreviewRenderer {
         let pair = try load("pair")
         let calendar = try load("calendar")
         let approval = try load("approval")
-        let checking = try load("update-checking")
-        let available = try load("update-available")
-        let upToDate = try load("update-current")
         let day = try load("day")
         let banner = try load("banner")
-        let caffeine = try load("caffeine")
         let track = try load("peek-track")
         let warning = try load("peek-warning")
         let eye = try load("peek-eye-break")
@@ -99,19 +106,14 @@ public enum PreviewRenderer {
         island.settings.appearance.notchStyle = .island
         var islandPair = pair
         islandPair.settings.appearance.notchStyle = .island
-        var shrunk = idle
-        shrunk.settings.appearance.shrink = .whenEmpty
         var light = media
         light.settings.appearance.theme = .light
         var purple = light
         purple.settings.appearance.accent = "#BF5AF2"
-        var blue = media
-        blue.settings.appearance.accent = "#0A84FF"
 
         var colored = media
         colored.colors = ["#FF9E0A", "#0A84FF", "#30D158", "#1E1E1E", "#F5F5F7", "#BF5AF2"]
         let image = media.clipboard.items.first { $0.kind == .image }?.id
-        let files = media.clipboard.items.first { $0.kind == .files }?.id
 
         var countdown = pomodoro
         countdown.timer.runState = .running
@@ -158,11 +160,6 @@ public enum PreviewRenderer {
             edit(&d)
             return d
         }
-        func asIsland(_ vm: ViewModel) -> ViewModel {
-            var v = vm
-            v.settings.appearance.notchStyle = .island
-            return v
-        }
         // An 8-hour day seen `hoursIn` hours after it starts (negative: before).
         func dayAt(_ hoursIn: Double, tree: Bool = false) -> ViewModel {
             var v = day
@@ -174,30 +171,26 @@ public enum PreviewRenderer {
             if tree { v.settings.day.icons = .tree }
             return v
         }
-        var daySettings = day
-        daySettings.settings.day.icons = .tree
 
         var truncated = approval
         truncated.agents.pending[0].truncated = true
         truncated.agents.pending[0].detail = String(
             repeating: "rm -rf build && cargo build --release --target aarch64-apple-darwin && ", count: 8)
 
+        // Twelve scenes, one per README section, none longer than about
+        // twelve seconds; each screen appears in one of them only.
         return [
-            // The island style: a capsule inside the menu bar, on a Mac with a
-            // notch and then on a display without one.
+            // The hero: closed, then the panel's main tabs, then the reason
+            // to connect Claude Code.
             Scene(
-                name: "island",
+                name: "overview",
                 shots: [
-                    Shot(vm: asIsland(idle), secs: 1, expanded: false),
-                    Shot(vm: asIsland(media), secs: 2, expanded: false),
-                    Shot(vm: asIsland(pomodoro), secs: 2, expanded: false),
-                    Shot(vm: asIsland(pair), secs: 2, expanded: false),
-                    Shot(vm: asIsland(banner), secs: 2, expanded: false),
-                    Shot(vm: asIsland(media), secs: 3),
-                    Shot(vm: asIsland(pomodoro), secs: 2, tab: .timer),
-                    Shot(vm: asIsland(asking([single])), secs: 3),
-                    Shot(vm: asIsland(pair), secs: 2, expanded: false, notchless: true),
-                    Shot(vm: asIsland(media), secs: 3, notchless: true),
+                    Shot(vm: idle, secs: 1, expanded: false),
+                    Shot(vm: media, secs: 2, expanded: false),
+                    Shot(vm: media, secs: 2),
+                    Shot(vm: media, secs: 2, tab: .timer),
+                    Shot(vm: media, secs: 2, tab: .clipboard),
+                    Shot(vm: approval, secs: 3),
                 ]),
             Scene(
                 name: "approvals",
@@ -205,40 +198,10 @@ public enum PreviewRenderer {
                     Shot(vm: approval, secs: 3),
                     Shot(vm: truncated, secs: 3),
                 ]),
+            // Every layout in one run: a single choice, a multiple choice
+            // with an answer of the user's own, then an open question.
             Scene(
-                name: "question-single",
-                shots: [
-                    Shot(vm: asking([single]), secs: 3),
-                    Shot(vm: asking([single]), secs: 2, draft: draft([single]) { $0.toggle("SQLite", in: 0) }),
-                ]),
-            Scene(
-                name: "question-multi",
-                shots: [
-                    Shot(vm: asking([multi]), secs: 2),
-                    Shot(vm: asking([multi]), secs: 2, draft: draft([multi]) { $0.toggle("Unit tests", in: 0) }),
-                    Shot(
-                        vm: asking([multi]), secs: 3,
-                        draft: draft([multi]) {
-                            $0.toggle("Unit tests", in: 0)
-                            $0.toggle("Clippy", in: 0)
-                        }),
-                    Shot(
-                        vm: asking([multi]), secs: 3,
-                        draft: draft([multi]) {
-                            $0.toggle("Unit tests", in: 0)
-                            $0.type("Accessibility audit", in: 0)
-                            $0.commit(0)
-                            $0.type("Manual smoke test", in: 0)
-                        }),
-                ]),
-            Scene(
-                name: "question-open",
-                shots: [
-                    Shot(vm: asking([open]), secs: 2),
-                    Shot(vm: asking([open]), secs: 3, draft: draft([open]) { $0.type("greet", in: 0) }),
-                ]),
-            Scene(
-                name: "question-steps",
+                name: "questions",
                 shots: [
                     Shot(vm: asking([single, multi, open]), secs: 2),
                     Shot(
@@ -248,12 +211,13 @@ public enum PreviewRenderer {
                             $0.next()
                         }),
                     Shot(
-                        vm: asking([single, multi, open]), secs: 2,
+                        vm: asking([single, multi, open]), secs: 3,
                         draft: draft([single, multi, open]) {
                             $0.toggle("SQLite", in: 0)
                             $0.next()
                             $0.toggle("Clippy", in: 1)
-                            $0.next()
+                            $0.type("Accessibility audit", in: 1)
+                            $0.commit(1)
                         }),
                     Shot(
                         vm: asking([single, multi, open]), secs: 3,
@@ -261,79 +225,11 @@ public enum PreviewRenderer {
                             $0.toggle("SQLite", in: 0)
                             $0.next()
                             $0.toggle("Clippy", in: 1)
+                            $0.type("Accessibility audit", in: 1)
+                            $0.commit(1)
                             $0.next()
                             $0.type("greet", in: 2)
                         }),
-                ]),
-            Scene(
-                name: "update",
-                shots: [
-                    Shot(vm: media, secs: 2, tab: .settings, section: .general),
-                    Shot(vm: checking, secs: 2, tab: .settings, section: .general),
-                    Shot(vm: available, secs: 4, tab: .settings, section: .general),
-                    Shot(vm: upToDate, secs: 3, tab: .settings, section: .general),
-                ]),
-            Scene(
-                name: "settings",
-                shots: SettingsSection.allCases.map {
-                    Shot(vm: media, secs: 2, tab: .settings, section: $0)
-                }),
-            Scene(
-                name: "overview",
-                shots: [
-                    Shot(vm: idle, secs: 1, expanded: false),
-                    Shot(vm: media, secs: 2, expanded: false),
-                    Shot(vm: media, secs: 3),
-                    Shot(vm: media, secs: 2, tab: .timer),
-                    Shot(vm: media, secs: 2, tab: .clipboard),
-                    Shot(vm: media, secs: 2, tab: .agents),
-                ]),
-            Scene(
-                name: "music",
-                shots: [
-                    Shot(vm: track, secs: 2, expanded: false),
-                    Shot(vm: media, secs: 2, expanded: false),
-                    Shot(vm: media, secs: 3, tab: .music),
-                ]),
-            Scene(
-                name: "focus",
-                shots: [
-                    Shot(vm: pomodoro, secs: 3, expanded: false),
-                    Shot(vm: pomodoro, secs: 3, tab: .timer),
-                    Shot(vm: warning, secs: 2, expanded: false, at: fiveLeft),
-                    Shot(vm: quote, secs: 2, expanded: false),
-                ]),
-            Scene(
-                name: "meeting",
-                shots: [
-                    Shot(vm: pomodoro, secs: 2, tab: .timer, timerPane: .meeting),
-                    Shot(vm: running, secs: 3, tab: .timer, timerPane: .meeting),
-                    Shot(vm: running, secs: 2, expanded: false),
-                    Shot(vm: over, secs: 2, expanded: false),
-                    Shot(vm: over, secs: 2, tab: .timer, timerPane: .meeting),
-                ]),
-            Scene(
-                name: "countdown",
-                shots: [
-                    Shot(vm: pomodoro, secs: 2, tab: .timer, timerPane: .countdown),
-                    Shot(vm: countdown, secs: 3, tab: .timer, timerPane: .countdown),
-                    Shot(vm: countdown, secs: 3, expanded: false),
-                ]),
-            Scene(
-                name: "calendar",
-                shots: [
-                    Shot(vm: calendar, secs: 3),
-                    Shot(vm: calendar, secs: 3, expanded: false),
-                    Shot(vm: pair, secs: 2, expanded: false),
-                    Shot(vm: starting, secs: 3, expanded: false),
-                ]),
-            Scene(
-                name: "clipboard",
-                shots: [
-                    Shot(vm: media, secs: 2, tab: .clipboard),
-                    Shot(vm: media, secs: 2, tab: .clipboard, clipPreview: image),
-                    Shot(vm: media, secs: 2, tab: .clipboard, clipPreview: files),
-                    Shot(vm: colored, secs: 2, tab: .clipboard),
                 ]),
             Scene(
                 name: "agents",
@@ -343,19 +239,67 @@ public enum PreviewRenderer {
                     Shot(vm: media, secs: 3, tab: .agents, pane: .usage),
                 ]),
             Scene(
+                name: "music",
+                shots: [
+                    Shot(vm: media, secs: 2, expanded: false),
+                    Shot(vm: media, secs: 3, tab: .music),
+                ]),
+            // Focus, a meeting agenda and a countdown: the Timer tab's three panes.
+            Scene(
+                name: "timer",
+                shots: [
+                    Shot(vm: pomodoro, secs: 2, expanded: false),
+                    Shot(vm: pomodoro, secs: 2, tab: .timer),
+                    Shot(vm: running, secs: 2, tab: .timer, timerPane: .meeting),
+                    Shot(vm: over, secs: 2, expanded: false),
+                    Shot(vm: countdown, secs: 2, tab: .timer, timerPane: .countdown),
+                ]),
+            Scene(
+                name: "calendar",
+                shots: [
+                    Shot(vm: calendar, secs: 3),
+                    Shot(vm: calendar, secs: 2, expanded: false),
+                    Shot(vm: starting, secs: 3, expanded: false),
+                ]),
+            Scene(
+                name: "clipboard",
+                shots: [
+                    Shot(vm: media, secs: 2, tab: .clipboard),
+                    Shot(vm: media, secs: 2, tab: .clipboard, clipPreview: image),
+                    Shot(vm: colored, secs: 2, tab: .clipboard),
+                ]),
+            Scene(
+                name: "inbox",
+                shots: [
+                    Shot(vm: banner, secs: 2, expanded: false),
+                    Shot(vm: banner, secs: 3, tab: .inbox),
+                ]),
+            // The sun, then the tree growing, then Home's day card.
+            Scene(
+                name: "day",
+                shots: [
+                    Shot(vm: dayAt(3), secs: 2, expanded: false),
+                    Shot(vm: dayAt(10.5), secs: 1, expanded: false),
+                    Shot(vm: dayAt(-1.5, tree: true), secs: 1, expanded: false),
+                    Shot(vm: dayAt(4, tree: true), secs: 1, expanded: false),
+                    Shot(vm: dayAt(9, tree: true), secs: 1, expanded: false),
+                    Shot(vm: dayAt(4, tree: true), secs: 3),
+                ]),
+            Scene(
                 name: "notch-priority",
                 shots: [
                     Shot(vm: pair, secs: 3, expanded: false),
-                    Shot(vm: pair, secs: 4, tab: .settings, section: .notch),
+                    Shot(vm: pair, secs: 3, tab: .settings, section: .notch),
                 ]),
+            // A long line scrolls in the app; here it moves along per frame.
             Scene(
-                name: "peeks", height: 110,
+                name: "peeks", height: 110, zoom: 1,
                 shots: [
-                    Shot(vm: track, secs: 2, expanded: false),
+                    Shot(vm: track, secs: 3, expanded: false, scroll: 2),
                     Shot(vm: warning, secs: 2, expanded: false, at: fiveLeft),
                     Shot(vm: eye, secs: 2, expanded: false),
-                    Shot(vm: move, secs: 3, expanded: false),
-                    Shot(vm: quote, secs: 3, expanded: false),
+                    Shot(vm: move, secs: 3, expanded: false, scroll: 2),
+                    Shot(vm: quote, secs: 3, expanded: false, scroll: 2),
                 ]),
             Scene(
                 name: "appearance",
@@ -363,39 +307,8 @@ public enum PreviewRenderer {
                     Shot(vm: pomodoro, secs: 2),
                     Shot(vm: island, secs: 2),
                     Shot(vm: islandPair, secs: 2, expanded: false, notchless: true),
-                    Shot(vm: shrunk, secs: 1, expanded: false, notchless: true),
                     Shot(vm: light, secs: 2),
                     Shot(vm: purple, secs: 2),
-                    Shot(vm: blue, secs: 3, tab: .settings, section: .general),
-                ]),
-            Scene(
-                name: "inbox",
-                shots: [
-                    Shot(vm: banner, secs: 3, expanded: false),
-                    Shot(vm: banner, secs: 3, tab: .inbox),
-                ]),
-            // Day progress: the sun and moon through the day, then the tree
-            // growing (seed, leaves, sapling, young tree, full tree).
-            Scene(
-                name: "day",
-                shots: [
-                    Shot(vm: dayAt(-1.5), secs: 2, expanded: false),
-                    Shot(vm: dayAt(3), secs: 2, expanded: false),
-                    Shot(vm: dayAt(3), secs: 3),
-                    Shot(vm: dayAt(10.5), secs: 2, expanded: false),
-                    Shot(vm: dayAt(-1.5, tree: true), secs: 1, expanded: false),
-                    Shot(vm: dayAt(1.5, tree: true), secs: 1, expanded: false),
-                    Shot(vm: dayAt(4, tree: true), secs: 1, expanded: false),
-                    Shot(vm: dayAt(6.5, tree: true), secs: 1, expanded: false),
-                    Shot(vm: dayAt(9, tree: true), secs: 2, expanded: false),
-                    Shot(vm: dayAt(4, tree: true), secs: 3),
-                    Shot(vm: daySettings, secs: 3, tab: .settings, section: .day),
-                ]),
-            Scene(
-                name: "keep-awake",
-                shots: [
-                    Shot(vm: caffeine, secs: 2, expanded: false),
-                    Shot(vm: caffeine, secs: 3, tab: .settings, section: .keepAwake),
                 ]),
         ]
     }

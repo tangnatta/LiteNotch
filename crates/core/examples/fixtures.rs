@@ -115,6 +115,42 @@ fn populated() -> Core {
     );
     c.hook(&json!({"hook_event_name":"UserPromptSubmit","session_id":"s1","cwd":"/Users/me/Github/LiteNotch","prompt":"add tests"}).to_string(), T0);
     c.hook(&json!({"hook_event_name":"Stop","session_id":"s2","cwd":"/Users/me/Github/api-server","last_assistant_message":"All 42 tests pass."}).to_string(), T0 + 1);
+    // One of each: connected, installed but not connected, not installed.
+    c.apply(
+        Input::Connectors(
+            [
+                ("codex", "Codex", true, true, true),
+                ("gemini", "Gemini CLI", true, false, false),
+                ("antigravity", "Antigravity", false, false, false),
+            ]
+            .into_iter()
+            .map(|(agent, name, present, connected, can_approve)| {
+                litenotch_core::state::ConnectorView {
+                    agent: agent.into(),
+                    name: name.into(),
+                    present,
+                    connected: Some(connected),
+                    can_approve,
+                }
+            })
+            .collect(),
+        ),
+        T0,
+    );
+    // A Codex session (ids arrive scoped by the CLI's connector) and its limits.
+    c.hook(&json!({"hook_event_name":"UserPromptSubmit","session_id":"codex:c1","cwd":"/Users/me/Github/web","prompt":"fix the login form"}).to_string(), T0 + 1);
+    c.apply(
+        Input::CodexLimits(
+            litenotch_core::usage::parse_codex_limits(
+                &json!({"timestamp":"2026-11-14T00:00:00Z","payload":{"type":"token_count","rate_limits":{
+                    "primary":{"used_percent":64.0,"window_minutes":300,"resets_at":(T0/1000)+5400},
+                    "secondary":{"used_percent":23.0,"window_minutes":10080,"resets_at":(T0/1000)+300000}}}})
+                .to_string(),
+            )
+            .unwrap_or_default(),
+        ),
+        T0,
+    );
     c.apply(Input::Command(Command::NotifyDismissBanner), T0 + 2);
     c.apply(
         Input::ExternalNotify(NotificationInput {
@@ -277,7 +313,52 @@ fn main() {
         .to_string(),
         T0 + 11,
     );
+    // The Calendar tab with the first event open in full.
+    let mut detail = Core::new(c.persisted());
+    detail.apply(
+        Input::Command(Command::CalendarEvents {
+            events: vec![
+                event("e1", "Design review", "Work", "#1BADF8", "Room 3", 4, 30),
+                event("e2", "1:1 with Sam", "Work", "#1BADF8", "", 90, 25),
+            ],
+        }),
+        T0,
+    );
+    detail.apply(Input::Command(Command::NotifyDismissBanner), T0 + 10);
+    let attendee = |name: &str, status, me| litenotch_core::calendar::AttendeeInput {
+        name: name.into(),
+        status,
+        me,
+    };
+    use litenotch_core::calendar::AttendeeStatus as A;
+    detail.apply(
+        Input::Command(Command::CalendarDetail {
+            detail: Box::new(litenotch_core::calendar::EventDetailInput {
+                id: "e1".into(),
+                title: "Design review".into(),
+                start_ms: T0 + 4 * 60_000,
+                end_ms: T0 + 34 * 60_000,
+                calendar: "Work".into(),
+                color: Some("#1BADF8".into()),
+                location: "Room 3".into(),
+                notes: "Walk through the new onboarding flow.\n\n- Sign-up screens\n- Empty states"
+                    .into(),
+                url: "https://meet.example.com/abc-defg-hij".into(),
+                organizer: "Sam Lee".into(),
+                attendees: vec![
+                    attendee("Sam Lee", A::Accepted, false),
+                    attendee("Jordan Park", A::Accepted, true),
+                    attendee("Alex Kim", A::Tentative, false),
+                    attendee("Priya Shah", A::Pending, false),
+                ],
+                recurring: true,
+                can_edit: true,
+            }),
+        }),
+        T0 + 11,
+    );
     out.push(("calendar", c));
+    out.push(("calendar-detail", detail));
     out.push(("pair", pair));
 
     // Office hours on, nothing else running: the closed notch shows how far

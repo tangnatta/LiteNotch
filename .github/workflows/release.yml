@@ -101,7 +101,9 @@ jobs:
           SHA=$(cut -d' ' -f1 "dist/$ZIP.sha256")
           echo "SHA=$SHA" >> "$GITHUB_ENV"
           PRE=""
-          case "$VERSION" in *-*) PRE="--prerelease" ;; esac
+          CASK=litenotch
+          CHANNEL="stable channel"
+          case "$VERSION" in *-*) PRE="--prerelease"; CASK=litenotch@beta; CHANNEL="beta channel" ;; esac
           # What's new: the CHANGELOG.md section for this version, read from the
           # tagged commit (the token has no checkout, only the API). A version
           # without a section gets none.
@@ -116,15 +118,19 @@ jobs:
 
           Install: download the zip, unzip, move LiteNotch to Applications. The app is
           ad-hoc signed and not notarized, so the first time, allow it under
-          System Settings > Privacy & Security > Open Anyway. 
-          
-          Homebrew:
+          System Settings > Privacy & Security > Open Anyway.
 
-              brew install --cask tangnatta/litenotch/litenotch
+          Homebrew (${CHANNEL}). Newer Homebrew asks you to trust a third-party tap once:
 
-          Update an existing Homebrew install:
+              brew trust tangnatta/litenotch
 
-              brew update && brew upgrade --cask litenotch
+          Install:
+
+              brew install --cask tangnatta/litenotch/${CASK}
+
+          Update an existing install:
+
+              brew update && brew upgrade --cask ${CASK}
 
           SHA-256 of the zip: $SHA"
           if gh release view "$TAG" >/dev/null 2>&1; then

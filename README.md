@@ -31,23 +31,37 @@ the time and uses almost no battery.
 
 ### With Homebrew
 
+Recent Homebrew (7 and later) loads casks from a third-party tap only after
+you trust it. Do this once; without it `brew install`, `brew upgrade` and
+`brew info` stop with "Refusing to load cask … from untrusted tap":
+
+```sh
+brew trust tangnatta/litenotch
+```
+
+Then:
+
 ```sh
 brew install --cask tangnatta/litenotch/litenotch
 open -a LiteNotch
 ```
 
 That is the stable channel. Pre-releases (`-beta`) come from a separate cask;
-it replaces the stable one, so uninstall that first:
+it replaces the stable one, so uninstall that first
+(`brew uninstall --cask litenotch`):
 
 ```sh
 brew install --cask tangnatta/litenotch/litenotch@beta
 ```
 
+`brew upgrade` never moves you between channels; to go back to stable,
+uninstall the beta cask and install `litenotch` again.
+
 To update to the latest release:
 
 ```sh
 brew update
-brew upgrade --cask litenotch
+brew upgrade --cask litenotch        # beta channel: litenotch@beta
 ```
 
 `brew update` fetches the newest version from the tap first; without it,
@@ -62,8 +76,9 @@ Because this beta isn't notarized by Apple, the cask removes macOS's
 "downloaded from the internet" flag after installing, so Gatekeeper doesn't
 check the app. If you'd rather check it yourself, compare
 `shasum -a 256` of the zip with the `.sha256` file on the release page, or
-build from source. Recent Homebrew versions print a warning that the cask's
-`postflight` is deprecated; that is this step, and it still works.
+build from source. Older Homebrew versions (before 7.0.16) may print a
+warning that the cask's `postflight` is deprecated; that is this step, and it
+still works.
 
 ### Download
 

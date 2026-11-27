@@ -184,7 +184,7 @@ final class NotchPriorityTests: XCTestCase {
         let all = NotchConfig.liveOrder
         XCTAssertEqual(NotchPriority.move(.calendar, by: -1, in: all).prefix(2), [.calendar, .meeting])
         XCTAssertEqual(NotchPriority.move(.meeting, by: -1, in: all), all, "already first")
-        XCTAssertEqual(NotchPriority.move(.day, by: 1, in: all), all, "already last")
+        XCTAssertEqual(NotchPriority.move(.body, by: 1, in: all), all, "already last")
         XCTAssertEqual(NotchPriority.move(.pomodoro, by: 1, in: all)[3...4], [.media, .pomodoro])
         // A short or untidy saved order is filled out first.
         let moved = NotchPriority.move(.media, by: 1, in: [.media, .media, .banner])

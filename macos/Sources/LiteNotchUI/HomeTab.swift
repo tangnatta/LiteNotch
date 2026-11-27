@@ -18,33 +18,42 @@ struct HomeTab: View {
     }
 
     private var dashboard: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Group {
-                if let day = vm.day, DayConfig.showsDayCard(vm) {
-                    dayCard(day)
-                } else {
-                    nowPlaying
+        HomeCardTimeline(vm: vm) { shown in
+            HStack(alignment: .top, spacing: 12) {
+                Group {
+                    switch (shown, vm.body, vm.day) {
+                    case (.body, let gauges?, _):
+                        BodyCard(gauges: gauges, show: vm.settings.body.show, send: model.send)
+                            .opens("water and stretch settings", model) {
+                                model.settingsSection = .day
+                                model.selectTab(.settings)
+                            }
+                    case (.day, _, let day?):
+                        dayCard(day)
+                    default:
+                        nowPlaying
+                    }
                 }
-            }
-            .frame(width: 236)
-            // One list, not three cards: the now-playing card is the only
-            // container on this screen.
-            VStack(spacing: 0) {
-                timerRow
-                Hairline()
-                if vm.settings.calendar.enabled {
-                    calendarRow
+                .frame(width: 236)
+                // One list, not three cards: the now-playing card is the only
+                // container on this screen.
+                VStack(spacing: 0) {
+                    timerRow
                     Hairline()
-                }
-                if let day = vm.day, !DayConfig.showsDayCard(vm) {
-                    dayRow(day)
+                    if vm.settings.calendar.enabled {
+                        calendarRow
+                        Hairline()
+                    }
+                    if let day = vm.day, shown != .day {
+                        dayRow(day)
+                        Hairline()
+                    }
+                    agentsRow
                     Hairline()
+                    inboxRow
                 }
-                agentsRow
-                Hairline()
-                inboxRow
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -425,6 +434,29 @@ private struct HomeRow<Lines: View, Trailing: View>: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .rowHover()
+    }
+}
+
+/// Decides Home's big card (`HomeCardPick`) and decides again once, when
+/// a new track's minute is over; no timer otherwise.
+private struct HomeCardTimeline<Content: View>: View {
+    let vm: ViewModel
+    @ViewBuilder var content: (HomeCardShown) -> Content
+    @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.clockOffsetMs) private var offset
+
+    var body: some View {
+        let now = nowMs(Date(), offset: offset)
+        if snapshot {
+            content(HomeCardPick.card(vm, nowMs: now))
+        } else {
+            let changes = HomeCardPick.changeTimesMs(vm, nowMs: now).map {
+                Date(timeIntervalSince1970: Double($0 - offset) / 1000)
+            }
+            TimelineView(.explicit([Date()] + changes)) { ctx in
+                content(HomeCardPick.card(vm, nowMs: nowMs(ctx.date, offset: offset)))
+            }
+        }
     }
 }
 

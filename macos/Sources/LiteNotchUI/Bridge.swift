@@ -55,6 +55,8 @@ public enum ShellCommand: Equatable {
     case pomodoroPause
     /// Plays a sound once, while the user is choosing one.
     case soundPreview(name: String)
+    /// A cup of water; one stretching movement (`body` gauges).
+    case bodyDrink, bodyStretch
     case clipCopy(id: Int)
     /// Copy without the formatting it was copied with.
     case clipCopyPlain(id: Int)
@@ -128,6 +130,8 @@ public enum ShellCommand: Equatable {
         case .pomodoroSkip: return c("pomodoro_skip")
         case .pomodoroPause: return c("pomodoro_pause")
         case .soundPreview(let name): return c("sound_preview", ["name": name])
+        case .bodyDrink: return c("body_drink")
+        case .bodyStretch: return c("body_stretch")
         case .pomodoroReset: return c("pomodoro_reset")
         case .clipCopy(let id): return c("clip_copy", ["id": id])
         case .clipCopyPlain(let id): return c("clip_copy_plain", ["id": id])

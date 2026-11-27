@@ -12,6 +12,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::body::Which;
+
 use super::{
     mmss, phase_label, ActivityKind, CompactView, Core, MediaView, NotificationInput, Phase,
     PomodoroView, Priority, RunState, TimerRun,
@@ -26,11 +28,13 @@ pub struct PeekConfig {
     /// Peek when a running countdown has this long left; 0 is off. Only for
     /// countdowns longer than twice this.
     pub time_warning_secs: u32,
-    /// A quick blinking `>_<` every this many minutes at the screen, so the
+    /// A quick blinking `O-O` every this many minutes at the screen, so the
     /// user blinks and looks away; 0 is off (the default), else 1..=60.
     pub eye_break_mins: u32,
-    /// Stretch, walk or drink water every this many minutes at the screen;
-    /// 0 is off (the default), else 5..=180.
+    /// The Move reminder of earlier versions, read from old files only: the
+    /// water and stretch gauges (`settings.body`) replaced it, and
+    /// `Core::new` moves its interval there.
+    #[serde(skip_serializing)]
     pub move_mins: u32,
     /// Show a short encouraging line when a pomodoro break completes.
     pub break_quote: bool,
@@ -59,7 +63,7 @@ impl PeekConfig {
         Self {
             time_warning_secs: self.time_warning_secs.min(3600),
             eye_break_mins: on(self.eye_break_mins, 1, 60),
-            move_mins: on(self.move_mins, 5, 180),
+            move_mins: 0,
             ..self
         }
     }
@@ -72,8 +76,8 @@ pub enum PeekKind {
     TimeWarning,
     /// Blink and look away (`ActivityKind::Nudge`); short, it comes often.
     EyeBreak,
-    /// Stretch, walk or drink water (`ActivityKind::Nudge`, `title` names
-    /// which).
+    /// The water or stretch gauge ran empty (`ActivityKind::Nudge`, `title`
+    /// names which).
     Move,
     /// A short line after a break (`ActivityKind::Nudge`).
     Quote,
@@ -114,7 +118,8 @@ const LATE_MS: u64 = 60_000;
 const QUOTE_WAIT_MS: u64 = 60_000;
 
 const EYE_BREAK_TITLE: &str = "Eye break";
-const EYE_BREAK_LINE: &str = "Look away";
+/// The eye break's word, one per break (picked from the minute).
+pub const EYE_LINES: [&str; 3] = ["Blink", "Relax", "Look away"];
 const QUOTE_TITLE: &str = "Break over";
 
 /// The first check whether the user is still working, this long into a
@@ -143,25 +148,22 @@ fn break_checks(elapsed_ms: u64) -> u64 {
     }
 }
 
-/// What the Move reminder asks for: `(kind, line)`. The kinds take turns
-/// in the list (stretch, walk, water), so `index % 3` is the kind.
-pub const MOVE_LINES: [(&str, &str); 6] = [
-    ("Stretch", "Stand up and stretch"),
-    ("Walk", "Take a short walk"),
-    ("Water", "Drink some water"),
-    ("Stretch", "Roll your shoulders, stretch"),
-    ("Walk", "Walk around for a minute"),
-    ("Water", "Refill your water"),
+/// What an empty gauge says: `(title, line)`, one picked from the moment.
+pub const WATER_LINES: [&str; 2] = ["Drink some water", "Refill your water"];
+pub const STRETCH_LINES: [&str; 4] = [
+    "Stand up and stretch",
+    "Roll your shoulders, stretch",
+    "Take a short walk",
+    "Walk around for a minute",
 ];
+const WATER_TITLE: &str = "Water";
+const STRETCH_TITLE: &str = "Stretch";
+const BOTH_TITLE: &str = "Water and stretch";
+const BOTH_LINE: &str = "Drink some water, then stretch";
 
-/// A Move line picked from the moment, never the same kind as `last`.
-fn move_line(at_ms: u64, last: Option<usize>) -> usize {
-    let n = MOVE_LINES.len();
-    let i = (at_ms / 1000 % n as u64) as usize;
-    match last {
-        Some(l) if l % 3 == i % 3 => (i + 1) % n,
-        _ => i,
-    }
+/// One of `lines`, picked by the moment: the core reads no clock.
+fn pick(lines: &'static [&'static str], at_ms: u64) -> &'static str {
+    lines[(at_ms / 1000 % lines.len() as u64) as usize]
 }
 
 /// Lines shown after a break. Written for LiteNotch; short enough to read
@@ -203,13 +205,6 @@ pub(super) enum Clock {
 }
 
 const CLOCKS: [Clock; 2] = [Clock::Pomodoro, Clock::Timer];
-
-/// A reminder counted in screen time.
-#[derive(Debug, Clone, Copy)]
-enum ScreenTimer {
-    Eye,
-    Move,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Peek {
@@ -302,15 +297,11 @@ impl Core {
         u64::from(self.settings.peek.eye_break_mins) * 60_000
     }
 
-    fn move_ms(&self) -> u64 {
-        u64::from(self.settings.peek.move_mins) * 60_000
-    }
-
     /// The user cannot be at the screen: it is locked, the displays or the
     /// Mac sleep (the shell says so), or the lid is shut in closed-lid mode
     /// with no other display. The Mac may be awake then, but nobody is
     /// looking, so screen time does not count.
-    fn is_away(&self) -> bool {
+    pub(super) fn is_away(&self) -> bool {
         self.away || self.lid_shut
     }
 
@@ -412,18 +403,12 @@ impl Core {
         }
     }
 
-    /// Part of `settle_peeks` for a reminder counted in screen time. Away
-    /// (or off) its interval starts over.
-    fn screen_due(&mut self, which: ScreenTimer, now: u64) -> bool {
-        let (on, step) = match which {
-            ScreenTimer::Eye => (self.settings.peek.eye_break_mins > 0, self.eye_ms()),
-            ScreenTimer::Move => (self.settings.peek.move_mins > 0, self.move_ms()),
-        };
+    /// Part of `settle_peeks` for the eye break, counted in screen time.
+    /// Away (or off) its interval starts over.
+    fn eye_due(&mut self, now: u64) -> bool {
+        let (on, step) = (self.settings.peek.eye_break_mins > 0, self.eye_ms());
         let away = self.is_away();
-        let since = match which {
-            ScreenTimer::Eye => &mut self.eye_since,
-            ScreenTimer::Move => &mut self.move_since,
-        };
+        let since = &mut self.eye_since;
         if !on || away {
             *since = None;
             return false;
@@ -441,8 +426,8 @@ impl Core {
     }
 
     /// Part of `settle`: starts a peek when a running countdown crosses the
-    /// warning or a Move mark since the last look, and ends an expired
-    /// peek.
+    /// warning or a gauge runs empty since the last look, and ends an
+    /// expired peek.
     ///
     /// A crossing needs time left to go from above a mark to at or below it
     /// while running. Pausing keeps time left still, so pause and resume
@@ -483,15 +468,30 @@ impl Core {
                 self.start_peek(Peek::about(PeekKind::TimeWarning, clock), now);
             }
         }
-        if self.screen_due(ScreenTimer::Eye, now) {
-            let eye = Peek::nudge(PeekKind::EyeBreak, EYE_BREAK_TITLE, EYE_BREAK_LINE);
+        if self.eye_due(now) {
+            let eye = Peek::nudge(
+                PeekKind::EyeBreak,
+                EYE_BREAK_TITLE,
+                EYE_LINES[(now / 60_000 % EYE_LINES.len() as u64) as usize],
+            );
             self.start_peek(eye, now);
         }
-        // After the eye break, so a Move falling at the same moment wins.
-        if self.screen_due(ScreenTimer::Move, now) {
-            let i = move_line(now, self.move_last);
-            self.move_last = Some(i);
-            let (title, line) = MOVE_LINES[i];
+        // After the eye break, so an empty gauge at the same moment wins.
+        let counting = !self.is_away();
+        let emptied: Vec<Which> = self
+            .body
+            .sync(counting, now)
+            .into_iter()
+            .filter(|&(_, at)| now - at <= LATE_MS)
+            .map(|(which, _)| which)
+            .collect();
+        let (title, line) = match emptied.as_slice() {
+            [] => ("", ""),
+            [Which::Water] => (WATER_TITLE, pick(&WATER_LINES, now)),
+            [Which::Stretch] => (STRETCH_TITLE, pick(&STRETCH_LINES, now)),
+            _ => (BOTH_TITLE, BOTH_LINE),
+        };
+        if !title.is_empty() {
             self.start_peek(Peek::nudge(PeekKind::Move, title, line), now);
         }
         if let Some(at) = self.quote_due {
@@ -542,7 +542,7 @@ impl Core {
             }
         }
         times.push(self.eye_since.map(|s| s.saturating_add(self.eye_ms())));
-        times.push(self.move_since.map(|s| s.saturating_add(self.move_ms())));
+        times.push(self.body.next_deadline());
         times.into_iter().flatten().min()
     }
 
@@ -621,6 +621,7 @@ fn playing_view(media: &Option<MediaView>) -> Option<CompactView> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::body::BodyConfig;
     use crate::media::NowPlaying;
     use crate::notify::BannerAction;
     use crate::state::{Command, Input, Settings};
@@ -706,6 +707,22 @@ mod tests {
             ("Three", Some(PeekKind::TrackChanged))
         );
         assert_eq!(c.next_deadline(), Some(T0 + 8_000 + PEEK_MS));
+    }
+
+    #[test]
+    fn the_view_says_when_the_track_changed() {
+        let mut c = Core::default();
+        // Even with the peek off: Home's Auto card goes by it.
+        with(&mut c, |s| s.peek.track_change = false, T0);
+        play(&mut c, "One", T0);
+        let at = |c: &Core, now| c.view(now).media.and_then(|m| m.changed_at_ms);
+        assert_eq!(at(&c, T0), Some(T0));
+        // Pause and play again, or a position update: the same track.
+        c.apply(Input::NowPlaying(Some(track("One", false))), T0 + 5_000);
+        play(&mut c, "One", T0 + 6_000);
+        assert_eq!(at(&c, T0 + 6_000), Some(T0));
+        play(&mut c, "Two", T0 + 90_000);
+        assert_eq!(at(&c, T0 + 90_000), Some(T0 + 90_000));
     }
 
     #[test]
@@ -808,10 +825,15 @@ mod tests {
         assert_eq!(newer.peek.time_warning_secs, 60);
     }
 
-    /// A core with the Move reminder on.
+    /// A core with the stretch gauge on, empty after 20 minutes (it
+    /// starts at half of 40).
     fn moving() -> Core {
+        stretching(40)
+    }
+
+    fn stretching(mins: u32) -> Core {
         let mut c = Core::default();
-        with(&mut c, |s| s.peek.move_mins = 20, T0);
+        with(&mut c, |s| s.body.stretch_mins = mins, T0);
         c
     }
 
@@ -836,33 +858,182 @@ mod tests {
     }
 
     #[test]
-    fn move_can_count_screen_time() {
+    fn an_empty_gauge_peeks_once_then_stays_quiet() {
         let mut c = moving();
-        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN));
-        c.apply(Input::Tick, T0 + 20 * MIN);
-        assert_eq!(compact(&c, T0 + 20 * MIN).peek, Some(PeekKind::Move));
-        run_to(&mut c, T0 + 20 * MIN + NUDGE_MS);
+        // First at 20 %: 8 of 40 minutes left, 12 minutes in.
+        assert_eq!(c.next_deadline(), Some(T0 + 12 * MIN));
+        c.apply(Input::Tick, T0 + 12 * MIN);
+        let v = compact(&c, T0 + 12 * MIN);
         assert_eq!(
-            compact(&c, T0 + 20 * MIN + NUDGE_MS).kind,
-            ActivityKind::Idle
+            (v.peek, v.title.as_str()),
+            (Some(PeekKind::Move), "Stretch")
         );
-        assert_eq!(c.next_deadline(), Some(T0 + 40 * MIN));
+        run_to(&mut c, T0 + 12 * MIN + NUDGE_MS);
+        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN), "then when empty");
+        c.apply(Input::Tick, T0 + 20 * MIN);
+        let v = compact(&c, T0 + 20 * MIN);
+        assert_eq!(
+            (v.peek, v.title.as_str()),
+            (Some(PeekKind::Move), "Stretch")
+        );
+        assert!(STRETCH_LINES.contains(&v.value.as_str()));
+        run_to(&mut c, T0 + 20 * MIN + NUDGE_MS);
+        let v = compact(&c, T0 + 20 * MIN + NUDGE_MS);
+        assert_eq!(
+            (v.kind, v.title.as_str(), v.value.as_str()),
+            (ActivityKind::Body, "Stretch", "0%"),
+            "the gauge stays in the closed notch, still and empty"
+        );
+        assert_eq!(c.next_deadline(), None, "empty: nothing more to say");
 
-        // Locking starts the count over.
-        away(&mut c, true, T0 + 30 * MIN);
+        // Five stretches fill half of the 40 minutes; it runs down from there.
+        let at = T0 + 30 * MIN;
+        for _ in 0..5 {
+            cmd(&mut c, Command::BodyStretch, at);
+        }
+        assert_eq!(c.next_deadline(), Some(at + 12 * MIN), "its 20 % again");
+        // Locking stops it; coming back goes on from where it was.
+        away(&mut c, true, at + 5 * MIN);
         assert_eq!(c.next_deadline(), None);
-        away(&mut c, false, T0 + 35 * MIN);
-        assert_eq!(c.next_deadline(), Some(T0 + 55 * MIN));
+        away(&mut c, false, at + 60 * MIN);
+        assert_eq!(c.next_deadline(), Some(at + 67 * MIN));
 
-        // A sleep without word from the shell: late, so skipped.
-        c.apply(Input::Tick, T0 + 90 * MIN);
-        assert_eq!(compact(&c, T0 + 90 * MIN).peek, None);
-        assert_eq!(c.next_deadline(), Some(T0 + 110 * MIN));
+        // A sleep without word from the shell: late, so no peek.
+        c.apply(Input::Tick, at + 200 * MIN);
+        assert_eq!(compact(&c, at + 200 * MIN).peek, None);
+        assert_eq!(c.next_deadline(), None);
 
-        with(&mut c, |s| s.peek.move_mins = 45, T0 + 91 * MIN);
-        assert_eq!(c.next_deadline(), Some(T0 + 135 * MIN));
-        with(&mut c, |s| s.peek.move_mins = 0, T0 + 92 * MIN);
-        assert_eq!(c.next_deadline(), None, "off means no wake");
+        with(&mut c, |s| s.body.stretch_mins = 0, at + 201 * MIN);
+        assert_eq!(c.view(at + 201 * MIN).body, None, "off means gone");
+    }
+
+    /// Reported: after a restart the gauges showed 0 %. They were started
+    /// at time 0, so the first look at the real time found them long empty.
+    #[test]
+    fn saved_gauges_start_at_half_when_litenotch_starts() {
+        let saved: crate::state::Persisted = serde_json::from_value(
+            json!({"settings":{"body":{"water_mins":90,"stretch_mins":60}}}),
+        )
+        .expect("saved");
+        let mut c = Core::new(saved);
+        c.apply(Input::Tick, T0);
+        let b = c.view(T0).body.expect("gauges");
+        let w = b.water.expect("water");
+        assert_eq!(w.empty_at_ms, Some(T0 + 45 * MIN), "half of 90 min");
+        assert_eq!(b.stretch.and_then(|s| s.empty_at_ms), Some(T0 + 30 * MIN));
+        assert_eq!(compact(&c, T0).peek, None, "not announced as empty");
+    }
+
+    #[test]
+    fn the_closed_notch_shows_the_gauge_that_empties_first() {
+        let mut c = Core::default();
+        // Water 90 min from half: empty in 45. Stretch 60 from half: in 30.
+        with(
+            &mut c,
+            |s| {
+                s.body.water_mins = 90;
+                s.body.stretch_mins = 60;
+            },
+            T0,
+        );
+        let v = compact(&c, T0 + 1_000);
+        assert_eq!(
+            (v.kind, v.title.as_str(), v.ends_at_ms, v.total_secs),
+            (
+                ActivityKind::Body,
+                "Stretch",
+                Some(T0 + 30 * MIN),
+                Some(3600)
+            )
+        );
+        assert_eq!(v.value, "", "counting: the shell draws the level");
+        // Ten stretches: now water empties first.
+        for _ in 0..10 {
+            cmd(&mut c, Command::BodyStretch, T0 + 2_000);
+        }
+        let v = compact(&c, T0 + 3_000);
+        assert_eq!(
+            (v.title.as_str(), v.ends_at_ms),
+            ("Water", Some(T0 + 45 * MIN))
+        );
+        // Away: standing still, with the level written out.
+        away(&mut c, true, T0 + 15 * MIN);
+        let v = compact(&c, T0 + 20 * MIN);
+        assert_eq!(
+            (v.title.as_str(), v.ends_at_ms, v.value.as_str()),
+            ("Water", None, "33%")
+        );
+        // Last in the order: anything else running comes first, and it can
+        // be hidden.
+        away(&mut c, false, T0 + 20 * MIN);
+        cmd(&mut c, Command::PomodoroToggle, T0 + 20 * MIN);
+        let both = c.view(T0 + 21 * MIN);
+        assert_eq!(both.compact.kind, ActivityKind::Pomodoro);
+        assert_eq!(
+            both.compact_secondary.map(|s| s.kind),
+            Some(ActivityKind::Body)
+        );
+        with(
+            &mut c,
+            |s| s.notch.hidden = vec![ActivityKind::Body],
+            T0 + 21 * MIN,
+        );
+        assert_eq!(c.view(T0 + 21 * MIN).compact_secondary, None);
+    }
+
+    #[test]
+    fn water_says_so_and_both_at_once_are_one_peek() {
+        let mut c = Core::default();
+        with(&mut c, |s| s.body.water_mins = 60, T0);
+        run_to(&mut c, T0 + 30 * MIN);
+        let v = compact(&c, T0 + 30 * MIN);
+        assert_eq!((v.peek, v.title.as_str()), (Some(PeekKind::Move), "Water"));
+        assert!(WATER_LINES.contains(&v.value.as_str()));
+
+        let mut c = Core::default();
+        with(
+            &mut c,
+            |s| {
+                s.body.water_mins = 60;
+                s.body.stretch_mins = 60;
+            },
+            T0,
+        );
+        run_to(&mut c, T0 + 30 * MIN);
+        let v = compact(&c, T0 + 30 * MIN);
+        assert_eq!(v.title, "Water and stretch");
+    }
+
+    #[test]
+    fn drinking_fills_the_water_gauge_in_the_view() {
+        let mut c = Core::default();
+        assert_eq!(c.view(T0).body, None, "off by default");
+        with(&mut c, |s| s.body.water_mins = 60, T0);
+        run_to(&mut c, T0 + 60 * MIN);
+        cmd(&mut c, Command::BodyDrink, T0 + 61 * MIN);
+        let w = c
+            .view(T0 + 61 * MIN)
+            .body
+            .and_then(|b| b.water)
+            .expect("water");
+        assert_eq!(w.empty_at_ms, Some(T0 + 91 * MIN), "a cup is half");
+        assert_eq!(w.last_label.as_deref(), Some("+200 ml"));
+        cmd(&mut c, Command::BodyDrink, T0 + 61 * MIN);
+        let w = c
+            .view(T0 + 61 * MIN)
+            .body
+            .and_then(|b| b.water)
+            .expect("water");
+        assert_eq!(
+            w.empty_at_ms,
+            Some(T0 + 98 * MIN + 30_000),
+            "right after, a sip: 50 ml is 7.5 min"
+        );
+        assert_eq!(w.last_label.as_deref(), Some("+50 ml"));
+        let cmd: Command = serde_json::from_str(r#"{"cmd":"body_drink"}"#).expect("command");
+        assert_eq!(cmd, Command::BodyDrink);
+        let cmd: Command = serde_json::from_str(r#"{"cmd":"body_stretch"}"#).expect("command");
+        assert_eq!(cmd, Command::BodyStretch);
     }
 
     #[test]
@@ -882,7 +1053,7 @@ mod tests {
                 ActivityKind::Nudge,
                 Some(PeekKind::EyeBreak),
                 "Eye break",
-                "Look away"
+                EYE_LINES[((T0 + 5 * MIN) / MIN % 3) as usize]
             )
         );
         assert_eq!(c.next_deadline(), Some(T0 + 5 * MIN + EYE_MS), "a glance");
@@ -905,39 +1076,33 @@ mod tests {
     }
 
     #[test]
-    fn move_is_counted_in_screen_time_whatever_the_focus_timer_does() {
-        assert_eq!(c_default_move(), 0, "off by default");
-        // No focus session at all: it still comes after 20 minutes at the Mac.
+    fn gauges_count_screen_time_whatever_the_focus_timer_does() {
+        assert_eq!(Core::default().settings().body, BodyConfig::default());
+        assert_eq!(BodyConfig::default().stretch_mins, 0, "off by default");
+        // No focus session at all: it still comes after 12 minutes at the
+        // Mac (its 20 %), then at 20 (empty).
         let mut c = moving();
-        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN));
-        c.apply(Input::Tick, T0 + 20 * MIN);
+        assert_eq!(c.next_deadline(), Some(T0 + 12 * MIN));
+        c.apply(Input::Tick, T0 + 12 * MIN);
+        assert_eq!(compact(&c, T0 + 12 * MIN).peek, Some(PeekKind::Move));
+        run_to(&mut c, T0 + 20 * MIN);
         assert_eq!(compact(&c, T0 + 20 * MIN).peek, Some(PeekKind::Move));
-        run_to(&mut c, T0 + 20 * MIN + NUDGE_MS);
-        assert_eq!(
-            c.next_deadline(),
-            Some(T0 + 40 * MIN),
-            "the next 20 minutes"
-        );
 
         // Starting, pausing and finishing a focus session change nothing.
         let mut c = moving();
         cmd(&mut c, Command::PomodoroToggle, T0 + 5 * MIN);
         cmd(&mut c, Command::PomodoroToggle, T0 + 8 * MIN);
         cmd(&mut c, Command::PomodoroReset, T0 + 9 * MIN);
-        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN));
+        assert_eq!(c.next_deadline(), Some(T0 + 12 * MIN));
 
         // A break counts too: the user is still at the screen.
-        let mut c = moving();
+        let mut c = stretching(56);
         with(&mut c, |s| s.peek.still_working = false, T0);
         cmd(&mut c, Command::PomodoroToggle, T0);
         run_to(&mut c, T0 + 26 * MIN);
         assert_eq!(c.view(T0 + 26 * MIN).pomodoro.phase, Phase::ShortBreak);
-        run_to(&mut c, T0 + 40 * MIN);
-        assert_eq!(compact(&c, T0 + 40 * MIN).peek, Some(PeekKind::Move));
-    }
-
-    fn c_default_move() -> u32 {
-        Core::default().settings().peek.move_mins
+        run_to(&mut c, T0 + 28 * MIN);
+        assert_eq!(compact(&c, T0 + 28 * MIN).peek, Some(PeekKind::Move));
     }
 
     /// Closed-lid mode on and confirmed, display at the lid.
@@ -968,12 +1133,13 @@ mod tests {
         assert_eq!(c.next_deadline(), Some(T0 + 12 * 3_600_000));
         c.apply(Input::Tick, T0 + 30 * MIN);
         assert_eq!(compact(&c, T0 + 30 * MIN).peek, None);
-        // Opening it starts both counts over, from that moment.
+        // Opening it starts the eye break over; the gauge goes on from
+        // where it stood.
         lid(&mut c, false, false, T0 + 40 * MIN);
         assert_eq!(c.next_deadline(), Some(T0 + 45 * MIN), "eye break: 5 min");
-        run_to(&mut c, T0 + 60 * MIN);
+        run_to(&mut c, T0 + 58 * MIN);
         let at = |mins: u64| compact(&c, T0 + mins * MIN).peek;
-        assert_eq!(at(60), Some(PeekKind::Move), "Move: 20 min after opening");
+        assert_eq!(at(58), Some(PeekKind::Move), "2 min before, 18 after");
     }
 
     #[test]
@@ -981,7 +1147,7 @@ mod tests {
         let mut c = moving();
         lid_mode_on(&mut c, T0);
         lid(&mut c, true, true, T0 + 2 * MIN);
-        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN));
+        assert_eq!(c.next_deadline(), Some(T0 + 12 * MIN), "its 20 %, on time");
     }
 
     #[test]
@@ -1299,20 +1465,13 @@ mod tests {
     }
 
     #[test]
-    fn move_lines_take_turns_and_never_repeat_a_kind() {
-        for (i, (kind, line)) in MOVE_LINES.iter().enumerate() {
-            assert_eq!(*kind, ["Stretch", "Walk", "Water"][i % 3]);
+    fn gauge_lines_are_short_and_picked_by_the_moment() {
+        for line in WATER_LINES.iter().chain(STRETCH_LINES.iter()) {
             assert!(line.chars().count() <= 30, "{line}");
         }
-        assert_eq!(move_line(0, None), 0);
-        assert_eq!(move_line(0, Some(3)), 1, "same kind as last: the next one");
-        assert_eq!(move_line(5_000, Some(0)), 5);
-        assert_eq!(move_line(5_000, Some(2)), 0, "wraps around");
-        for at in 0..12 {
-            for last in 0..MOVE_LINES.len() {
-                assert_ne!(move_line(at * 1000, Some(last)) % 3, last % 3);
-            }
-        }
+        assert!(BOTH_LINE.chars().count() <= 30);
+        assert_eq!(pick(&STRETCH_LINES, 0), STRETCH_LINES[0]);
+        assert_eq!(pick(&STRETCH_LINES, 5_000), STRETCH_LINES[1]);
     }
 
     #[test]
@@ -1322,14 +1481,14 @@ mod tests {
             &mut c,
             |s| {
                 s.peek.eye_break_mins = 999;
-                s.peek.move_mins = 1;
+                s.body.water_mins = 1;
             },
             T0,
         );
         assert_eq!(c.settings().peek.eye_break_mins, 60);
-        assert_eq!(c.settings().peek.move_mins, 5);
-        with(&mut c, |s| s.peek.move_mins = 9_999, T0);
-        assert_eq!(c.settings().peek.move_mins, 180);
+        assert_eq!(c.settings().body.water_mins, 5);
+        with(&mut c, |s| s.body.stretch_mins = 9_999, T0);
+        assert_eq!(c.settings().body.stretch_mins, 180);
         with(&mut c, |s| s.peek.eye_break_mins = 0, T0);
         assert_eq!(c.settings().peek.eye_break_mins, 0, "0 stays off");
 
@@ -1344,6 +1503,24 @@ mod tests {
             serde_json::from_value(json!({"move_mins":20,"move_counts":"focus"}))
                 .expect("older peek settings");
         assert_eq!(older.move_mins, 20);
+        // A saved Move reminder becomes both gauges, and is not written
+        // back.
+        let saved: crate::state::Persisted =
+            serde_json::from_value(json!({"settings":{"peek":{"move_mins":20}}})).expect("saved");
+        let c = Core::new(saved);
+        assert_eq!(
+            (c.settings().body.water_mins, c.settings().body.stretch_mins),
+            (20, 20)
+        );
+        assert_eq!(c.settings().peek.move_mins, 0);
+        let written = serde_json::to_value(c.settings()).expect("json");
+        assert!(written["peek"].get("move_mins").is_none());
+        // Gauges already set win over an old Move value.
+        let both: crate::state::Persisted = serde_json::from_value(
+            json!({"settings":{"peek":{"move_mins":20},"body":{"water_mins":45}}}),
+        )
+        .expect("saved");
+        assert_eq!(Core::new(both).settings().body.stretch_mins, 0);
         let cmd: Command =
             serde_json::from_str(r#"{"cmd":"screen_away","away":true}"#).expect("command");
         assert_eq!(cmd, Command::ScreenAway { away: true });

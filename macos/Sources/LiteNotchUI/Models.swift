@@ -17,7 +17,7 @@ private func decodeLenient<E: LenientEnum>(_ decoder: Decoder) throws -> E {
 }
 
 public enum ActivityKind: String, LenientEnum, CaseIterable {
-    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, calendar, nudge, day, unknown
+    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, calendar, nudge, day, body, unknown
     static var unknownCase: ActivityKind { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
@@ -146,8 +146,6 @@ public struct PeekConfig: Codable, Equatable {
 
     /// Minutes of screen time between eye breaks; 0 (the default) is off.
     public var eyeBreakMins: Int = 0
-    /// Minutes of screen time between Move reminders; 0 (the default) is off.
-    public var moveMins: Int = 0
     /// A short encouraging line when a pomodoro break completes.
     public var breakQuote: Bool = true
     /// Remind the user who keeps working during a break.
@@ -156,7 +154,7 @@ public struct PeekConfig: Codable, Equatable {
     public static let `default` = PeekConfig(trackChange: true, timeWarningSecs: 300)
 
     enum CodingKeys: String, CodingKey {
-        case trackChange, timeWarningSecs, eyeBreakMins, moveMins, breakQuote, stillWorking
+        case trackChange, timeWarningSecs, eyeBreakMins, breakQuote, stillWorking
     }
 }
 
@@ -167,7 +165,6 @@ extension PeekConfig {
         trackChange = try c.decode(Bool.self, forKey: .trackChange)
         timeWarningSecs = try c.decode(Int.self, forKey: .timeWarningSecs)
         eyeBreakMins = (try? c.decodeIfPresent(Int.self, forKey: .eyeBreakMins)) ?? 0
-        moveMins = (try? c.decodeIfPresent(Int.self, forKey: .moveMins)) ?? 0
         breakQuote = (try? c.decodeIfPresent(Bool.self, forKey: .breakQuote)) ?? true
         stillWorking = (try? c.decodeIfPresent(Bool.self, forKey: .stillWorking)) ?? true
     }
@@ -177,7 +174,6 @@ extension PeekConfig {
         try c.encode(trackChange, forKey: .trackChange)
         try c.encode(timeWarningSecs, forKey: .timeWarningSecs)
         try c.encode(eyeBreakMins, forKey: .eyeBreakMins)
-        try c.encode(moveMins, forKey: .moveMins)
         try c.encode(breakQuote, forKey: .breakQuote)
         try c.encode(stillWorking, forKey: .stillWorking)
     }
@@ -428,7 +424,7 @@ public struct NotchConfig: Codable, Equatable {
     public var waitingDot: Bool
 
     /// The default order; mirrors `state::LIVE_ORDER`.
-    public static let liveOrder: [ActivityKind] = [.meeting, .calendar, .timer, .pomodoro, .media, .caffeine, .agent, .day]
+    public static let liveOrder: [ActivityKind] = [.meeting, .calendar, .timer, .pomodoro, .media, .caffeine, .agent, .day, .body]
     public static let `default` = NotchConfig(order: liveOrder, hidden: [], twoPlaces: true, waitingDot: true)
 
     public init(order: [ActivityKind], hidden: [ActivityKind], twoPlaces: Bool, waitingDot: Bool) {
@@ -451,7 +447,7 @@ public struct CalendarConfig: Codable, Equatable {
 
 /// What the big card on the left of Home shows (`day::HomeCard`).
 public enum HomeCard: String, Codable, Equatable, CaseIterable {
-    case media, day, auto
+    case media, day, auto, body
     public init(from decoder: Decoder) throws {
         self = HomeCard(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .auto
     }
@@ -479,14 +475,82 @@ public struct DayConfig: Codable, Equatable {
 
     public static let `default` = DayConfig(enabled: false, startMin: 600, endMin: 1080, days: 0b001_1111)
 
-    /// Whether Home's left card shows the day instead of now playing.
-    public static func showsDayCard(_ vm: ViewModel) -> Bool {
-        guard vm.day != nil else { return false }
+}
+
+/// What Home's big card shows now (`HomeCard` is the choice, this the result).
+public enum HomeCardShown: Equatable {
+    case media, day, body
+}
+
+/// The rule for Home's big card.
+///
+/// A fixed choice shows that card, or now playing when it has nothing to
+/// show (day progress off or a day off, both gauges off). Auto takes the
+/// first that applies:
+/// 1. the gauges, if one is below `lowPct` (20 %);
+/// 2. music, for `musicMs` (one minute) after a new track starts;
+/// 3. the gauges, if one is below `halfPct` (50 %);
+/// 4. the day, if day progress is on;
+/// 5. music, while something plays;
+/// 6. the gauges, if on (rather than an empty "Nothing playing");
+/// 7. now playing.
+public enum HomeCardPick {
+    public static let musicMs = 60_000
+    public static let lowPct = 20
+    public static let halfPct = 50
+
+    public static func card(_ vm: ViewModel, nowMs: Int) -> HomeCardShown {
         switch vm.settings.day.homeCard {
-        case .media: return false
-        case .day: return true
-        case .auto: return !(vm.media?.playing ?? false)
+        case .media: return .media
+        case .day: return vm.day != nil ? .day : .media
+        case .body: return vm.body != nil ? .body : .media
+        case .auto:
+            let lowest = lowestPct(vm, nowMs: nowMs)
+            let playing = vm.media?.playing ?? false
+            if let l = lowest, l < lowPct { return .body }
+            if newTrack(vm, nowMs: nowMs) { return .media }
+            if let l = lowest, l < halfPct { return .body }
+            if vm.day != nil { return .day }
+            if playing { return .media }
+            if vm.body != nil { return .body }
+            return .media
         }
+    }
+
+    /// When `card` may next give another answer without a new view model.
+    public static func nextChangeMs(_ vm: ViewModel, nowMs: Int) -> Int? {
+        changeTimesMs(vm, nowMs: nowMs).first
+    }
+
+    /// Every time ahead when `card` may give another answer without a new
+    /// view model, soonest first: the end of a new track's minute, a gauge
+    /// falling past 50 % or 20 %. All of them, not only the next: the view
+    /// is not rebuilt when one passes, so a later one must already be there.
+    public static func changeTimesMs(_ vm: ViewModel, nowMs: Int) -> [Int] {
+        guard vm.settings.day.homeCard == .auto else { return [] }
+        var times: [Int] = []
+        if newTrack(vm, nowMs: nowMs), let at = vm.media?.changedAtMs { times.append(at + musicMs) }
+        for g in [vm.body?.water, vm.body?.stretch].compactMap({ $0 }) {
+            guard let end = g.emptyAtMs else { continue }
+            for pct in [halfPct, lowPct] {
+                // Below `pct` from this moment on (the level rounds to whole
+                // percent, so a hair past the mark).
+                let t = end - g.spanMs * pct / 100 + g.spanMs / 200 + 1
+                if t > nowMs { times.append(t) }
+            }
+        }
+        return times.sorted()
+    }
+
+    static func newTrack(_ vm: ViewModel, nowMs: Int) -> Bool {
+        guard let m = vm.media, m.playing, let at = m.changedAtMs else { return false }
+        return nowMs < at + musicMs
+    }
+
+    /// The lower of the two gauges, in whole percent, or nil when both are off.
+    static func lowestPct(_ vm: ViewModel, nowMs: Int) -> Int? {
+        [vm.body?.water, vm.body?.stretch].compactMap { $0 }
+            .map { BodyMath.percent($0, nowMs: nowMs) }.min()
     }
 }
 
@@ -532,6 +596,7 @@ public struct Settings: Codable, Equatable {
     public var peek: PeekConfig = .default
     public var sound: SoundConfig = .default
     public var day: DayConfig = .default
+    public var body: BodyConfig = .default
 }
 
 extension Settings {
@@ -551,6 +616,7 @@ extension Settings {
         peek = (try? c.decodeIfPresent(PeekConfig.self, forKey: .peek)) ?? .default
         sound = (try? c.decodeIfPresent(SoundConfig.self, forKey: .sound)) ?? .default
         day = (try? c.decodeIfPresent(DayConfig.self, forKey: .day)) ?? .default
+        body = (try? c.decodeIfPresent(BodyConfig.self, forKey: .body)) ?? .default
     }
 }
 
@@ -604,6 +670,8 @@ public struct MediaView: Codable, Equatable {
     public var controllable: Bool
     /// Absolute path of the current artwork image; changes with the art.
     public var artworkPath: String?
+    /// When this track started playing, as the core saw it.
+    public var changedAtMs: Int? = nil
 }
 
 public struct ClipView: Codable, Equatable, Identifiable {
@@ -1241,6 +1309,8 @@ public struct ViewModel: Codable, Equatable {
     public var calendar: CalendarView
     /// Today's office hours, on a working day with day progress on.
     public var day: DayView? = nil
+    /// The water and stretch gauges, while either is on.
+    public var body: BodyView? = nil
     /// Colours picked from the screen, newest first.
     public var colors: [String]
     public var analytics: [FeatureCount]
@@ -1268,6 +1338,7 @@ extension ViewModel {
         timer = (try? c.decodeIfPresent(CountdownView.self, forKey: .timer)) ?? .empty
         calendar = (try? c.decodeIfPresent(CalendarView.self, forKey: .calendar)) ?? .empty
         day = try? c.decodeIfPresent(DayView.self, forKey: .day)
+        body = try? c.decodeIfPresent(BodyView.self, forKey: .body)
         colors = (try? c.decodeIfPresent([String].self, forKey: .colors)) ?? []
         analytics = try c.decode([FeatureCount].self, forKey: .analytics)
         update = (try? c.decodeIfPresent(UpdateView.self, forKey: .update)) ?? .none

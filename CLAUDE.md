@@ -258,7 +258,11 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   that would be cut short (over 4 questions, 8 options, or the length caps)
   gives none and the prompt falls back to the plain detail view; an option's
   note over 1000 chars is only shortened with an ellipsis (the answer is the label);
-  the shell shows 200 of it and a More / Less button (`QuestionDraft.shownNote`). The shell answers with
+  the shell shows 200 of it and a More / Less button (`QuestionDraft.shownNote`).
+  The question text itself may be 2000 chars (Claude Code sets no limit and
+  often adds a paragraph of context; at the old 300 a real question fell back
+  to the raw input); over 200 the shell shows its start and an inline More /
+  Less (`QuestionDraft.shownQuestion`), so the choices stay in sight. The shell answers with
   `agent_answer` (one list of labels or typed text per question); the core
   checks the shape and lengths (`Agents::answer`, no answer = request stays
   pending) and the CLI prints `allow` with `updatedInput` = the original input

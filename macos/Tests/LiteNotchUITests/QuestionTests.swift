@@ -199,4 +199,23 @@ final class QuestionTests: XCTestCase {
         d.toggleNote(0, 0)
         XCTAssertEqual(d.shownNote(long, 0, 0), short)
     }
+
+    /// Reported: a question with a paragraph of context (431 chars) showed
+    /// as the raw tool input. Now it is a question, shortened with an inline
+    /// More / Less so the choices stay in sight.
+    func testALongQuestionShowsItsStartUntilMoreIsPressed() {
+        var d = QuestionDraft(questions())
+        let long = String(repeating: "context ", count: 54)
+        XCTAssertTrue(QuestionDraft.isLongQuestion(long))
+        XCTAssertFalse(QuestionDraft.isLongQuestion("Which database?"))
+        let short = d.shownQuestion(long, 0)
+        XCTAssertLessThanOrEqual(short.count, QuestionDraft.questionLimit)
+        XCTAssertTrue(short.hasSuffix("\u{2026}"))
+        d.toggleQuestion(0)
+        XCTAssertEqual(d.shownQuestion(long, 0), long)
+        XCTAssertEqual(d.shownQuestion(long, 1), short, "each question opens on its own")
+        d.toggleQuestion(0)
+        XCTAssertEqual(d.shownQuestion(long, 0), short)
+        XCTAssertEqual(d.shownQuestion("Which database?", 0), "Which database?")
+    }
 }

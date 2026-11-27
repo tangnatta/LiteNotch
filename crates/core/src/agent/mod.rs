@@ -96,7 +96,9 @@ pub struct QuestionOption {
 
 const MAX_QUESTIONS: usize = 4;
 const MAX_OPTIONS: usize = 8;
-const MAX_QUESTION_CHARS: usize = 300;
+/// Claude Code sets no limit and its questions often carry context (a
+/// reported one was 431 chars); the shell scrolls, so it is still read in full.
+const MAX_QUESTION_CHARS: usize = 2000;
 const MAX_HEADER_CHARS: usize = 30;
 const MAX_LABEL_CHARS: usize = 80;
 /// The shell shows the first 200 and a "More" button for the rest.
@@ -1251,6 +1253,27 @@ mod tests {
             "header":"h","options":[]})).collect::<Vec<_>>()});
         a.on_hook(&perm("u", "AskUserQuestion", many), 0);
         assert!(a.pending()[2].questions.is_empty());
+    }
+
+    /// Reported: a 431-char question (with three options whose notes are
+    /// over 100 chars) showed as the raw tool input instead of the form,
+    /// because questions were capped at 300 chars.
+    #[test]
+    fn a_long_question_with_context_is_still_shown_as_a_question() {
+        let mut a = agents();
+        let input = json!({"questions": [{
+        "header": "Manual test", "multiSelect": false,
+        "question": "Everything is green and PR #55 is open with CI running. The one thing not yet exercised is the Calendar tab against your real calendar. Doing that means quitting your installed LiteNotch, opening the new build (dist/LiteNotch.app), clicking Allow on macOS's calendar prompt, then adding, editing and deleting one test event (it would briefly sync to your calendar account). How do you want to handle it before the v0.2.7-beta release?",
+        "options": [
+            {"label": "I'll test it myself (Recommended)", "description": "I launch the new build for you and give you a 2-minute checklist. You confirm it works, then I merge PR #55 and tag v0.2.7-beta."},
+            {"label": "Release without it", "description": "Merge and tag v0.2.7-beta once CI passes. The changelog and CLAUDE.md note the calendar writes were unit-tested against a fake store only."},
+            {"label": "Wait, don't release", "description": "Leave PR #55 open; no merge or tag."}
+        ]}]});
+        a.on_hook(&perm("s", "AskUserQuestion", input), 0);
+        let q = &a.pending()[0].questions;
+        assert_eq!(q.len(), 1, "shown as a question");
+        assert!(q[0].question.ends_with("v0.2.7-beta release?"), "in full");
+        assert_eq!(q[0].options.len(), 3);
     }
 
     #[test]

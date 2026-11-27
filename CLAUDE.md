@@ -214,10 +214,11 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   that runs empty first (`Body::first_empty`; that choice changes only
   when a gauge does, so no wake-up of its own), `title` Water or Stretch,
   `ends_at_ms` = empty, `total_secs` = span, or `value` "48%" while
-  standing still. The shell draws it like day progress, a small battery in
-  the gauge's colour filled to the level (`BodyIcon`) and the percent
-  right after it (`BodyPercent`), still, redrawn once per whole percent
-  (`BodySchedule`). Not yet: a button on the empty peek, keeping the levels across
+  standing still. The shell draws it like day progress: the gauge's symbol
+  in its colour (`BodyIcon`, a drop or a stretching figure; a battery
+  filled to the level read as the Mac's battery) and the percent right after
+  it in the secondary text colour (`BodyPercent`), redrawn once per whole
+  percent (`BodySchedule`). Not yet: a button on the empty peek, keeping the levels across
   a restart (they start at half), and a look at the wave in the running app
   (snapshots draw the liquid flat).
 - **Sound** (`settings.sound`, on by default, "Glass"): one of the 14

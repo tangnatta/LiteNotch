@@ -514,58 +514,31 @@ extension BodyKind {
     init(title: String) { self = title == "Stretch" ? .stretch : .water }
 }
 
-/// A small battery in the gauge's colour, filled to its level: still, no
-/// wave, so the closed notch costs nothing between percent changes. It
-/// follows the system's own battery: on macOS 27 and later a grey track with
-/// the level in colour and no outline; before, an outline with a nub.
+/// The gauge's own symbol in its colour: a drop for water, a stretching
+/// figure for stretch. (A battery filled to the level was tried and read as
+/// the Mac's battery.) Still: it never changes while shown.
 struct BodyIcon: View {
     let compact: CompactView
 
-    /// macOS 27 drew its battery without an outline.
-    static var borderless: Bool {
-        if #available(macOS 27, *) { return true }
-        return false
-    }
-
     var body: some View {
-        BodyReading(compact: compact) { g, now in
-            let level = BodyMath.level(g, nowMs: now)
-            let color = Color(nsColor: BodyKind(title: compact.title).color)
-            if Self.borderless {
-                ZStack(alignment: .bottom) {
-                    RoundedRectangle(cornerRadius: 3, style: .continuous).fill(NT.text3.opacity(0.55))
-                    Rectangle().fill(color).frame(height: 14 * level)
-                }
-                .frame(width: 8, height: 14)
-                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-            } else {
-                ZStack(alignment: .bottom) {
-                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                        .strokeBorder(NT.text2, lineWidth: 1.2)
-                    RoundedRectangle(cornerRadius: 1.2, style: .continuous)
-                        .fill(color)
-                        .frame(height: max(0, 11 * level))
-                        .padding(2)
-                }
-                .frame(width: 9, height: 15)
-                .overlay(alignment: .top) {
-                    Capsule().fill(NT.text2).frame(width: 4, height: 1.5).offset(y: -2)
-                }
-            }
-        }
-        .accessibilityHidden(true)
+        let kind = BodyKind(title: compact.title)
+        Image(systemName: kind == .water ? "drop.fill" : "figure.flexibility")
+            .font(.system(size: 11.5, weight: .semibold))
+            .foregroundStyle(Color(nsColor: kind.color))
+            .accessibilityHidden(true)
     }
 }
 
-/// The level, "48%", regular weight and no colour of its own: a reading.
+/// The level, "48%", regular weight in the secondary text colour: a reading.
 struct BodyPercent: View {
     let compact: CompactView
 
     var body: some View {
         BodyReading(compact: compact) { g, now in
             let reading = String(BodyMath.percent(g, nowMs: now)) + "%"
+            // Secondary text: a quiet reading, quieter than a countdown.
             VText(reading).font(NType.body.font).monospacedDigit()
-                .foregroundStyle(NT.text1).lineLimit(1)
+                .foregroundStyle(NT.text2).lineLimit(1)
         }
     }
 }

@@ -146,8 +146,6 @@ public struct PeekConfig: Codable, Equatable {
 
     /// Minutes of screen time between eye breaks; 0 (the default) is off.
     public var eyeBreakMins: Int = 0
-    /// Minutes of screen time between Move reminders; 0 (the default) is off.
-    public var moveMins: Int = 0
     /// A short encouraging line when a pomodoro break completes.
     public var breakQuote: Bool = true
     /// Remind the user who keeps working during a break.
@@ -156,7 +154,7 @@ public struct PeekConfig: Codable, Equatable {
     public static let `default` = PeekConfig(trackChange: true, timeWarningSecs: 300)
 
     enum CodingKeys: String, CodingKey {
-        case trackChange, timeWarningSecs, eyeBreakMins, moveMins, breakQuote, stillWorking
+        case trackChange, timeWarningSecs, eyeBreakMins, breakQuote, stillWorking
     }
 }
 
@@ -167,7 +165,6 @@ extension PeekConfig {
         trackChange = try c.decode(Bool.self, forKey: .trackChange)
         timeWarningSecs = try c.decode(Int.self, forKey: .timeWarningSecs)
         eyeBreakMins = (try? c.decodeIfPresent(Int.self, forKey: .eyeBreakMins)) ?? 0
-        moveMins = (try? c.decodeIfPresent(Int.self, forKey: .moveMins)) ?? 0
         breakQuote = (try? c.decodeIfPresent(Bool.self, forKey: .breakQuote)) ?? true
         stillWorking = (try? c.decodeIfPresent(Bool.self, forKey: .stillWorking)) ?? true
     }
@@ -177,7 +174,6 @@ extension PeekConfig {
         try c.encode(trackChange, forKey: .trackChange)
         try c.encode(timeWarningSecs, forKey: .timeWarningSecs)
         try c.encode(eyeBreakMins, forKey: .eyeBreakMins)
-        try c.encode(moveMins, forKey: .moveMins)
         try c.encode(breakQuote, forKey: .breakQuote)
         try c.encode(stillWorking, forKey: .stillWorking)
     }
@@ -451,7 +447,7 @@ public struct CalendarConfig: Codable, Equatable {
 
 /// What the big card on the left of Home shows (`day::HomeCard`).
 public enum HomeCard: String, Codable, Equatable, CaseIterable {
-    case media, day, auto
+    case media, day, auto, body
     public init(from decoder: Decoder) throws {
         self = HomeCard(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .auto
     }
@@ -482,7 +478,7 @@ public struct DayConfig: Codable, Equatable {
     public static func showsDayCard(_ vm: ViewModel) -> Bool {
         guard vm.day != nil else { return false }
         switch vm.settings.day.homeCard {
-        case .media: return false
+        case .media, .body: return false
         case .day: return true
         case .auto: return !(vm.media?.playing ?? false)
         }
@@ -530,6 +526,7 @@ public struct Settings: Codable, Equatable {
     public var peek: PeekConfig = .default
     public var sound: SoundConfig = .default
     public var day: DayConfig = .default
+    public var body: BodyConfig = .default
 }
 
 extension Settings {
@@ -549,6 +546,7 @@ extension Settings {
         peek = (try? c.decodeIfPresent(PeekConfig.self, forKey: .peek)) ?? .default
         sound = (try? c.decodeIfPresent(SoundConfig.self, forKey: .sound)) ?? .default
         day = (try? c.decodeIfPresent(DayConfig.self, forKey: .day)) ?? .default
+        body = (try? c.decodeIfPresent(BodyConfig.self, forKey: .body)) ?? .default
     }
 }
 
@@ -1173,6 +1171,8 @@ public struct ViewModel: Codable, Equatable {
     public var calendar: CalendarView
     /// Today's office hours, on a working day with day progress on.
     public var day: DayView? = nil
+    /// The water and stretch gauges, while either is on.
+    public var body: BodyView? = nil
     /// Colours picked from the screen, newest first.
     public var colors: [String]
     public var analytics: [FeatureCount]
@@ -1200,6 +1200,7 @@ extension ViewModel {
         timer = (try? c.decodeIfPresent(CountdownView.self, forKey: .timer)) ?? .empty
         calendar = (try? c.decodeIfPresent(CalendarView.self, forKey: .calendar)) ?? .empty
         day = try? c.decodeIfPresent(DayView.self, forKey: .day)
+        body = try? c.decodeIfPresent(BodyView.self, forKey: .body)
         colors = (try? c.decodeIfPresent([String].self, forKey: .colors)) ?? []
         analytics = try c.decode([FeatureCount].self, forKey: .analytics)
         update = (try? c.decodeIfPresent(UpdateView.self, forKey: .update)) ?? .none

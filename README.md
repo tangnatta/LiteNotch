@@ -351,13 +351,21 @@ it was showing. These never land in the inbox. All are set in
   ends.
 - **Eye break** (off unless you turn it on): every few minutes at the
   screen, a blinking face and "Look away".
-- **Move** (off unless you turn it on): stretch, walk or drink water.
+- **Water** and **Stretch** (off unless you turn them on): two gauges that
+  run down while you're at the Mac. When one runs empty the notch says so
+  once. Fill water with **Drank**: a cup fills half, and a cup right after
+  another counts as a sip, so spacing them out counts more. Fill stretch by
+  tapping **Stretch** once per movement. Show them on Home with
+  **Settings › Home › Big card: Body** (water alone, or water and stretch
+  side by side). They replace the older Move reminder; its setting carries
+  over.
 
-Both count only the minutes you are at the Mac, whatever the focus timer is
-doing: the screen on and unlocked, and the lid open. They start over when you
-lock the screen, the Mac sleeps, or you close the lid (also when keep awake
-holds a closed-lid Mac awake, since nobody can see the screen then). With an
-external display connected the lid does not matter.
+These count only the minutes you are at the Mac, whatever the focus timer is
+doing: the screen on and unlocked, and the lid open. The eye break starts over
+and the gauges stand still when you lock the screen, the Mac sleeps, or you
+close the lid (also when keep awake holds a closed-lid Mac awake, since nobody
+can see the screen then). With an external display connected the lid does not
+matter.
 
 Reminders pause while the screen is locked or asleep.
 

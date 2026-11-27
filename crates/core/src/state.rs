@@ -12,6 +12,7 @@ use crate::agent::{
 use crate::analytics::{
     day_index, Analytics, AnalyticsConfig, Feature, FeatureCount, PersistedAnalytics,
 };
+use crate::body::{Body, BodyConfig, BodyView};
 use crate::caffeine::{AwakeMode, Caffeine, CaffeineConfig, CaffeineEffect, LidState, PowerStatus};
 use crate::calendar::{Calendar, CalendarAlert, CalendarConfig, CalendarView, EventInput};
 use crate::clipboard::{
@@ -31,7 +32,9 @@ use crate::usage::{local_day_start_ms, Usage, UsageRecord, UsageSnapshot};
 
 mod presentation;
 use presentation::Peek;
-pub use presentation::{PeekConfig, PeekKind, BREAK_LINES, EYE_MS, MOVE_LINES, NUDGE_MS, PEEK_MS};
+pub use presentation::{
+    PeekConfig, PeekKind, BREAK_LINES, EYE_MS, NUDGE_MS, PEEK_MS, STRETCH_LINES, WATER_LINES,
+};
 
 /// Version of the persisted file layout.
 pub const PERSIST_VERSION: u32 = 1;
@@ -247,6 +250,7 @@ pub struct Settings {
     pub sound: SoundConfig,
     pub peek: PeekConfig,
     pub day: DayConfig,
+    pub body: BodyConfig,
 }
 
 /// The system alert sounds a timer can end with.
@@ -512,10 +516,15 @@ pub enum Command {
     /// Re-send the view model.
     Refresh,
     /// The screen locked or slept (`true`), or the user is back. Eye
-    /// breaks and Move reminders are skipped while away.
+    /// breaks are skipped and the gauges stand still while away.
     ScreenAway {
         away: bool,
     },
+    /// A cup of water: fills the water gauge, less if the last cup was
+    /// recent (`body::water_gain`).
+    BodyDrink,
+    /// One stretching movement: fills the stretch gauge a little.
+    BodyStretch,
 }
 
 /// A clock jump this long, with the lid shut and closed-lid mode on, means
@@ -754,6 +763,8 @@ pub struct ViewModel {
     pub calendar: CalendarView,
     /// Today's office hours, on a working day with the feature on.
     pub day: Option<DayView>,
+    /// The water and stretch gauges, while either is on.
+    pub body: Option<BodyView>,
     /// Colours picked from the screen, newest first.
     pub colors: Vec<String>,
     pub analytics: Vec<FeatureCount>,
@@ -807,10 +818,8 @@ pub struct Core {
     away: bool,
     /// Start of the current eye-break interval (screen time).
     eye_since: Option<u64>,
-    /// Start of the current Move interval when it counts screen time.
-    move_since: Option<u64>,
-    /// The last Move line shown (`MOVE_LINES`), so the next is another kind.
-    move_last: Option<usize>,
+    /// The water and stretch gauges.
+    body: Body,
     /// When a break completed, while its line waits for the banner to go.
     quote_due: Option<u64>,
     /// The next local midnight while day progress is on, when today's
@@ -867,14 +876,25 @@ impl Core {
             timer_secs,
             ..
         } = saved;
+        // A Move reminder saved by an earlier version becomes both gauges.
+        let body = match settings.peek.move_mins {
+            0 => settings.body.clone().normalized(),
+            mins if settings.body == BodyConfig::default() => BodyConfig::from_move(mins),
+            _ => settings.body.clone().normalized(),
+        };
         let settings = Settings {
             notch: settings.notch.clone().normalized(),
             sound: settings.sound.clone().normalized(),
             day: settings.day.clone().normalized(),
+            peek: settings.peek.clone().sanitized(),
+            body,
             ..settings
         };
         let mut pomodoro = Pomodoro::new(settings.pomodoro.clone());
         pomodoro.restore_stats(stats);
+        let mut body = Body::default();
+        // Nothing has said the user is away yet.
+        body.set_config(&settings.body, true, 0);
         let clipboard = match clipboard.filter(|_| settings.general.persist_clipboard) {
             Some(saved) => ClipboardHistory::from_persisted(settings.clipboard.clone(), saved),
             None => ClipboardHistory::new(settings.clipboard.clone()),
@@ -916,8 +936,7 @@ impl Core {
             peek_next: None,
             away: false,
             eye_since: None,
-            move_since: None,
-            move_last: None,
+            body,
             quote_due: None,
             day_wake: None,
             update: Update::default(),
@@ -1384,6 +1403,12 @@ impl Core {
             }
             Command::SetSettings { settings } => self.set_settings(*settings, now, fx),
             Command::ScreenAway { away } => self.away = away,
+            Command::BodyDrink => {
+                self.body.drink(!self.is_away(), now);
+            }
+            Command::BodyStretch => {
+                self.body.stretch(!self.is_away(), now);
+            }
             Command::PanelOpened => self.count(Feature::PanelOpen, now),
             Command::TabOpened { tab } => self.count(
                 match tab {
@@ -1428,6 +1453,8 @@ impl Core {
         settings.notch = settings.notch.normalized();
         settings.sound = settings.sound.normalized();
         settings.day = settings.day.normalized();
+        settings.body = settings.body.normalized();
+        self.body.set_config(&settings.body, !self.is_away(), now);
         if !settings.media.enabled {
             self.media.set(None);
         }
@@ -1986,6 +2013,7 @@ impl Core {
             timer: self.timer.view(),
             calendar: self.calendar.view(now),
             day: day::today(&self.settings.day, now, self.utc_offset_secs),
+            body: self.body.view(),
             colors: self.colors.clone(),
             analytics: self
                 .analytics

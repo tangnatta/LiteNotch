@@ -358,6 +358,7 @@
     "events": []
   },
   "day": null,
+  "body": null,
   "colors": [],
   "analytics": [
     {
@@ -483,7 +484,6 @@
       "track_change": true,
       "time_warning_secs": 300,
       "eye_break_mins": 0,
-      "move_mins": 0,
       "break_quote": true,
       "still_working": true
     },
@@ -494,6 +494,11 @@
       "days": 31,
       "home_card": "auto",
       "icons": "sun"
+    },
+    "body": {
+      "water_mins": 0,
+      "stretch_mins": 0,
+      "show": "both"
     }
   }
 }

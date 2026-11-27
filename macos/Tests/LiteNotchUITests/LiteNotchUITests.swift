@@ -239,6 +239,8 @@ final class CommandTests: XCTestCase {
             (.setUtcOffset(secs: -18000), #"{"cmd":"set_utc_offset","secs":-18000}"#),
             (.refresh, #"{"cmd":"refresh"}"#),
             (.hooksInstall, #"{"cmd":"hooks_install"}"#),
+            (.bodyDrink, #"{"cmd":"body_drink"}"#),
+            (.bodyStretch, #"{"cmd":"body_stretch"}"#),
             (.hooksUninstall, #"{"cmd":"hooks_uninstall"}"#),
         ]
         for (cmd, expected) in cases {
@@ -252,14 +254,14 @@ final class CommandTests: XCTestCase {
             Set(inner.allKeys as! [String]),
             [
                 "general", "appearance", "pomodoro", "clipboard", "media", "notify", "caffeine", "agent", "analytics",
-                "calendar", "notch", "peek", "sound", "day",
+                "calendar", "notch", "peek", "sound", "day", "body",
             ])
         XCTAssertEqual((inner["general"] as! NSDictionary)["all_screens"] as? Bool, false)
         XCTAssertEqual(
             inner["peek"] as? NSDictionary,
             [
                 "track_change": true, "time_warning_secs": 300,
-                "eye_break_mins": 0, "move_mins": 0, "break_quote": true,
+                "eye_break_mins": 0, "break_quote": true,
                 "still_working": true,
             ])
         XCTAssertEqual(
@@ -491,19 +493,20 @@ final class GeometryTests: XCTestCase {
         // Peek settings from before the reminders and the break line.
         let oldPeek = try d.decode(PeekConfig.self, from: Data(#"{"track_change":false,"time_warning_secs":0}"#.utf8))
         XCTAssertEqual(oldPeek.eyeBreakMins, 0)
-        XCTAssertEqual(oldPeek.moveMins, 0)
         XCTAssertTrue(oldPeek.breakQuote)
-        // A file saved when Move could count focus time still loads, and the key is not written back.
+        // A file saved with the old Move reminder still loads; the core moves
+        // it to the gauges, and the shell writes neither key back.
         let withCounts = try d.decode(
             PeekConfig.self, from: Data(#"{"track_change":true,"time_warning_secs":0,"move_mins":20,"move_counts":"focus"}"#.utf8))
-        XCTAssertEqual(withCounts.moveMins, 20)
-        XCTAssertFalse(String(decoding: try e.encode(withCounts), as: UTF8.self).contains("move_counts"))
+        let written = String(decoding: try e.encode(withCounts), as: UTF8.self)
+        XCTAssertFalse(written.contains("move_counts"))
+        XCTAssertFalse(written.contains("move_mins"))
         settings.peek.eyeBreakMins = 5
-        settings.peek.moveMins = 30
+        settings.body.stretchMins = 30
         settings.peek.breakQuote = false
         let edited = String(decoding: try e.encode(settings), as: UTF8.self)
         XCTAssertTrue(edited.contains(#""eye_break_mins":5"#))
-        XCTAssertTrue(edited.contains(#""move_mins":30"#))
+        XCTAssertTrue(edited.contains(#""stretch_mins":30"#))
         XCTAssertTrue(edited.contains(#""break_quote":false"#))
     }
 

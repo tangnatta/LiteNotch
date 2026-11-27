@@ -12,7 +12,13 @@ struct HomeTab: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Group {
-                if let day = vm.day, DayConfig.showsDayCard(vm) {
+                if let gauges = vm.body, BodyConfig.showsBodyCard(vm) {
+                    BodyCard(gauges: gauges, show: vm.settings.body.show, send: model.send)
+                        .opens("water and stretch settings", model) {
+                            model.settingsSection = .timer
+                            model.selectTab(.settings)
+                        }
+                } else if let day = vm.day, DayConfig.showsDayCard(vm) {
                     dayCard(day)
                 } else {
                     nowPlaying

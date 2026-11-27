@@ -305,10 +305,11 @@ fn main() {
     c.apply(Input::Tick, warn_at);
     views.push(("peek-warning", c.view(warn_at + 20)));
 
-    // With Move on, the same moment shows the Move reminder first.
+    // With the stretch gauge on, the same moment shows it running empty
+    // first.
     let mut m = populated();
     let mut s = m.settings().clone();
-    s.peek.move_mins = 20;
+    s.body.stretch_mins = 20;
     m.apply(
         Input::Command(Command::SetSettings {
             settings: Box::new(s),
@@ -318,6 +319,33 @@ fn main() {
     m.apply(Input::Command(Command::PomodoroToggle), T0);
     m.apply(Input::Tick, warn_at);
     views.push(("peek-move", m.view(warn_at + 20)));
+
+    // The water and stretch gauges on Home's big card, part way down, a cup
+    // just drunk. `body-water` shows water alone.
+    for (name, show) in [
+        ("body", litenotch_core::body::BodyShow::Both),
+        ("body-water", litenotch_core::body::BodyShow::Water),
+    ] {
+        let mut b = populated();
+        let mut s = b.settings().clone();
+        s.body.water_mins = 60;
+        s.body.stretch_mins = 45;
+        s.body.show = show;
+        s.day.home_card = litenotch_core::day::HomeCard::Body;
+        b.apply(
+            Input::Command(Command::SetSettings {
+                settings: Box::new(s),
+            }),
+            T0,
+        );
+        let at = T0 + 40 * 60_000;
+        b.apply(Input::Tick, at);
+        b.apply(Input::Command(Command::BodyDrink), at);
+        for _ in 0..6 {
+            b.apply(Input::Command(Command::BodyStretch), at + 1_000);
+        }
+        views.push((name, b.view(at + 5 * 60_000)));
+    }
 
     // The eye break, five minutes of screen time in.
     let mut e = populated();

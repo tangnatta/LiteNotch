@@ -28,6 +28,10 @@
       "system",
       "display"
     ],
+    "body_show": [
+      "both",
+      "water"
+    ],
     "clip_kind": [
       "text",
       "files",
@@ -44,7 +48,8 @@
     "home_card": [
       "media",
       "day",
-      "auto"
+      "auto",
+      "body"
     ],
     "lid_state": [
       "off",
@@ -120,6 +125,14 @@
       5,
       120
     ],
+    "body.stretch_mins": [
+      5,
+      180
+    ],
+    "body.water_mins": [
+      5,
+      180
+    ],
     "caffeine.battery_floor_pct": [
       0,
       100
@@ -151,10 +164,6 @@
     "peek.eye_break_mins": [
       1,
       60
-    ],
-    "peek.move_mins": [
-      5,
-      180
     ],
     "peek.time_warning_secs": [
       0,

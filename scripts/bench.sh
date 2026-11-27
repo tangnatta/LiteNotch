@@ -12,6 +12,8 @@
 #               Liquid Glass (macOS 26)
 #   calendar    an event about to start: the closed notch counts down to it
 #   pair        two countdowns side by side in the closed notch
+#   body        the panel open on Home showing the water and stretch
+#               gauges (their wave is a Core Animation loop)
 #   closedglass the closed notch drawn with Liquid Glass (Island, Match
 #               theme, light) with a countdown running; on a display with a
 #               notch it is drawn black, so measure it on one without
@@ -48,7 +50,7 @@ while :; do
 done
 WINDOW=20
 case "${1:-}" in ''|*[!0-9]*) ;; *) WINDOW=$1; shift ;; esac
-ALL="idle timer music panel island glass glassisland calendar pair closedglass"
+ALL="idle timer music panel island glass glassisland calendar pair body closedglass"
 SCENARIOS=${*:-$ALL}
 
 APP=dist/LiteNotch.app
@@ -177,6 +179,8 @@ launch() {
                 LITENOTCH_BENCH_COMMANDS="[{\"cmd\":\"calendar_events\",\"events\":[{\"id\":\"bench\",\"title\":\"Review\",\"start_ms\":$begin,\"end_ms\":$((begin + 1800000))}]},{\"cmd\":\"notify_dismiss_banner\"}]" ;;
         pair) start pair 1.0 30 "$QUIET" \
             LITENOTCH_BENCH_COMMANDS='[{"cmd":"timer_set","secs":3600},{"cmd":"timer_toggle"},{"cmd":"pomodoro_toggle"}]' ;;
+        body) start body 1.5 40 '{"body":{"water_mins":60,"stretch_mins":45},"day":{"home_card":"body"}}' \
+            LITENOTCH_BENCH_OPEN=1 LITENOTCH_BENCH_COMMANDS='[{"cmd":"body_drink"},{"cmd":"body_stretch"}]' ;;
         closedglass) start closedglass 1.0 30 '{"appearance":{"notch_style":"island","closed_notch":"theme","theme":"light","material":"glass"}}' \
             LITENOTCH_BENCH_COMMANDS="$TIMER" ;;
     esac

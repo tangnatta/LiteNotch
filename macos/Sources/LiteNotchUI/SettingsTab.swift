@@ -405,10 +405,15 @@ struct SettingsTab: View {
                 options: SettingsLimits.eyeBreakMins.map { ($0, $0 == 0 ? "Off" : $0 == 20 ? "20 min" : "\($0)") },
                 selection: $draft.peek.eyeBreakMins, label: "Eye break", height: 22)
         }
-        wideRow("Move", caption: "Stretch, walk or drink water, every so many minutes at the Mac.") {
+        wideRow("Water", caption: "A gauge that runs down with time at the Mac. A cup fills half; cups spaced out count more.") {
             SegmentedPill(
-                options: SettingsLimits.moveMins.map { ($0, $0 == 0 ? "Off" : $0 == 60 ? "60 min" : "\($0)") },
-                selection: $draft.peek.moveMins, label: "Move", height: 22)
+                options: SettingsLimits.waterMins.map { ($0, $0 == 0 ? "Off" : $0 == 90 ? "90 min" : "\($0)") },
+                selection: $draft.body.waterMins, label: "Water", height: 22)
+        }
+        wideRow("Stretch", caption: "Tap once for each stretch until it is full. The notch says so once when either runs out.") {
+            SegmentedPill(
+                options: SettingsLimits.stretchMins.map { ($0, $0 == 0 ? "Off" : $0 == 60 ? "60 min" : "\($0)") },
+                selection: $draft.body.stretchMins, label: "Stretch", height: 22)
         }
         toggle(
             "A few words after a break", $draft.peek.breakQuote,
@@ -457,11 +462,26 @@ struct SettingsTab: View {
     @ViewBuilder private var home: some View {
         row("Big card", caption: homeCardCaption) {
             SegmentedPill(
-                options: [(HomeCard.auto, "Auto"), (.day, "Day"), (.media, "Music")],
+                options: [(HomeCard.auto, "Auto"), (.day, "Day"), (.media, "Music"), (.body, "Body")],
                 selection: $draft.day.homeCard, label: "Big card", height: 22)
         }
-        .opacity(draft.day.enabled ? 1 : 0.5)
-        if !draft.day.enabled {
+        .opacity(homeCardWorks ? 1 : 0.5)
+        if draft.day.homeCard == .body {
+            row("Show") {
+                SegmentedPill(
+                    options: [(BodyShow.water, "Water"), (.both, "Water and stretch")],
+                    selection: $draft.body.show, label: "Show", height: 22)
+            }
+            .opacity(bodyOn ? 1 : 0.5)
+            if !bodyOn {
+                row("Water and stretch are off", caption: "Until one is on, the big card is Now playing.", tint: NT.text2) {
+                    TextPill(title: "Turn on", tint: NT.text1, height: 22) {
+                        model.settingsSection = .timer
+                    }
+                    .help("Opens Settings \u{203A} Timer")
+                }
+            }
+        } else if !draft.day.enabled {
             row("Day progress is off", caption: "Until it is on, the big card is always Now playing.", tint: NT.text2) {
                 TextPill(title: "Turn on", tint: NT.text1, height: 22) {
                     model.settingsSection = .day
@@ -471,8 +491,14 @@ struct SettingsTab: View {
         }
     }
 
+    private var bodyOn: Bool { draft.body.waterMins > 0 || draft.body.stretchMins > 0 }
+
+    /// The chosen big card has something to show.
+    private var homeCardWorks: Bool { draft.day.homeCard == .body ? bodyOn : draft.day.enabled }
+
     private var homeCardCaption: String {
         switch draft.day.homeCard {
+        case .body: return "Water and stretch gauges, always."
         case .auto: return "Music while something plays, the day otherwise."
         case .day: return "How far through the day, always."
         case .media: return "Now playing, always."

@@ -14,7 +14,9 @@ enum SettingsLimits {
     /// Choices of the segmented controls, 0 meaning off.
     static let timeWarningSecs = [0, 60, 180, 300, 600]
     static let eyeBreakMins = [0, 5, 10, 15, 20]
-    static let moveMins = [0, 20, 30, 45, 60]
+    /// Screen time from full to empty for the water and stretch gauges.
+    static let waterMins = [0, 30, 45, 60, 90]
+    static let stretchMins = [0, 20, 30, 45, 60]
     /// Office hours: the end is at least `dayMinSpan` after the start.
     static let dayMinSpan = 30
     static let dayStart = 0...(24 * 60 - dayMinSpan)

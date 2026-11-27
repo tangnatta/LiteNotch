@@ -120,6 +120,31 @@ public enum SnapshotRenderer {
                 music.settings.day.homeCard = .media
                 try add("day-music-card-expanded-home", music)
             }
+            if name == "body" || name == "body-water" {
+                // The fixture is taken 5 min after a cup; move its times so
+                // "now" is that moment.
+                var at = vm
+                let shift = snapshotNowMs - ((vm.body?.water?.lastMs ?? 0) + 5 * 60_000)
+                func moved(_ g: GaugeView?) -> GaugeView? {
+                    g.map {
+                        var g = $0
+                        g.emptyAtMs = g.emptyAtMs.map { $0 + shift }
+                        g.lastMs = g.lastMs.map { $0 + shift }
+                        return g
+                    }
+                }
+                let (water, stretch) = (moved(vm.body?.water), moved(vm.body?.stretch))
+                at.body?.water = water
+                at.body?.stretch = stretch
+                try add("\(name)-draining-expanded-home", at)
+                if name == "body" {
+                    var light = at
+                    light.settings.appearance.theme = .light
+                    try add("body-draining-light-expanded-home", light)
+                    try add("body-draining-expanded-settings-home", at, tab: .settings, section: .home)
+                    try add("body-draining-expanded-settings-timer", at, tab: .settings, section: .timer)
+                }
+            }
             if name == "approval" {
                 var long = vm
                 long.agents.pending[0].truncated = true

@@ -157,8 +157,7 @@ measure() {
 
 TIMER='[{"cmd":"timer_set","secs":3600},{"cmd":"timer_toggle"}]'
 QUIET='{}'
-DAY_SUN='{"day":{"enabled":true,"start_min":0,"end_min":1440,"days":127,"icons":"sun","home_card":"day"}}'
-DAY_TREE='{"day":{"enabled":true,"start_min":0,"end_min":1440,"days":127,"icons":"tree","home_card":"day"}}'
+day() { printf '{"day":{"enabled":true,"start_min":0,"end_min":1440,"days":127,"icons":"%s","motion":%s,"home_card":"day"}}' "$1" "$2"; }
 launch() {
     case "$1" in
         idle) start idle 0.5 30 "$QUIET" ;;
@@ -181,13 +180,13 @@ launch() {
             LITENOTCH_BENCH_COMMANDS='[{"cmd":"timer_set","secs":3600},{"cmd":"timer_toggle"},{"cmd":"pomodoro_toggle"}]' ;;
         closedglass) start closedglass 1.0 30 '{"appearance":{"notch_style":"island","closed_notch":"theme","theme":"light","material":"glass"}}' \
             LITENOTCH_BENCH_COMMANDS="$TIMER" ;;
-        # PoC: the day glyph still vs moving (LITENOTCH_DAY_ANIM). Office
-        # hours cover the whole day so the sun is up whenever this runs.
-        day) start day 1.0 30 "$DAY_SUN" ;;
-        dayanim) start dayanim 1.0 30 "$DAY_SUN" LITENOTCH_DAY_ANIM=1 ;;
-        treeanim) start treeanim 1.0 30 "$DAY_TREE" LITENOTCH_DAY_ANIM=1 ;;
-        daypanel) start daypanel 1.5 40 "$DAY_SUN" LITENOTCH_BENCH_OPEN=1 ;;
-        daypanelanim) start daypanelanim 1.5 40 "$DAY_SUN" LITENOTCH_BENCH_OPEN=1 LITENOTCH_DAY_ANIM=1 ;;
+        # The day icon still and moving (day.motion). Office hours cover
+        # the whole day so the sun is up whenever this runs.
+        day) start day 1.0 30 "$(day sun false)" ;;
+        dayanim) start dayanim 1.0 30 "$(day sun true)" ;;
+        treeanim) start treeanim 1.0 30 "$(day tree true)" ;;
+        daypanel) start daypanel 1.5 40 "$(day sun false)" LITENOTCH_BENCH_OPEN=1 ;;
+        daypanelanim) start daypanelanim 1.5 40 "$(day sun true)" LITENOTCH_BENCH_OPEN=1 ;;
     esac
 }
 

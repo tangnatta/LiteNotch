@@ -24,6 +24,14 @@ struct GrowthIcon: View {
     let stage: GrowthStage
     var size: CGFloat = 14
     var color: Color = NT.text1
+    /// The soil, the plant, or both (the plant sways on its own when the
+    /// icon moves, the soil stays put).
+    var part: Part = .all
+
+    enum Part { case all, ground, plant }
+
+    /// Where the soil line is, as a fraction of the height from the bottom.
+    static let groundY: CGFloat = 3.0 / 24
 
     var body: some View {
         Canvas { ctx, box in
@@ -35,11 +43,14 @@ struct GrowthIcon: View {
             func line(_ p: Path, _ w: CGFloat) {
                 ctx.stroke(p, with: shading, style: StrokeStyle(lineWidth: w, lineCap: .round))
             }
-            line(
-                Path {
-                    $0.move(to: CGPoint(x: 4, y: 3))
-                    $0.addLine(to: CGPoint(x: 20, y: 3))
-                }, 1.8)
+            if part != .plant {
+                line(
+                    Path {
+                        $0.move(to: CGPoint(x: 4, y: 3))
+                        $0.addLine(to: CGPoint(x: 20, y: 3))
+                    }, 1.8)
+            }
+            guard part != .ground else { return }
             for (top, width) in Self.stems[stage] ?? [] {
                 line(
                     Path {
@@ -111,16 +122,31 @@ struct DayGlyph: View {
     var plantSize: CGFloat
     var color: Color
 
+    /// Settings › Day › Animate. Off: exactly the still icon, no layer.
+    var motion = false
+
     var body: some View {
-        if DayMotion.enabled {
-            let symbol = Format.daySymbol(startMs: startMs, endMs: endMs, nowMs: nowMs)
-            let stage = Format.growthStage(startMs: startMs, endMs: endMs, nowMs: nowMs)
-            MovingGlyph(
-                kind: DayMotion.kind(icons: icons, symbol: symbol),
-                key: "\(icons)\(symbol)\(stage)\(plantSize)\(color)"
-            ) { still }
+        if motion {
+            moving
         } else {
             still
+        }
+    }
+
+    @ViewBuilder private var moving: some View {
+        let key = "\(plantSize)\(color)"
+        switch icons {
+        case .sun:
+            let symbol = Format.daySymbol(startMs: startMs, endMs: endMs, nowMs: nowMs)
+            MovingGlyph(kind: symbol == "sun.max.fill" ? .spin : .bob, key: symbol + key) { still }
+        case .tree:
+            let stage = Format.growthStage(startMs: startMs, endMs: endMs, nowMs: nowMs)
+            ZStack {
+                GrowthIcon(stage: stage, size: plantSize, color: color, part: .ground)
+                MovingGlyph(kind: .sway, key: "\(stage)" + key) {
+                    GrowthIcon(stage: stage, size: plantSize, color: color, part: .plant)
+                }
+            }
         }
     }
 

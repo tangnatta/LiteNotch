@@ -211,6 +211,8 @@ private struct KeyboardRequestKey: EnvironmentKey {
     static let defaultValue: (Bool) -> Void = { _ in }
 }
 
+private struct DayMotionKey: EnvironmentKey { static let defaultValue = false }
+
 extension EnvironmentValues {
     /// True when rendering with `ImageRenderer`, which cannot draw AppKit-backed
     /// controls or scroll views.
@@ -227,6 +229,11 @@ extension EnvironmentValues {
     var dayIcons: DayIcons {
         get { self[DayIconsKey.self] }
         set { self[DayIconsKey.self] = newValue }
+    }
+    /// Whether the day icon moves (`settings.day.motion`).
+    var dayMotion: Bool {
+        get { self[DayMotionKey.self] }
+        set { self[DayMotionKey.self] = newValue }
     }
     /// Asks the panel to take (or give back) the keyboard, for controls that
     /// have a text field but no `PanelState` of their own.
@@ -888,6 +895,8 @@ struct SegmentedPill<Value: Hashable>: View {
     @Binding var selection: Value
     var label: String = ""
     var height: CGFloat = 24
+    /// Drawn before each option's title, if given.
+    var icon: ((Value) -> AnyView)? = nil
 
     var body: some View {
         HStack(spacing: 2) {
@@ -896,9 +905,12 @@ struct SegmentedPill<Value: Hashable>: View {
                 Button {
                     selection = o.value
                 } label: {
-                    Text(verbatim: o.title)
-                        .nfont(on ? .emphasis : .bodyMedium)
-                        .foregroundStyle(on ? NT.text1 : NT.text2)
+                    HStack(spacing: 5) {
+                        if let icon { icon(o.value).foregroundStyle(on ? NT.text1 : NT.text2) }
+                        Text(verbatim: o.title)
+                            .nfont(on ? .emphasis : .bodyMedium)
+                            .foregroundStyle(on ? NT.text1 : NT.text2)
+                    }
                         .lineLimit(1).fixedSize()
                         .padding(.horizontal, 10)
                         .frame(height: height - 4)
@@ -914,6 +926,15 @@ struct SegmentedPill<Value: Hashable>: View {
         .background(NT.fill, in: Capsule())
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(verbatim: label))
+    }
+}
+
+extension SegmentedPill {
+    init<Icon: View>(
+        options: [(value: Value, title: String)], selection: Binding<Value>, label: String = "",
+        height: CGFloat = 24, @ViewBuilder icon: @escaping (Value) -> Icon
+    ) {
+        self.init(options: options, selection: selection, label: label, height: height, icon: { AnyView(icon($0)) })
     }
 }
 

@@ -161,6 +161,13 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   playing; Auto gives way to music while it plays. The line under the
   number is one of `DAY_LINES`, one per day.
   With the sun icons Home's day card sits on a grainy sky gradient at 50 % (`DaySky.swift`): morning, day, evening, night follow `Format.daySymbol`; still, no animation.
+  Settings › Day › Animate (`day.motion`, off by default): the sun turns
+  once a minute, horizon and moon bob 1 pt, the tree sways ±5° about its
+  soil line while the soil stays (`DayMotion.swift`: the glyph is drawn
+  once to a bitmap that a Core Animation layer moves). Off draws the
+  exact still icon. Bench scenarios `day`/`dayanim`/`treeanim`/
+  `daypanel`/`daypanelanim`; the app's own CPU barely changes, the
+  WindowServer/GPU cost was lost in noise when measured.
   The principle: people have a life before and after work, so nothing
   here limits or judges their time. No bar, no colour, no overtime
   warning, no line that says to finish or stop.

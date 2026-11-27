@@ -1,19 +1,12 @@
 import AppKit
 import SwiftUI
 
-/// PoC: the day glyph moving, to measure what it costs. On only with
-/// `LITENOTCH_DAY_ANIM=1`. The glyph is drawn once into a bitmap and a
-/// Core Animation layer moves that bitmap (the rule for anything that
-/// moves continuously), so SwiftUI never redraws per frame.
+/// The day icon moving (Settings › Day › Animate, `day.motion`). The
+/// glyph is drawn once into a bitmap and a Core Animation layer moves that
+/// bitmap (the rule for anything that moves continuously), so SwiftUI
+/// never redraws per frame.
 enum DayMotion {
-    static let enabled = ProcessInfo.processInfo.environment["LITENOTCH_DAY_ANIM"] == "1"
-
     enum Kind { case spin, sway, bob }
-
-    static func kind(icons: DayIcons, symbol: String) -> Kind {
-        if icons == .tree { return .sway }
-        return symbol == "sun.max.fill" ? .spin : .bob
-    }
 
     static func animation(_ kind: Kind) -> CAAnimation {
         switch kind {
@@ -101,7 +94,8 @@ final class MovingNSView: NSView {
         CATransaction.setDisableActions(true)
         glyph.contents = image
         glyph.contentsGravity = .resizeAspect
-        glyph.anchorPoint = kind == .sway ? CGPoint(x: 0.5, y: 0) : CGPoint(x: 0.5, y: 0.5)
+        // The tree sways about the soil line.
+        glyph.anchorPoint = CGPoint(x: 0.5, y: kind == .sway ? GrowthIcon.groundY : 0.5)
         CATransaction.commit()
         glyph.removeAllAnimations()
         glyph.add(DayMotion.animation(kind), forKey: "motion")
@@ -113,7 +107,7 @@ final class MovingNSView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         glyph.bounds = bounds
-        glyph.position = glyph.anchorPoint.y == 0 ? CGPoint(x: bounds.midX, y: 0) : CGPoint(x: bounds.midX, y: bounds.midY)
+        glyph.position = CGPoint(x: bounds.midX, y: bounds.height * glyph.anchorPoint.y)
         glyph.contentsScale = window?.backingScaleFactor ?? 2
         CATransaction.commit()
     }

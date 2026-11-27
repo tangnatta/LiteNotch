@@ -57,7 +57,8 @@ struct HomeTab: View {
                     Spacer(minLength: 0)
                     DayGlyph(
                         icons: icons, startMs: d.startMs, endMs: d.endMs, nowMs: now,
-                        symbolFont: .system(size: 22, weight: .regular), plantSize: 28, color: ink2)
+                        symbolFont: .system(size: 22, weight: .regular), plantSize: 28, color: icons == .tree ? NT.grow : ink2,
+                        motion: vm.settings.day.motion)
                     // The number large and light, the `%` at half size on its baseline.
                     (Text(verbatim: String(Format.dayProgress(p).dropLast()))
                         .font(.system(size: 52, weight: .light)).monospacedDigit()

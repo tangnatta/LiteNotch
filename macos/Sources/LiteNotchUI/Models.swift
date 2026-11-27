@@ -475,6 +475,7 @@ public struct DayConfig: Codable, Equatable {
     public var days: Int
     public var homeCard: HomeCard = .auto
     public var icons: DayIcons = .sun
+    public var motion = false
 
     public static let `default` = DayConfig(enabled: false, startMin: 600, endMin: 1080, days: 0b001_1111)
 
@@ -490,7 +491,7 @@ public struct DayConfig: Codable, Equatable {
 }
 
 extension DayConfig {
-    // `home_card` and `icons` are newer than the rest.
+    // `home_card`, `icons` and `motion` are newer than the rest.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try c.decode(Bool.self, forKey: .enabled)
@@ -499,6 +500,7 @@ extension DayConfig {
         days = try c.decode(Int.self, forKey: .days)
         homeCard = (try? c.decodeIfPresent(HomeCard.self, forKey: .homeCard)) ?? .auto
         icons = (try? c.decodeIfPresent(DayIcons.self, forKey: .icons)) ?? .sun
+        motion = (try? c.decodeIfPresent(Bool.self, forKey: .motion)) ?? false
     }
 }
 

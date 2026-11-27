@@ -112,6 +112,19 @@ struct DayGlyph: View {
     var color: Color
 
     var body: some View {
+        if DayMotion.enabled {
+            let symbol = Format.daySymbol(startMs: startMs, endMs: endMs, nowMs: nowMs)
+            let stage = Format.growthStage(startMs: startMs, endMs: endMs, nowMs: nowMs)
+            MovingGlyph(
+                kind: DayMotion.kind(icons: icons, symbol: symbol),
+                key: "\(icons)\(symbol)\(stage)\(plantSize)\(color)"
+            ) { still }
+        } else {
+            still
+        }
+    }
+
+    @ViewBuilder private var still: some View {
         switch icons {
         case .sun:
             Image(systemName: Format.daySymbol(startMs: startMs, endMs: endMs, nowMs: nowMs))

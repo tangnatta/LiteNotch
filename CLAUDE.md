@@ -202,7 +202,8 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   tank filled from the bottom, blue water and orange stretch at every
   level (never a warning colour), the number centred like day progress,
   a button that floats the label up ("+2", "+3" for stretch taps in a
-  row, counted in the shell). The water falls and its wave slides by Core
+  row, counted in the shell). The water falls, rises over 0.6 s after a tap
+  (from where it is on screen; none on a resize), and its wave slides by Core
   Animation only (`LiquidNSView`, the wave capped at 30 fps, the fall at
   2 fps); the number redraws about once per percent
   (`BodyMath.redrawSecs`). The tank clips itself (`clipsToBounds` and the

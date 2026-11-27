@@ -275,6 +275,8 @@ final class LiquidNSView: NSView {
     /// One wave length, so the wave slides seamlessly by this much.
     private static let waveLength: CGFloat = 40
     private static let waveSecs: CFTimeInterval = 3.2
+    /// How long the water takes to rise after a tap.
+    static let riseSecs: CFTimeInterval = 0.6
 
     /// Body and wave move together.
     let water = CALayer()
@@ -290,6 +292,8 @@ final class LiquidNSView: NSView {
     /// Width and motion the wave was built for; it restarts only when one
     /// changes, not on every tap.
     private var waveKey: (CGFloat, Bool)?
+    /// The tank height of the last layout; a rise only within one size.
+    private var laidOutHeight: CGFloat?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -392,8 +396,18 @@ final class LiquidNSView: NSView {
         // now.
         let nowMs = self.nowMs + Int(Date().timeIntervalSince(configuredAt) * 1000)
         let level = BodyMath.level(gauge, nowMs: nowMs)
+        // Where the water is on screen now, before it is moved: after a tap
+        // it rises from there instead of jumping (same tank size only, not
+        // on a resize).
+        let shown = water.presentation()?.value(forKeyPath: "transform.translation.y") as? CGFloat
+        let rise: CGFloat? =
+            animated && laidOutHeight == bounds.height
+            ? shown.flatMap { drop(level) > $0 + 0.5 ? $0 : nil } : nil
+        laidOutHeight = bounds.height
         water.removeAnimation(forKey: "fall")
+        water.removeAnimation(forKey: "rise")
         water.setAffineTransform(CGAffineTransform(translationX: 0, y: drop(level)))
+        let start = water.convertTime(CACurrentMediaTime(), from: nil)
         if let end = gauge.emptyAtMs, end > nowMs {
             let fall = CABasicAnimation(keyPath: "transform.translation.y")
             fall.fromValue = drop(level)
@@ -402,8 +416,24 @@ final class LiquidNSView: NSView {
             fall.timingFunction = CAMediaTimingFunction(name: .linear)
             // It moves a point every few seconds; no need for more frames.
             fall.preferredFrameRateRange = CAFrameRateRange(minimum: 1, maximum: 2, preferred: 1)
+            if rise != nil {
+                // After the rise; until then it holds where the rise ends.
+                fall.beginTime = start + Self.riseSecs
+                fall.fillMode = .backwards
+            }
             water.setAffineTransform(CGAffineTransform(translationX: 0, y: drop(0)))
             water.add(fall, forKey: "fall")
+        }
+        if let from = rise {
+            // Added after the fall, so it wins while it runs: one short
+            // animation per tap, nothing between taps.
+            let up = CABasicAnimation(keyPath: "transform.translation.y")
+            up.fromValue = from
+            up.toValue = drop(level)
+            up.duration = Self.riseSecs
+            up.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            up.fillMode = .forwards
+            water.add(up, forKey: "rise")
         }
     }
 }

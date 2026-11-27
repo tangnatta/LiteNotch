@@ -46,6 +46,7 @@ final class ParityTests: XCTestCase {
         try check("material", MaterialChoice.self)
         try check("home_card", HomeCard.self)
         try check("day_icons", DayIcons.self)
+        try check("body_show", BodyShow.self)
         try check("priority", Priority.self)
         try check("awake_mode", AwakeMode.self)
         try check("lid_state", LidState.self)
@@ -113,7 +114,8 @@ final class ParityTests: XCTestCase {
         try within(SettingsLimits.dayStart, "day.start_min")
         try choices(SettingsLimits.timeWarningSecs, "peek.time_warning_secs")
         try choices(SettingsLimits.eyeBreakMins, "peek.eye_break_mins")
-        try choices(SettingsLimits.moveMins, "peek.move_mins")
+        try choices([0, SettingsLimits.waterMins], "body.water_mins")
+        try choices([0, SettingsLimits.stretchMins], "body.stretch_mins")
     }
 
     func testTheOfficeHoursSpanIsTheCores() throws {

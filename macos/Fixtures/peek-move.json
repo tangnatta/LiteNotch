@@ -1,8 +1,8 @@
 {
   "compact": {
     "kind": "nudge",
-    "title": "Walk",
-    "value": "Walk around for a minute",
+    "title": "Stretch",
+    "value": "Stand up and stretch",
     "ends_at_ms": null,
     "total_secs": null,
     "count": 0,
@@ -370,6 +370,16 @@
     "events": []
   },
   "day": null,
+  "body": {
+    "water": null,
+    "stretch": {
+      "span_ms": 2400000,
+      "left_ms": 0,
+      "empty_at_ms": null,
+      "last_ms": null,
+      "last_label": null
+    }
+  },
   "colors": [],
   "analytics": [
     {
@@ -481,7 +491,8 @@
         "media",
         "caffeine",
         "agent",
-        "day"
+        "day",
+        "body"
       ],
       "hidden": [],
       "two_places": true,
@@ -495,7 +506,6 @@
       "track_change": true,
       "time_warning_secs": 300,
       "eye_break_mins": 0,
-      "move_mins": 20,
       "break_quote": true,
       "still_working": true
     },
@@ -507,6 +517,11 @@
       "home_card": "auto",
       "icons": "sun",
       "motion": false
+    },
+    "body": {
+      "water_mins": 0,
+      "stretch_mins": 40,
+      "show": "both"
     }
   }
 }

@@ -59,7 +59,7 @@ final class OverflowTests: XCTestCase {
     func testEverySettingsSectionFitsThePanel() throws {
         SettingsTab.showMoreOptions = true
         defer { SettingsTab.showMoreOptions = false }
-        for name in ["idle", "media", "pair"] {
+        for name in ["idle", "media", "pair", "body"] {
             for section in SettingsSection.allCases {
                 for icons in DayIcons.allCases {
                     let (vm, p) = try panel(name) { Self.everythingOn(&$0, icons: icons) }
@@ -75,7 +75,7 @@ final class OverflowTests: XCTestCase {
     }
 
     func testEveryOtherTabFitsThePanel() throws {
-        for name in ["idle", "media", "pomodoro", "pair", "banner", "caffeine", "calendar", "day"] {
+        for name in ["idle", "media", "pomodoro", "pair", "banner", "caffeine", "calendar", "day", "body", "body-water"] {
             let (vm, p) = try panel(name)
             XCTAssertLessThanOrEqual(height(HomeTab(vm: vm, model: p)), room.height, "Home, \(name)")
             XCTAssertLessThanOrEqual(height(MusicTab(vm: vm, model: p)), room.height, "Music, \(name)")

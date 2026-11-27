@@ -7,6 +7,7 @@
 
 pub mod agent;
 pub mod analytics;
+pub mod body;
 pub mod caffeine;
 pub mod calendar;
 pub mod clipboard;

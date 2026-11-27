@@ -69,7 +69,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   pending approval, then a banner, then a peek, take it alone. Otherwise the running
   activities are ranked by `notch.order` (default `LIVE_ORDER`: meeting
   agenda, event about to start, countdown, pomodoro, media, keep awake,
-  working agent; deadlines other people wait on, then ones the user set,
+  working agent, day progress, water and stretch; deadlines other people wait on, then ones the user set,
   then things that are merely on), those in `notch.hidden` left out. The
   first is `compact`; with `notch.two_places` the second is
   `compact_secondary`. `waiting` (the dot, `notch.waiting_dot`, agents only) is true
@@ -109,28 +109,32 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   mark while running; pausing keeps time left still, so it never repeats.
   Warning times join `next_deadline`, so peeks add no polling.
   Three wellbeing peeks (`ActivityKind::Nudge`), each with an Off choice
-  in Settings › Timer. The eye break and Move both count screen time only
+  (the eye break and the gauges in Settings › Day, the line after a break in Settings › Timer). The eye break and the gauges both count screen time only
   (`Core::is_away`: the shell's `screen_away` or `lid_shut`, which is the lid
   shut in closed-lid mode with no other display, so caffeine holding a shut
   Mac awake does not count); they never follow the focus timer (an earlier
   `move_counts` choice is gone, old files still load):
   the eye break (`peek.eye_break_mins`, 0 = off, the default; every few
-  minutes of screen time), a quick blinking `>_<` with "Look away" for 3 s
-  (`EYE_MS`) so the user blinks; the Move reminder (`peek.move_mins`, 0 =
-  off, the default), one of
-  `MOVE_LINES` (stretch, walk, water) picked from `now_ms` and never the
-  same kind twice in a row, 8 s (`NUDGE_MS`) so its line can scroll; and a
+  minutes of screen time), a quick blinking `O-O` (`>-<` on the blink)
+  with one of `EYE_LINES` ("Blink", "Relax", "Look away", picked from the
+  minute) in the accent colour for 3 s
+  (`EYE_MS`) so the user blinks; a gauge running empty (`PeekKind::Move`,
+  see Water and stretch below), titled Water or Stretch with one of
+  `WATER_LINES` / `STRETCH_LINES` picked from `now_ms` ("Water and
+  stretch" when both empty at once), 8 s (`NUDGE_MS`) so its line can
+  scroll; and a
   line after a completed (not skipped) break (`peek.break_quote`, on by
   default), one of `BREAK_LINES` picked from `now_ms`, which waits until
   the "Break over" banner (or an approval) is gone and is dropped after
   60 s. A nudge is not cut short: a countdown or track peek arriving
-  meanwhile waits and follows it (with a 25-minute focus and Move every
-  20, the Move and the 5-minute warning both fall at 20 minutes); when
-  the eye break and Move fall together, Move shows. The shell reports the
+  meanwhile waits and follows it (with a 25-minute focus and a 20-minute
+  stretch gauge, the gauge and the 5-minute warning both fall at 20
+  minutes); when the eye break and a gauge fall together, the gauge
+  shows. The shell reports the
   screen locked, the displays or the Mac asleep, or another user's
   session in front (`ScreenPresenceObserver`, system notifications, no
-  polling) as `screen_away`; reminders are skipped then and screen-time
-  counts start over. A mark seen over 60 s late was slept through and is
+  polling) as `screen_away`; reminders are skipped then, the eye break's
+  count starts over and the gauges stand still. A mark seen over 60 s late was slept through and is
   skipped too, so it needs no word from the shell.
   Still working on a break (`peek.still_working`, on by default, Settings ›
   Timer): at 1:00, 2:30, 4:00 … into a running break the core sets
@@ -151,16 +155,25 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   (`Format.dayProgress`), and redraws only when the whole percent changes
   (`DaySchedule`). The day turns over at 03:00 local (`ROLLOVER_MS`), so a
   late night still counts as the day it started; the core wakes once then.
-  Settings › Work day
+  Settings › Day
   holds it all. The icon (`day.icons`) is Default, the time of day
   (`Format.daySymbol`): horizon before the start, sun until 3 h before
   the end, horizon, then moon; or Grow a tree (`GrowthIcon.swift`,
   `Format.growthStage`): seed before the start, two leaves to 33 %,
   sapling to 66 %, young tree, then a full tree after the end. It never
   withers. With the tree the closed notch's icon and value are green
-  (`NT.grow`), the same all day; Home stays grey. Home's big left card (also in Settings › Work day,
-  `day.home_card`: Auto, Day, Music) shows the day instead of now
-  playing; Auto gives way to music while it plays. The line under the
+  (`NT.grow`), the same all day; Home stays grey. Home's big left card (Settings › Day, with day progress and the gauges;
+  `day.home_card`: Auto, Day, Music, Body) shows the day instead of now
+  playing. The rule is `HomeCardPick` (Models.swift): a fixed choice shows
+  that card, or now playing when it has nothing to show. Auto takes the
+  first that applies: the gauges if one is below 20 %; music for one
+  minute after a new track starts (`media.changed_at_ms`, set by the core
+  when the title or artist changes while playing); the gauges if one is
+  below 50 %; the day; music while it plays; the gauges; now playing.
+  Home redraws only when that answer can change, at the end of the
+  minute or when a gauge falls past 50 % or 20 % (`HomeCardTimeline`,
+  explicit `TimelineView` dates, all of them, from `HomeCardPick.changeTimesMs`, no
+  timer). The line under the
   number is one of `DAY_LINES`, one per day.
   With the sun icons Home's day card sits on a grainy sky gradient at 50 % (`DaySky.swift`): morning, day, evening, night follow `Format.daySymbol`; still, no animation.
   Settings › Day › Animate (`day.motion`, off by default): the sun turns
@@ -174,6 +187,54 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   The principle: people have a life before and after work, so nothing
   here limits or judges their time. No bar, no colour, no overtime
   warning, no line that says to finish or stop.
+- **Water and stretch** (`settings.body`, `core::body`, both off by
+  default, Settings › Day below day progress, on or off apart from it; only on and off, on being 90 min for water and 60 for stretch, `SettingsLimits`): two gauges that replaced the Move reminder
+  (an old `peek.move_mins` loads into both, `BodyConfig::from_move`, and
+  is never written back). Each runs from full to empty over
+  `water_mins` / `stretch_mins` of screen time (starting at half, `START_PCT`, when turned on or at launch) and stands still while
+  `Core::is_away`. The view model carries `body: {water, stretch}`, each
+  `span_ms`, `left_ms` and `empty_at_ms` (set while counting), so the shell
+  draws the level itself; between events a gauge is left untouched, or the
+  view model would change on every settle (the pasteboard poll) and the
+  panel would redraw twice a second (measured: 1.3 % CPU, now 0.05–0.45 %). It
+  says so twice, as the Move peek above: once when it falls past
+  `LOW_PCT` (20 %) and once when empty (`Gauge::wake` puts both in
+  `next_deadline`; the gauge is rebased at each, so each is said once,
+  and filling it above 20 % arms the first again), then stays empty and
+  quiet. Water counts in ml, the card shows percent: the tank is `TANK_ML`
+  (400 ml, two cups); `body_drink` adds `CUP_ML` (200 ml) when the last cup
+  was `CUP_SPACING_MS` (15 min) or more ago, down to `SIP_ML` (50 ml) right
+  after it, in 10 ml steps (`water_gain`), so drinking spaced out counts
+  more; the label is "+200 ml", "+130 ml", "+50 ml". Why (sources in the
+  module comment of `core::body`): about 2 L of drinks a day (EFSA, US
+  National Academies, NHS), kidneys clear about 0.8 to 1 L an hour, spread
+  drinks are kept a little better (small studies); 90 min to empty is
+  about 250 ml an hour. No daily total is shown: thirst is a fine guide for
+  healthy adults at rest, and a total would be a quota. `body_stretch`: `REP_PCT` (10 %) per tap, no
+  limit, one tap per movement. Home's big card (`home_card: body`,
+  `body.show`: Water | Both) is `BodyCard` (`Body.swift`): each gauge a
+  tank filled from the bottom, blue water and orange stretch at every
+  level (never a warning colour), the number centred like day progress,
+  a button that floats the label up ("+2", "+3" for stretch taps in a
+  row, counted in the shell). The water falls, rises over 0.6 s after a tap
+  (from where it is on screen; none on a resize), and its wave slides by Core
+  Animation only (`LiquidNSView`, the wave capped at 30 fps, the fall at
+  2 fps); the number redraws about once per percent
+  (`BodyMath.redrawSecs`). The tank clips itself (`clipsToBounds` and the
+  card's corner radius): SwiftUI's `clipShape` does not reach a hosted
+  NSView. `bench.sh` counts LiteNotch's process only; the wave's
+  compositing is WindowServer's and is not in its figure. In the closed notch the gauges are
+  `ActivityKind::Body`, last in `LIVE_ORDER`, while either is on: the one
+  that runs empty first (`Body::first_empty`; that choice changes only
+  when a gauge does, so no wake-up of its own), `title` Water or Stretch,
+  `ends_at_ms` = empty, `total_secs` = span, or `value` "48%" while
+  standing still. The shell draws it like day progress: the gauge's symbol
+  in its colour (`BodyIcon`, a drop or a stretching figure; a battery
+  filled to the level read as the Mac's battery) and the percent right after
+  it in the secondary text colour (`BodyPercent`), redrawn once per whole
+  percent (`BodySchedule`). Not yet: a button on the empty peek, keeping the levels across
+  a restart (they start at half), and a look at the wave in the running app
+  (snapshots draw the liquid flat).
 - **Sound** (`settings.sound`, on by default, "Glass"): one of the 14
   system alert sounds when the countdown timer, a focus session or a break
   ends (not on skip, reset or pause). The core emits `Effect::PlaySound`
@@ -686,6 +747,8 @@ alone and only that result counts. `--serial` runs them one at a time:
 | glassisland | the panel open on Home in the Island style, drawn with Liquid Glass | ≤ 1.5 % | ≤ 40 MB |
 | calendar | an event about to start (the closed notch counts down to it) | ≤ 1.0 % | ≤ 30 MB |
 | pair | two countdowns side by side in the closed notch | ≤ 1.0 % | ≤ 30 MB |
+| body | the panel open on Home showing the water and stretch gauges (wave animating) | ≤ 1.5 % | ≤ 40 MB |
+| bodyclosed | the closed notch showing the water gauge (redrawn once per percent) | ≤ 1.0 % | ≤ 30 MB |
 | closedglass | the closed notch drawn with glass (Island, Match theme, light) and a countdown; needs a display without a notch | ≤ 1.0 % | ≤ 30 MB |
 
 Bundle ≤ 15 MB; Rust line coverage ≥ 90 %. The app reads a few

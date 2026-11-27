@@ -39,6 +39,8 @@ pub enum HomeCard {
     /// Now playing while something plays, day progress otherwise.
     #[default]
     Auto,
+    /// The water and stretch gauges (`body`), while either is on.
+    Body,
 }
 
 /// How the day's icon looks.
@@ -62,7 +64,8 @@ pub struct DayConfig {
     pub end_min: u16,
     /// Working days, bit 0 = Monday … bit 6 = Sunday.
     pub days: u8,
-    /// Home's left card, while day progress is on.
+    /// Home's left card: Media, Day and Auto while day progress is on, Body
+    /// while a gauge is on.
     pub home_card: HomeCard,
     pub icons: DayIcons,
     /// The icon moves a little (sun turns, tree sways). Off by default: it

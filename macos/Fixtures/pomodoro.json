@@ -378,6 +378,7 @@
     "events": []
   },
   "day": null,
+  "body": null,
   "colors": [],
   "analytics": [
     {
@@ -485,7 +486,8 @@
         "media",
         "caffeine",
         "agent",
-        "day"
+        "day",
+        "body"
       ],
       "hidden": [],
       "two_places": true,
@@ -499,7 +501,6 @@
       "track_change": true,
       "time_warning_secs": 300,
       "eye_break_mins": 0,
-      "move_mins": 0,
       "break_quote": true,
       "still_working": true
     },
@@ -511,6 +512,11 @@
       "home_card": "auto",
       "icons": "sun",
       "motion": false
+    },
+    "body": {
+      "water_mins": 0,
+      "stretch_mins": 0,
+      "show": "both"
     }
   }
 }

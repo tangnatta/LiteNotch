@@ -62,6 +62,9 @@ final class ClosedSpaceTests: XCTestCase {
             CompactView(
                 kind: .day, title: "Day", value: "", endsAtMs: now - 2 * 3_600_000,
                 totalSecs: 8 * 3600, count: 1),
+            // A full gauge counting down, and one standing still.
+            CompactView(kind: .body, title: "Water", value: "", endsAtMs: now + 5_400_000, totalSecs: 5400, count: 1),
+            c(.body, "Stretch", "100%"),
         ]
     }
 

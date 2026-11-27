@@ -5,7 +5,7 @@ extension SettingsSection {
         switch self {
         case .general: return "General"
         case .notch: return "Notch"
-        case .day: return "Work day"
+        case .day: return "Day"
         case .timer: return "Timer"
         case .music: return "Music"
         case .notifications: return "Notifications"
@@ -437,16 +437,6 @@ struct SettingsTab: View {
             }
         }
         Hairline().padding(.vertical, 2)
-        wideRow("Eye break", caption: "A quick blink and look away, every so many minutes at the Mac.") {
-            SegmentedPill(
-                options: SettingsLimits.eyeBreakMins.map { ($0, $0 == 0 ? "Off" : $0 == 20 ? "20 min" : "\($0)") },
-                selection: $draft.peek.eyeBreakMins, label: "Eye break", height: 22)
-        }
-        wideRow("Move", caption: "Stretch, walk or drink water, every so many minutes at the Mac.") {
-            SegmentedPill(
-                options: SettingsLimits.moveMins.map { ($0, $0 == 0 ? "Off" : $0 == 60 ? "60 min" : "\($0)") },
-                selection: $draft.peek.moveMins, label: "Move", height: 22)
-        }
         toggle(
             "A few words after a break", $draft.peek.breakQuote,
             caption: "The closed notch shows a short line of encouragement when a break ends.")
@@ -497,19 +487,62 @@ struct SettingsTab: View {
             toggle(
                 "Animate", $draft.day.motion,
                 caption: "The sun turns slowly, the tree sways. Off, the icon is still and costs nothing.")
-            // Home's big card shows the day or the music; the choice only
-            // matters while day progress is on, so it lives here.
-            row("Home's big card", caption: homeCardCaption) {
+        }
+        // Eye break, water and stretch: like day progress, a quiet reading
+        // of the day that Home can show; on or off apart from it.
+        Hairline().padding(.vertical, 2)
+        wideRow("Eye break", caption: "A quick blink and look away, every so many minutes at the Mac.") {
+            SegmentedPill(
+                options: SettingsLimits.eyeBreakMins.map { ($0, $0 == 0 ? "Off" : $0 == 20 ? "20 min" : "\($0)") },
+                selection: $draft.peek.eyeBreakMins, label: "Eye break", height: 22)
+        }
+        toggle(
+            "Water", gauge($draft.body.waterMins, SettingsLimits.waterMins),
+            caption: "Runs down while you\u{2019}re at the Mac. A 200 ml cup fills half; spaced-out cups count more.")
+        toggle(
+            "Stretch", gauge($draft.body.stretchMins, SettingsLimits.stretchMins),
+            caption: "Tap once for each stretch. The notch says so at 20 % and when either runs out.")
+        // Home's big card shows the day, the gauges or the music; all three
+        // are set on this page, so the choice lives here too.
+        Hairline().padding(.vertical, 2)
+        wideRow("Home's big card", caption: homeCardCaption) {
+            SegmentedPill(
+                options: [(HomeCard.auto, "Auto"), (.day, "Day"), (.media, "Music"), (.body, "Body")],
+                selection: $draft.day.homeCard, label: "Home's big card", height: 22,
+                symbols: ["wand.and.stars", "sun.max", "music.note", "figure.mind.and.body"])
+        }
+        .opacity(homeCardWorks ? 1 : 0.5)
+        if draft.day.homeCard == .body {
+            row("Show") {
                 SegmentedPill(
-                    options: [(HomeCard.auto, "Auto"), (.day, "Day"), (.media, "Music")],
-                    selection: $draft.day.homeCard, label: "Home's big card", height: 22)
+                    options: [(BodyShow.water, "Water"), (.both, "Water and stretch")],
+                    selection: $draft.body.show, label: "Show", height: 22,
+                    symbols: ["drop", "figure.flexibility"])
             }
+            .opacity(bodyOn ? 1 : 0.5)
+        }
+    }
+
+    private var bodyOn: Bool { draft.body.waterMins > 0 || draft.body.stretchMins > 0 }
+
+    /// The chosen big card has something to show.
+    private var homeCardWorks: Bool {
+        switch draft.day.homeCard {
+        case .body: return bodyOn
+        case .auto: return bodyOn || draft.day.enabled
+        default: return draft.day.enabled
         }
     }
 
     private var homeCardCaption: String {
+        if !homeCardWorks {
+            return draft.day.homeCard == .body
+                ? "Water and stretch are off; until one is on, it shows now playing."
+                : "Day progress is off; until it is on, it shows now playing."
+        }
         switch draft.day.homeCard {
-        case .auto: return "Music while something plays, the day otherwise."
+        case .body: return "Water and stretch gauges, always."
+        case .auto: return "Water and stretch when low, a new song for a minute, then the day or music."
         case .day: return "How far through the day, always."
         case .media: return "Now playing, always."
         }
@@ -832,6 +865,12 @@ struct SettingsTab: View {
             control()
         }
         .frame(minHeight: 22)
+    }
+
+    /// On or off for a gauge: on is its one length (`SettingsLimits`). A
+    /// length saved before, when there was a choice, stays until turned off.
+    private func gauge(_ mins: Binding<Int>, _ on: Int) -> Binding<Bool> {
+        Binding(get: { mins.wrappedValue > 0 }, set: { mins.wrappedValue = $0 ? on : 0 })
     }
 
     private func toggle(_ title: String, _ b: Binding<Bool>, caption: String = "") -> some View {

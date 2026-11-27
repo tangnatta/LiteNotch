@@ -181,7 +181,7 @@ whether it stays awake with the lid closed, and a battery level to stop at.
 
 <img src="docs/preview/day.gif" width="680" alt="The closed notch showing how far through the day it is, with a sun, then a tree growing from a seed; then Home with the day card">
 
-Turn on **Settings › Work day** and set your hours (10:00–18:00, Monday to
+Turn on **Settings › Day** and set your hours (10:00–18:00, Monday to
 Friday, until you change them). The closed notch shows how far through the day
 you are, `-12%` before it starts and `+19%` after it ends, with a sun and moon
 or a tree that grows through the day. It is only a number: no bar, no red, no
@@ -194,7 +194,7 @@ line telling you to stop.
 When several things run, the closed notch shows the most pressing on the left
 and the next, dimmed, on the right. **Settings › Notch** changes the order or
 shows one at a time. For a few seconds it can also show a new song, a timer
-about to end, or a reminder to rest your eyes or move:
+about to end, a reminder to rest your eyes, or that water or stretch is running low:
 
 <img src="docs/preview/peeks.gif" width="680" alt="One after another: a new song, five minutes left, the eye-break face, a reminder to walk, a line after a break">
 

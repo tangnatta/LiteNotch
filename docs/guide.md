@@ -32,7 +32,7 @@ result for a few typical situations.
 
 For a few seconds the closed notch can show one thing, then go back. These
 never land in the inbox. They are set in **Settings › Timer** (the new song in
-**Settings › Music**):
+**Settings › Music**; eye break, water and stretch in **Settings › Day**):
 
 | Heads-up | When |
 |---|---|
@@ -40,12 +40,22 @@ never land in the inbox. They are set in **Settings › Timer** (the new song in
 | **A new song** | The track changes. |
 | **A few words after a break** | A break ends (not when you skip it). |
 | **Eye break** (off by default) | Every few minutes at the screen: a blinking face and "Look away". |
-| **Move** (off by default) | Every few minutes at the screen: stretch, walk or drink water. |
+| **Water** and **Stretch** (off by default) | A gauge falls below 20 %, and again when it runs empty. |
 | **Still working on a break** | A break is running and the keyboard or mouse is in use. |
 
-Eye break and Move count only minutes you are at the Mac: screen on and
-unlocked, lid open (or an external display connected). They start over when
-you lock the screen, the Mac sleeps or the lid closes.
+Water and stretch are two gauges that run down while you are at the Mac.
+Fill water with **Drank**: a 200 ml cup fills half the tank, and a cup right
+after another counts as 50 ml, so spacing them out (15 minutes) counts more.
+Fill stretch by tapping **Stretch** once per movement. Show them on Home with
+**Settings › Day › Home's big card: Body** (water alone, or water and stretch
+side by side). **Auto** shows the gauges when one is low (below 20 %), a new
+song for a minute, the gauges again below 50 %, then the day or music. They
+replace the older Move reminder; its setting carries over.
+
+Eye break and the gauges count only minutes you are at the Mac: screen on and
+unlocked, lid open (or an external display connected). The eye break starts
+over and the gauges stand still when you lock the screen, the Mac sleeps or
+the lid closes.
 
 ## Appearance
 

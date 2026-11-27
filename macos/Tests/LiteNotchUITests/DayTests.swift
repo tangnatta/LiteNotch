@@ -77,13 +77,36 @@ final class DayTests: XCTestCase {
 
     func testHomeCardChoice() throws {
         var vm = try fixture("day")
+        let now = 1_000_000
         XCTAssertEqual(vm.settings.day.homeCard, .auto)
-        XCTAssertTrue(DayConfig.showsDayCard(vm), "nothing playing")
+        XCTAssertEqual(HomeCardPick.card(vm, nowMs: now), .day, "nothing playing")
         vm.settings.day.homeCard = .media
-        XCTAssertFalse(DayConfig.showsDayCard(vm))
+        XCTAssertEqual(HomeCardPick.card(vm, nowMs: now), .media)
         vm.settings.day.homeCard = .day
         vm.day = nil
-        XCTAssertFalse(DayConfig.showsDayCard(vm), "day progress off or a day off")
+        XCTAssertEqual(HomeCardPick.card(vm, nowMs: now), .media, "day progress off or a day off")
+    }
+
+    /// Auto: a new song has the card for a minute, then the day takes it
+    /// back; with nothing else on, music keeps it.
+    func testAutoGivesANewSongAMinute() throws {
+        var vm = try fixture("day")
+        let start = 5_000_000
+        vm.media = MediaView(
+            app: "Music", title: "One", artist: "Band", album: "", playing: true, durationMs: nil,
+            positionMs: nil, positionAtMs: start, controllable: true, artworkPath: nil, changedAtMs: start)
+        XCTAssertEqual(HomeCardPick.card(vm, nowMs: start + 59_999), .media)
+        XCTAssertEqual(HomeCardPick.nextChangeMs(vm, nowMs: start + 10_000), start + 60_000)
+        XCTAssertEqual(HomeCardPick.card(vm, nowMs: start + 60_000), .day)
+        XCTAssertNil(HomeCardPick.nextChangeMs(vm, nowMs: start + 60_000))
+        vm.media?.playing = false
+        XCTAssertEqual(HomeCardPick.card(vm, nowMs: start), .day, "paused: no minute")
+        vm.media?.playing = true
+        vm.media?.changedAtMs = nil
+        XCTAssertEqual(HomeCardPick.card(vm, nowMs: start), .day, "no track change seen")
+        vm.day = nil
+        XCTAssertEqual(HomeCardPick.card(vm, nowMs: start + 999_999), .media, "nothing else on")
+        XCTAssertNil(HomeCardPick.nextChangeMs(vm, nowMs: start))
     }
 
     func testNextChangeIsTheNextWholePercent() {
@@ -107,7 +130,7 @@ final class DayTests: XCTestCase {
         XCTAssertEqual(vm.compact.totalSecs.map { $0 * 1000 }, day.endMs - day.startMs)
         XCTAssertFalse(day.line.isEmpty)
         XCTAssertNil(try fixture("idle").day)
-        XCTAssertEqual(NotchConfig.liveOrder.last, .day)
+        XCTAssertEqual(NotchConfig.liveOrder.suffix(2), [.day, .body])
     }
 
     func testOldSettingsWithoutDayGetTheDefault() throws {

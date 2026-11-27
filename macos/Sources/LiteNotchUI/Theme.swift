@@ -905,20 +905,28 @@ struct SegmentedPill<Value: Hashable>: View {
     var height: CGFloat = 24
     /// Drawn before each option's title, if given.
     var optionIcon: ((Value) -> AnyView)? = nil
+    /// An SF Symbol before each title, in the same order; none if empty.
+    /// `optionIcon` wins when both are given.
+    var symbols: [String] = []
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(Array(options.enumerated()), id: \.offset) { _, o in
+            ForEach(Array(options.enumerated()), id: \.offset) { i, o in
                 let on = o.value == selection
                 Button {
                     selection = o.value
                 } label: {
-                    HStack(spacing: 5) {
-                        if let optionIcon { optionIcon(o.value).foregroundStyle(on ? NT.text1 : NT.text2) }
+                    HStack(spacing: optionIcon == nil ? 4 : 5) {
+                        if let optionIcon {
+                            optionIcon(o.value)
+                        } else if i < symbols.count {
+                            Image(systemName: symbols[i]).glyph(10, on ? .semibold : .medium)
+                                .accessibilityHidden(true)
+                        }
                         Text(verbatim: o.title)
-                            .nfont(on ? .emphasis : .bodyMedium)
-                            .foregroundStyle(on ? NT.text1 : NT.text2)
                     }
+                    .nfont(on ? .emphasis : .bodyMedium)
+                    .foregroundStyle(on ? NT.text1 : NT.text2)
                     .lineLimit(1).fixedSize()
                     .padding(.horizontal, 10)
                     .frame(height: height - 4)

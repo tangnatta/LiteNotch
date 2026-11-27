@@ -11,6 +11,7 @@
 use serde_json::{json, Value};
 
 use crate::agent::AgentStatus;
+use crate::body::BodyShow;
 use crate::caffeine::{AwakeMode, LidState};
 use crate::calendar::AttendeeStatus;
 use crate::clipboard::ClipKind;
@@ -76,7 +77,7 @@ fn kept(path: &str, value: u64) -> u64 {
 fn limits() -> Value {
     // (setting, a value below any limit, a value above any limit that still
     // fits the setting's type)
-    let paths: [(&str, u64, u64); 15] = [
+    let paths: [(&str, u64, u64); 16] = [
         ("pomodoro.focus_secs", 0, HUGE),
         ("pomodoro.short_break_secs", 0, HUGE),
         ("pomodoro.long_break_secs", 0, HUGE),
@@ -89,7 +90,8 @@ fn limits() -> Value {
         ("caffeine.battery_floor_pct", 0, 255),
         ("peek.time_warning_secs", 0, HUGE),
         ("peek.eye_break_mins", 1, HUGE),
-        ("peek.move_mins", 1, HUGE),
+        ("body.water_mins", 1, HUGE),
+        ("body.stretch_mins", 1, HUGE),
         ("day.start_min", 0, 65_000),
         ("day.end_min", 0, 65_000),
     ];
@@ -113,7 +115,8 @@ pub fn schema() -> Value {
             "closed_notch": variants!(ClosedNotch: Dark, Theme),
             "shrink": variants!(Shrink: Off, WhenEmpty, Always),
             "material": variants!(Material: Solid, Glass),
-            "home_card": variants!(HomeCard: Media, Day, Auto),
+            "home_card": variants!(HomeCard: Media, Day, Auto, Body),
+            "body_show": variants!(BodyShow: Both, Water),
             "day_icons": variants!(DayIcons: Sun, Tree),
             "priority": variants!(Priority: Low, Normal, High, Critical),
             "awake_mode": variants!(AwakeMode: Off, System, Display),
@@ -128,7 +131,7 @@ pub fn schema() -> Value {
             "attendee_status": variants!(AttendeeStatus: Accepted, Declined, Tentative, Pending, Unknown),
             "peek_kind": variants!(PeekKind: TrackChanged, TimeWarning, EyeBreak, Move, Quote, StillWorking),
             "activity_kind": variants!(ActivityKind: Idle, Approval, Banner, Pomodoro, Media, Caffeine, Agent,
-                Meeting, Timer, Calendar, Nudge, Day, Unknown),
+                Meeting, Timer, Calendar, Nudge, Day, Body, Unknown),
         },
     })
 }
@@ -146,7 +149,8 @@ mod tests {
         assert_eq!(l["calendar.alert_minutes"], json!([0, 60]));
         assert_eq!(l["agent.approval_timeout_secs"], json!([5, 120]));
         assert_eq!(l["caffeine.battery_floor_pct"], json!([0, 100]));
-        assert_eq!(l["peek.move_mins"], json!([5, 180]));
+        assert_eq!(l["body.water_mins"], json!([5, 180]));
+        assert_eq!(l["body.stretch_mins"], json!([5, 180]));
         assert_eq!(s["sounds"].as_array().map(Vec::len), Some(SOUNDS.len()));
         // A probe that could not be saved would leave both ends equal.
         for (path, range) in l.as_object().into_iter().flatten() {

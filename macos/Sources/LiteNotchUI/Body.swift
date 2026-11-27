@@ -78,9 +78,9 @@ public enum BodyMath {
         max(10, Double(g.spanMs) / 100 / 1000)
     }
 
-    /// "Drank 20m ago", "Just now", or the gauge's name before the first time.
+    /// "Drank 20m ago", "Drank just now", or "Not yet" before the first time.
     public static func since(_ lastMs: Int?, nowMs: Int, verb: String) -> String {
-        guard let last = lastMs else { return "Full to start" }
+        guard let last = lastMs else { return "Not yet" }
         let mins = max(0, nowMs - last) / 60_000
         if mins < 1 { return "\(verb) just now" }
         if mins < 60 { return "\(verb) \(mins)m ago" }

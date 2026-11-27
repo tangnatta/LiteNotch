@@ -309,7 +309,8 @@ fn main() {
     // first.
     let mut m = populated();
     let mut s = m.settings().clone();
-    s.body.stretch_mins = 20;
+    // Starting at half, 40 minutes empty at 20.
+    s.body.stretch_mins = 40;
     m.apply(
         Input::Command(Command::SetSettings {
             settings: Box::new(s),

@@ -328,15 +328,15 @@
   "body": {
     "water": {
       "span_ms": 3600000,
-      "left_ms": 3000000,
-      "empty_at_ms": 1794405400000,
+      "left_ms": 1800000,
+      "empty_at_ms": 1794404200000,
       "last_ms": 1794402400000,
       "last_label": "+1 cup"
     },
     "stretch": {
       "span_ms": 2700000,
-      "left_ms": 1595000,
-      "empty_at_ms": 1794403996000,
+      "left_ms": 1620000,
+      "empty_at_ms": 1794404021000,
       "last_ms": 1794402401000,
       "last_label": "+1"
     }

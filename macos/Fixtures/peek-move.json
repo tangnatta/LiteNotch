@@ -328,7 +328,7 @@
   "body": {
     "water": null,
     "stretch": {
-      "span_ms": 1200000,
+      "span_ms": 2400000,
       "left_ms": 0,
       "empty_at_ms": null,
       "last_ms": null,
@@ -473,7 +473,7 @@
     },
     "body": {
       "water_mins": 0,
-      "stretch_mins": 20,
+      "stretch_mins": 40,
       "show": "both"
     }
   }

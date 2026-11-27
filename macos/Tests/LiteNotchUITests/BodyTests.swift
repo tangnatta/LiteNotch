@@ -26,7 +26,7 @@ final class BodyTests: XCTestCase {
     }
 
     func testSinceLine() {
-        XCTAssertEqual(BodyMath.since(nil, nowMs: 0, verb: "Drank"), "Full to start")
+        XCTAssertEqual(BodyMath.since(nil, nowMs: 0, verb: "Drank"), "Not yet")
         XCTAssertEqual(BodyMath.since(0, nowMs: 30_000, verb: "Drank"), "Drank just now")
         XCTAssertEqual(BodyMath.since(0, nowMs: 20 * 60_000, verb: "Stretched"), "Stretched 20m ago")
         XCTAssertEqual(BodyMath.since(0, nowMs: 130 * 60_000, verb: "Drank"), "Drank 2h ago")

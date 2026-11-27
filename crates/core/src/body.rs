@@ -24,8 +24,11 @@ pub const SIP_PCT: u32 = 10;
 pub const CUP_SPACING_MS: u64 = 10 * 60_000;
 /// A cup worth at least this much is called a cup; less is a sip.
 const CUP_LABEL_MIN_PCT: u32 = 40;
-/// One stretching movement.
-pub const REP_PCT: u32 = 8;
+/// One stretching movement: ten from empty fill it.
+pub const REP_PCT: u32 = 10;
+/// Where a gauge starts when turned on or when LiteNotch starts: half, so
+/// the first drink or stretch already shows.
+pub const START_PCT: u32 = 50;
 
 /// Screen time from full to empty, in minutes, when on.
 pub const MIN_MINS: u32 = 5;
@@ -117,10 +120,10 @@ struct Gauge {
 }
 
 impl Gauge {
-    fn full(span_ms: u64) -> Self {
+    fn start(span_ms: u64) -> Self {
         Self {
             span_ms,
-            left_ms: span_ms,
+            left_ms: span_ms * u64::from(START_PCT) / 100,
             since: None,
             last: None,
         }
@@ -234,7 +237,7 @@ fn span(mins: u32) -> Option<u64> {
 }
 
 impl Body {
-    /// Takes new settings at `now`: a gauge turned on starts full, one whose
+    /// Takes new settings at `now`: a gauge turned on starts at half, one whose
     /// interval changed keeps its level, one turned off is gone.
     pub fn set_config(&mut self, cfg: &BodyConfig, counting: bool, now: u64) {
         for (gauge, mins) in [
@@ -243,7 +246,7 @@ impl Body {
         ] {
             *gauge = match (gauge.take(), span(mins)) {
                 (_, None) => None,
-                (None, Some(s)) => Some(Gauge::full(s)),
+                (None, Some(s)) => Some(Gauge::start(s)),
                 (Some(mut g), Some(s)) => {
                     g.sync(counting, now);
                     g.respan(s, now);
@@ -324,7 +327,26 @@ mod tests {
             ..BodyConfig::default()
         };
         b.set_config(&cfg, true, T0);
+        // Full, so the times below are whole spans; `starts_at_half` checks
+        // where they really start.
+        for g in [&mut b.water, &mut b.stretch].into_iter().flatten() {
+            g.left_ms = g.span_ms;
+        }
         b
+    }
+
+    #[test]
+    fn starts_at_half() {
+        let mut b = Body::default();
+        let cfg = BodyConfig {
+            water_mins: 60,
+            stretch_mins: 0,
+            ..BodyConfig::default()
+        };
+        b.set_config(&cfg, true, T0);
+        assert_eq!(level(&b, Which::Water, T0), u64::from(START_PCT));
+        assert_eq!(b.next_deadline(), Some(T0 + 30 * MIN));
+        assert_eq!(b.view().unwrap().water.unwrap().last_ms, None);
     }
 
     fn level(b: &Body, which: Which, now: u64) -> u64 {
@@ -435,10 +457,10 @@ mod tests {
         let mut b = both(0, 45);
         assert_eq!(b.drink(true, T0), None, "water is off");
         b.sync(true, T0 + 45 * MIN);
-        for _ in 0..12 {
+        for _ in 0..9 {
             assert_eq!(b.stretch(true, T0 + 45 * MIN), Some(REP_PCT));
         }
-        assert_eq!(level(&b, Which::Stretch, T0 + 45 * MIN), 96);
+        assert_eq!(level(&b, Which::Stretch, T0 + 45 * MIN), 90);
         b.stretch(true, T0 + 45 * MIN);
         assert_eq!(level(&b, Which::Stretch, T0 + 45 * MIN), 100);
         let s = b.view().unwrap().stretch.unwrap();
@@ -464,9 +486,9 @@ mod tests {
         };
         b.set_config(&water_off, true, T0 + 31 * MIN);
         assert_eq!(b.view().unwrap().water, None);
-        // On again: full.
+        // On again: from half.
         b.set_config(&longer, true, T0 + 32 * MIN);
-        assert_eq!(level(&b, Which::Water, T0 + 32 * MIN), 100);
+        assert_eq!(level(&b, Which::Water, T0 + 32 * MIN), u64::from(START_PCT));
         b.set_config(&BodyConfig::default(), true, T0 + 33 * MIN);
         assert_eq!(b.view(), None);
         assert_eq!(b.next_deadline(), None);

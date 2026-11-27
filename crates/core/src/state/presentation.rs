@@ -809,9 +809,10 @@ mod tests {
         assert_eq!(newer.peek.time_warning_secs, 60);
     }
 
-    /// A core with the stretch gauge on, empty after 20 minutes.
+    /// A core with the stretch gauge on, empty after 20 minutes (it
+    /// starts at half of 40).
     fn moving() -> Core {
-        stretching(20)
+        stretching(40)
     }
 
     fn stretching(mins: u32) -> Core {
@@ -858,9 +859,9 @@ mod tests {
         );
         assert_eq!(c.next_deadline(), None, "empty: nothing more to say");
 
-        // Stretching fills it; it runs down from there.
+        // Five stretches fill half of the 40 minutes; it runs down from there.
         let at = T0 + 30 * MIN;
-        for _ in 0..13 {
+        for _ in 0..5 {
             cmd(&mut c, Command::BodyStretch, at);
         }
         assert_eq!(c.next_deadline(), Some(at + 20 * MIN));
@@ -882,7 +883,7 @@ mod tests {
     #[test]
     fn water_says_so_and_both_at_once_are_one_peek() {
         let mut c = Core::default();
-        with(&mut c, |s| s.body.water_mins = 30, T0);
+        with(&mut c, |s| s.body.water_mins = 60, T0);
         run_to(&mut c, T0 + 30 * MIN);
         let v = compact(&c, T0 + 30 * MIN);
         assert_eq!((v.peek, v.title.as_str()), (Some(PeekKind::Move), "Water"));
@@ -892,8 +893,8 @@ mod tests {
         with(
             &mut c,
             |s| {
-                s.body.water_mins = 30;
-                s.body.stretch_mins = 30;
+                s.body.water_mins = 60;
+                s.body.stretch_mins = 60;
             },
             T0,
         );
@@ -987,7 +988,7 @@ mod tests {
         assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN));
 
         // A break counts too: the user is still at the screen.
-        let mut c = stretching(28);
+        let mut c = stretching(56);
         with(&mut c, |s| s.peek.still_working = false, T0);
         cmd(&mut c, Command::PomodoroToggle, T0);
         run_to(&mut c, T0 + 26 * MIN);

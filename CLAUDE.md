@@ -171,7 +171,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   default, Settings › Timer): two gauges that replaced the Move reminder
   (an old `peek.move_mins` loads into both, `BodyConfig::from_move`, and
   is never written back). Each runs from full to empty over
-  `water_mins` / `stretch_mins` of screen time and stands still while
+  `water_mins` / `stretch_mins` of screen time (starting at half, `START_PCT`, when turned on or at launch) and stands still while
   `Core::is_away`. The view model carries `body: {water, stretch}`, each
   `span_ms`, `left_ms` and `empty_at_ms` (set while counting), so the shell
   draws the level itself; between events a gauge is left untouched, or the
@@ -181,7 +181,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   quiet. `body_drink`: a cup is worth `CUP_PCT` (50 %) when the last was
   `CUP_SPACING_MS` (10 min) or more ago, down to `SIP_PCT` (10 %) right
   after it (`water_gain`), so drinking spaced out counts more; the label
-  is "+1 cup" or "+1 sip". `body_stretch`: `REP_PCT` (8 %) per tap, no
+  is "+1 cup" or "+1 sip". `body_stretch`: `REP_PCT` (10 %) per tap, no
   limit, one tap per movement. Home's big card (`home_card: body`,
   `body.show`: Water | Both) is `BodyCard` (`Body.swift`): each gauge a
   tank filled from the bottom, blue water and orange stretch at every
@@ -195,7 +195,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   NSView. `bench.sh` counts LiteNotch's process only; the wave's
   compositing is WindowServer's and is not in its figure. Not yet: the gauges in the closed notch (an
   `ActivityKind`), a button on the empty peek, keeping the levels across
-  a restart (they start full), and a look at the wave in the running app
+  a restart (they start at half), and a look at the wave in the running app
   (snapshots draw the liquid flat).
 - **Sound** (`settings.sound`, on by default, "Glass"): one of the 14
   system alert sounds when the countdown timer, a focus session or a break

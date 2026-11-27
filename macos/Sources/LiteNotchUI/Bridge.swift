@@ -540,6 +540,12 @@ public final class PanelState: ObservableObject {
     /// The clipboard item shown large instead of the list, if any.
     @Published public var clipPreview: Int?
     @Published public var calendarPage: CalendarPage = .list
+    /// Home's big card chosen by a swipe, a dot or a button on the card;
+    /// kept until the panel closes, then Auto (or the fixed choice) again.
+    @Published public var homeCardHeld: HomeCardShown?
+    /// Where Home's big card is, in the hosting view (top-left origin), so
+    /// an up/down swipe counts only over it. Not published: layout only.
+    var homeCardFrame: CGRect = .null
     /// "Added", "Saved", "Deleted": shown beside the Calendar list's title
     /// for a few seconds after a change, so it is clear it happened.
     @Published public var calendarNotice: String?
@@ -846,6 +852,7 @@ public final class PanelState: ObservableObject {
         if !value {
             keyboardRequested = false
             hoverOpenedAt = nil
+            homeCardHeld = nil
             // An unsaved Calendar form is dropped: a later hover must not
             // land on it with a field ready to take the keyboard.
             switch calendarPage {

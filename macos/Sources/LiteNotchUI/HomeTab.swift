@@ -18,23 +18,33 @@ struct HomeTab: View {
     }
 
     private var dashboard: some View {
-        HomeCardTimeline(vm: vm) { shown in
+        HomeCardTimeline(vm: vm, held: model.homeCardHeld) { shown in
             HStack(alignment: .top, spacing: 12) {
                 Group {
                     switch (shown, vm.body, vm.day) {
                     case (.body, let gauges?, _):
-                        BodyCard(gauges: gauges, show: vm.settings.body.show, send: model.send)
-                            .opens("water and stretch settings", model) {
-                                model.settingsSection = .day
-                                model.selectTab(.settings)
-                            }
+                        BodyCard(gauges: gauges, show: vm.settings.body.show) { command in
+                            // Tapping keeps the card: Auto would move on
+                            // once a gauge passes 50 %.
+                            model.showHomeCard(.body)
+                            model.send(command)
+                        }
+                        .opens("water and stretch settings", model) {
+                            model.settingsSection = .day
+                            model.selectTab(.settings)
+                        }
                     case (.day, _, let day?):
                         dayCard(day)
                     default:
                         nowPlaying
                     }
                 }
+                .id(shown)
+                .transition(.push(from: .bottom))
                 .frame(width: 236)
+                .clipped()
+                .overlay(alignment: .trailing) { pageDots(shown) }
+                .background(CardFrameReporter(model: model))
                 // One list, not three cards: the now-playing card is the only
                 // container on this screen.
                 VStack(spacing: 0) {
@@ -54,6 +64,16 @@ struct HomeTab: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        }
+    }
+
+    /// Dots in the gap right of the card, one per page, while there is
+    /// more than one; up/down swipes over the card move between them.
+    @ViewBuilder private func pageDots(_ shown: HomeCardShown) -> some View {
+        let pages = HomeCardPick.pages(vm)
+        if pages.count > 1 {
+            CardPageDots(pages: pages, shown: shown) { model.showHomeCard($0, animated: true) }
+                .offset(x: 11)
         }
     }
 
@@ -122,8 +142,11 @@ struct HomeTab: View {
                     }
                     Spacer(minLength: 8)
                     if m.controllable {
-                        MediaControls(media: m, size: 34, spacing: 12, send: model.send)
-                            .frame(maxWidth: .infinity)
+                        MediaControls(media: m, size: 34, spacing: 12) { command in
+                            model.showHomeCard(.media)
+                            model.send(command)
+                        }
+                        .frame(maxWidth: .infinity)
                     } else {
                         // No controls for this player: say what is playing
                         // where, instead of leaving a hole.
@@ -441,6 +464,7 @@ private struct HomeRow<Lines: View, Trailing: View>: View {
 /// a new track's minute is over; no timer otherwise.
 private struct HomeCardTimeline<Content: View>: View {
     let vm: ViewModel
+    var held: HomeCardShown?
     @ViewBuilder var content: (HomeCardShown) -> Content
     @Environment(\.isSnapshot) private var snapshot
     @Environment(\.clockOffsetMs) private var offset
@@ -448,13 +472,13 @@ private struct HomeCardTimeline<Content: View>: View {
     var body: some View {
         let now = nowMs(Date(), offset: offset)
         if snapshot {
-            content(HomeCardPick.card(vm, nowMs: now))
+            content(HomeCardPick.card(vm, nowMs: now, held: held))
         } else {
             let changes = HomeCardPick.changeTimesMs(vm, nowMs: now).map {
                 Date(timeIntervalSince1970: Double($0 - offset) / 1000)
             }
             TimelineView(.explicit([Date()] + changes)) { ctx in
-                content(HomeCardPick.card(vm, nowMs: nowMs(ctx.date, offset: offset)))
+                content(HomeCardPick.card(vm, nowMs: nowMs(ctx.date, offset: offset), held: held))
             }
         }
     }
@@ -521,5 +545,20 @@ struct WelcomeCard: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+/// Tells the panel where the big card is, for `PanelState.swiped`. The
+/// hosting view's coordinates are SwiftUI's global space.
+private struct CardFrameReporter: View {
+    let model: PanelState
+
+    var body: some View {
+        GeometryReader { g in
+            let frame = g.frame(in: .global)
+            Color.clear
+                .onAppear { model.homeCardFrame = frame }
+                .onChange(of: frame) { _, f in model.homeCardFrame = f }
+        }
     }
 }

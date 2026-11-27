@@ -173,7 +173,21 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   Home redraws only when that answer can change, at the end of the
   minute or when a gauge falls past 50 % or 20 % (`HomeCardTimeline`,
   explicit `TimelineView` dates, all of them, from `HomeCardPick.changeTimesMs`, no
-  timer). The line under the
+  timer).
+  The user can pick the card themselves: dots down its right edge
+  (`CardPageDots`, the pages that have something to show, `HomeCardPick.pages`:
+  day, gauges, now playing), a two-finger swipe up or down over it, or a
+  tap on one of its buttons (Drink, Stretch, play) all set
+  `PanelState.homeCardHeld`, which wins until the panel closes; without it
+  a stretch tap past 50 % sent the card to the day under the finger.
+  **Swipes** (`Swipe.swift`): a local `.scrollWheel` monitor in
+  `NotchPanelController` feeds `SwipeTracker`, which locks the axis on the
+  first 8 pt and fires one step at 40 pt, then nothing until the fingers
+  lift; momentum and a mouse wheel are ignored, the event passes on
+  unchanged. Left/right anywhere on the open panel moves one tab in the
+  bar's order (stops at the ends); up/down counts only when it began over
+  the big card (`homeCardFrame`). None while an approval, the welcome or a
+  text field is up. Direction follows the system's natural scrolling. The line under the
   number is one of `DAY_LINES`, one per day.
   With the sun icons Home's day card sits on a grainy sky gradient at 50 % (`DaySky.swift`): morning, day, evening, night follow `Format.daySymbol`; still, no animation.
   Settings › Day › Animate (`day.motion`, off by default): the sun turns

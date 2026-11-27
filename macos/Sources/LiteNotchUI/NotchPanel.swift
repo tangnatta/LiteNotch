@@ -61,6 +61,9 @@ private final class PanelEntry {
     let window: NotchPanel
     let state: PanelState
     var cancellables: Set<AnyCancellable> = []
+    var swipe = SwipeTracker()
+    /// Whether the current swipe began on the panel's shape.
+    var swipeInside = false
 
     init(window: NotchPanel, state: PanelState) {
         self.window = window
@@ -78,6 +81,7 @@ public final class NotchPanelController {
     private var cancellables: Set<AnyCancellable> = []
     private var outsideClicks: Any?
     private var insideClicks: Any?
+    private var scrolls: Any?
     private var shown = false
 
     public init(model: AppModel) {
@@ -88,6 +92,7 @@ public final class NotchPanelController {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
         if let outsideClicks { NSEvent.removeMonitor(outsideClicks) }
         if let insideClicks { NSEvent.removeMonitor(insideClicks) }
+        if let scrolls { NSEvent.removeMonitor(scrolls) }
     }
 
     /// Creates the panels, positions them and orders them front.
@@ -107,7 +112,33 @@ public final class NotchPanelController {
                 return event
             }
         }
+        if scrolls == nil {
+            // Two-finger swipes turn pages (`SwipeTracker`); the event goes
+            // on unchanged, so lists still scroll.
+            scrolls = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                self?.scrolled(event)
+                return event
+            }
+        }
         rebuild()
+    }
+
+    private func scrolled(_ event: NSEvent) {
+        guard let e = entries.values.first(where: { $0.window === event.window }),
+            e.state.expanded,
+            let host = e.window.contentView
+        else { return }
+        let phase = SwipeTracker.phase(of: event)
+        guard phase != .ignored else { return }
+        let local = host.convert(event.locationInWindow, from: nil)
+        let point = CGPoint(x: local.x, y: host.isFlipped ? local.y : host.bounds.height - local.y)
+        if phase == .began {
+            let inSuper = host.superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow
+            e.swipeInside = host.hitTest(inSuper) != nil
+        }
+        let step = e.swipe.feed(
+            dx: event.scrollingDeltaX, dy: event.scrollingDeltaY, phase: phase, at: point)
+        if let step, e.swipeInside { e.state.swiped(step, from: e.swipe.start) }
     }
 
     public func hide() {

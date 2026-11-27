@@ -35,16 +35,20 @@ final class BodyTests: XCTestCase {
     func testTheCoresGaugesDecodeAndChooseTheCard() throws {
         let vm = try fixture("body")
         let water = try XCTUnwrap(vm.body?.water)
-        XCTAssertEqual(water.lastLabel, "+1 cup")
+        XCTAssertEqual(water.lastLabel, "+200 ml")
         XCTAssertEqual(vm.body?.stretch?.lastLabel, "+1")
         XCTAssertEqual(vm.settings.body.show, .both)
-        XCTAssertTrue(BodyConfig.showsBodyCard(vm))
-        XCTAssertFalse(DayConfig.showsDayCard(vm))
+        XCTAssertEqual(HomeCardPick.card(vm, nowMs: 0), .body)
         XCTAssertEqual(try fixture("body-water").settings.body.show, .water)
 
         var off = vm
         off.body = nil
-        XCTAssertFalse(BodyConfig.showsBodyCard(off), "gauges off: now playing instead")
+        XCTAssertEqual(HomeCardPick.card(off, nowMs: 0), .media, "gauges off: now playing instead")
+        // Auto prefers the gauges to the day once a song's minute is over.
+        var auto = vm
+        auto.settings.day.homeCard = .auto
+        auto.day = DayView(startMs: 0, endMs: 1, line: "")
+        XCTAssertEqual(HomeCardPick.card(auto, nowMs: 0), .body)
         XCTAssertNil(try fixture("idle").body)
         XCTAssertEqual(try fixture("idle").settings.body, .default)
     }

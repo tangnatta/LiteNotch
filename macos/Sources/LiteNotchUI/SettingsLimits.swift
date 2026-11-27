@@ -15,7 +15,8 @@ enum SettingsLimits {
     static let timeWarningSecs = [0, 60, 180, 300, 600]
     static let eyeBreakMins = [0, 5, 10, 15, 20]
     /// Screen time from full to empty for the water and stretch gauges.
-    static let waterMins = [0, 30, 45, 60, 90]
+    /// 90 is about 2 L over a working day (the tank holds two 200 ml cups).
+    static let waterMins = [0, 45, 60, 90, 120]
     static let stretchMins = [0, 20, 30, 45, 60]
     /// Office hours: the end is at least `dayMinSpan` after the start.
     static let dayMinSpan = 30

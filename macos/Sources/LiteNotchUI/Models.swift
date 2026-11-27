@@ -474,14 +474,45 @@ public struct DayConfig: Codable, Equatable {
 
     public static let `default` = DayConfig(enabled: false, startMin: 600, endMin: 1080, days: 0b001_1111)
 
-    /// Whether Home's left card shows the day instead of now playing.
-    public static func showsDayCard(_ vm: ViewModel) -> Bool {
-        guard vm.day != nil else { return false }
+}
+
+/// What Home's big card shows now (`HomeCard` is the choice, this the result).
+public enum HomeCardShown: Equatable {
+    case media, day, body
+}
+
+/// The rule for Home's big card.
+///
+/// A fixed choice shows that card, or now playing when it has nothing to
+/// show (day progress off or a day off, both gauges off). Auto gives music
+/// one minute from the moment a new track starts (`musicMs`), then the
+/// gauges if they are on, else the day if it is on; with neither, now
+/// playing stays.
+public enum HomeCardPick {
+    public static let musicMs = 60_000
+
+    public static func card(_ vm: ViewModel, nowMs: Int) -> HomeCardShown {
         switch vm.settings.day.homeCard {
-        case .media, .body: return false
-        case .day: return true
-        case .auto: return !(vm.media?.playing ?? false)
+        case .media: return .media
+        case .day: return vm.day != nil ? .day : .media
+        case .body: return vm.body != nil ? .body : .media
+        case .auto:
+            let other: HomeCardShown? = vm.body != nil ? .body : vm.day != nil ? .day : nil
+            guard let other else { return .media }
+            if let m = vm.media, m.playing, let at = m.changedAtMs, nowMs < at + musicMs {
+                return .media
+            }
+            return other
         }
+    }
+
+    /// When `card` will give another answer without a new view model: the
+    /// end of the music's minute.
+    public static func nextChangeMs(_ vm: ViewModel, nowMs: Int) -> Int? {
+        guard vm.settings.day.homeCard == .auto, let m = vm.media, m.playing,
+            let at = m.changedAtMs, nowMs < at + musicMs
+        else { return nil }
+        return at + musicMs
     }
 }
 
@@ -600,6 +631,8 @@ public struct MediaView: Codable, Equatable {
     public var controllable: Bool
     /// Absolute path of the current artwork image; changes with the art.
     public var artworkPath: String?
+    /// When this track started playing, as the core saw it.
+    public var changedAtMs: Int? = nil
 }
 
 public struct ClipView: Codable, Equatable, Identifiable {

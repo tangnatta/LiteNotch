@@ -20,10 +20,6 @@ public struct BodyConfig: Codable, Equatable {
 
     public static let `default` = BodyConfig()
 
-    /// Whether Home's big card shows the gauges.
-    public static func showsBodyCard(_ vm: ViewModel) -> Bool {
-        vm.settings.day.homeCard == .body && vm.body != nil
-    }
 }
 
 extension BodyConfig {

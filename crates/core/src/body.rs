@@ -8,22 +8,27 @@
 //! the level itself and nothing here changes by the second. While the user
 //! is away (screen locked, Mac asleep, lid shut) it stands still.
 //!
-//! Drinking counts best a cup at a time: a cup is worth `CUP_PCT`, and one
-//! drunk soon after the last is worth less, down to `SIP_PCT` right after
-//! it (`water_gain`). Stretching is quick taps, `REP_PCT` each, one per
-//! movement. There is no goal for the day and nothing counts against the
+//! Water is counted in millilitres, the level shown in percent. The tank
+//! holds `TANK_ML`, two cups. A cup is `CUP_ML`, and one drunk soon after
+//! the last counts less, down to `SIP_ML` right after it (`water_gain`):
+//! drinking little and often is gentler than a lot at once (the kidneys
+//! clear about 0.8 to 1 L an hour; spread-out drinks are kept better,
+//! though the evidence is small). At 250 ml an hour, about 2 L over a
+//! working day (EFSA, the US National Academies, NHS 6 to 8 glasses), the
+//! tank empties in about 90 minutes. Stretching is quick taps, `REP_PCT`
+//! each, one per movement. There is no goal for the day and nothing counts against the
 //! user: an empty gauge only means it is a good moment.
 
 use serde::{Deserialize, Serialize};
 
+/// A full water gauge: two cups.
+pub const TANK_ML: u32 = 400;
 /// A cup drunk at least `CUP_SPACING_MS` after the last one.
-pub const CUP_PCT: u32 = 50;
-/// A cup drunk right after the last one.
-pub const SIP_PCT: u32 = 10;
-/// How long after a cup the next one is worth a whole cup again.
-pub const CUP_SPACING_MS: u64 = 10 * 60_000;
-/// A cup worth at least this much is called a cup; less is a sip.
-const CUP_LABEL_MIN_PCT: u32 = 40;
+pub const CUP_ML: u32 = 200;
+/// A cup drunk right after the last one counts as a sip.
+pub const SIP_ML: u32 = 50;
+/// How long after a cup the next one counts whole again.
+pub const CUP_SPACING_MS: u64 = 15 * 60_000;
 /// One stretching movement: ten from empty fill it.
 pub const REP_PCT: u32 = 10;
 /// Where a gauge starts when turned on or when LiteNotch starts: half, so
@@ -92,13 +97,15 @@ impl BodyConfig {
     }
 }
 
-/// What one cup is worth, by how long ago the last one was.
+/// What one cup counts for, in ml, by how long ago the last one was:
+/// from `SIP_ML` right after it up to `CUP_ML`, in steps of 10 ml.
 pub fn water_gain(since_last_ms: Option<u64>) -> u32 {
     let Some(gap) = since_last_ms else {
-        return CUP_PCT;
+        return CUP_ML;
     };
     let gap = gap.min(CUP_SPACING_MS);
-    SIP_PCT + ((CUP_PCT - SIP_PCT) as u64 * gap / CUP_SPACING_MS) as u32
+    let ml = u64::from(SIP_ML) + u64::from(CUP_ML - SIP_ML) * gap / CUP_SPACING_MS;
+    ((ml + 5) / 10 * 10) as u32
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,7 +122,8 @@ struct Gauge {
     left_ms: u64,
     /// Counting down since then; `None` while the user is away.
     since: Option<u64>,
-    /// The last time it was filled, and by how much.
+    /// The last time it was filled, and by how much (ml for water, percent
+    /// for stretch).
     last: Option<(u64, u32)>,
 }
 
@@ -181,26 +189,26 @@ impl Gauge {
         self.span_ms = span_ms;
     }
 
-    /// Adds `pct` of the span at `now`.
-    fn add(&mut self, pct: u32, now: u64) {
+    /// Adds `amount` out of `whole` (ml of `TANK_ML`, or percent of 100)
+    /// at `now`.
+    fn add(&mut self, amount: u32, whole: u32, now: u64) {
         self.rebase(now);
-        let more = self.span_ms * u64::from(pct) / 100;
+        let more = self.span_ms * u64::from(amount) / u64::from(whole.max(1));
         self.left_ms = self.left_ms.saturating_add(more).min(self.span_ms);
-        self.last = Some((now, pct));
+        self.last = Some((now, amount));
     }
 
     fn view(&self, which: Which) -> GaugeView {
-        let label = |pct: u32| match which {
-            Which::Water if pct >= CUP_LABEL_MIN_PCT => "+1 cup",
-            Which::Water => "+1 sip",
-            Which::Stretch => "+1",
+        let label = |amount: u32| match which {
+            Which::Water => format!("+{amount} ml"),
+            Which::Stretch => "+1".to_string(),
         };
         GaugeView {
             span_ms: self.span_ms,
             left_ms: self.left_ms,
             empty_at_ms: self.deadline(),
             last_ms: self.last.map(|(at, _)| at),
-            last_label: self.last.map(|(_, pct)| label(pct).to_string()),
+            last_label: self.last.map(|(_, amount)| label(amount)),
         }
     }
 }
@@ -214,8 +222,8 @@ pub struct GaugeView {
     pub empty_at_ms: Option<u64>,
     /// When it was last filled, for "20m ago".
     pub last_ms: Option<u64>,
-    /// What floats up from the button when it was filled: "+1 cup",
-    /// "+1 sip" or "+1".
+    /// What floats up from the button when it was filled: "+200 ml",
+    /// "+50 ml" … for water, "+1" for stretch.
     pub last_label: Option<String>,
 }
 
@@ -274,13 +282,13 @@ impl Body {
         out
     }
 
-    /// A cup of water. Returns what it was worth, or `None` when water is
+    /// A cup of water. Returns what it counted for in ml, or `None` when water is
     /// off.
     pub fn drink(&mut self, counting: bool, now: u64) -> Option<u32> {
         let g = self.water.as_mut()?;
         g.sync(counting, now);
         let gain = water_gain(g.last.map(|(at, _)| now.saturating_sub(at)));
-        g.add(gain, now);
+        g.add(gain, TANK_ML, now);
         Some(gain)
     }
 
@@ -288,7 +296,7 @@ impl Body {
     pub fn stretch(&mut self, counting: bool, now: u64) -> Option<u32> {
         let g = self.stretch.as_mut()?;
         g.sync(counting, now);
-        g.add(REP_PCT, now);
+        g.add(REP_PCT, 100, now);
         Some(REP_PCT)
     }
 
@@ -426,30 +434,32 @@ mod tests {
 
     #[test]
     fn cups_count_best_one_at_a_time() {
-        assert_eq!(water_gain(None), CUP_PCT);
-        assert_eq!(water_gain(Some(0)), SIP_PCT);
-        assert_eq!(water_gain(Some(5 * MIN)), 30);
-        assert_eq!(water_gain(Some(CUP_SPACING_MS)), CUP_PCT);
-        assert_eq!(water_gain(Some(3 * CUP_SPACING_MS)), CUP_PCT);
+        assert_eq!(water_gain(None), CUP_ML);
+        assert_eq!(water_gain(Some(0)), SIP_ML);
+        assert_eq!(water_gain(Some(5 * MIN)), 100);
+        assert_eq!(water_gain(Some(7 * MIN + 30_000)), 130, "125 rounds up");
+        assert_eq!(water_gain(Some(CUP_SPACING_MS)), CUP_ML);
+        assert_eq!(water_gain(Some(3 * CUP_SPACING_MS)), CUP_ML);
+        assert_eq!(TANK_ML, 2 * CUP_ML, "a cup is half the tank");
 
         let mut b = both(60, 0);
         b.sync(true, T0 + 60 * MIN);
-        assert_eq!(b.drink(true, T0 + 60 * MIN), Some(50));
+        assert_eq!(b.drink(true, T0 + 60 * MIN), Some(200));
         assert_eq!(level(&b, Which::Water, T0 + 60 * MIN), 50);
-        assert_eq!(b.drink(true, T0 + 60 * MIN), Some(10), "right after: a sip");
-        assert_eq!(level(&b, Which::Water, T0 + 60 * MIN), 60);
+        assert_eq!(b.drink(true, T0 + 60 * MIN), Some(50), "right after: a sip");
+        assert_eq!(level(&b, Which::Water, T0 + 60 * MIN), 63);
         let w = b.view().unwrap().water.unwrap();
         assert_eq!(
             (w.last_ms, w.last_label.as_deref()),
-            (Some(T0 + 60 * MIN), Some("+1 sip"))
+            (Some(T0 + 60 * MIN), Some("+50 ml"))
         );
-        // Ten minutes later a whole cup again; never past full.
-        assert_eq!(b.drink(true, T0 + 70 * MIN), Some(50));
-        assert_eq!(level(&b, Which::Water, T0 + 70 * MIN), 93);
-        assert_eq!(b.drink(true, T0 + 80 * MIN), Some(50));
-        assert_eq!(level(&b, Which::Water, T0 + 80 * MIN), 100);
+        // Fifteen minutes later a whole cup again; never past full.
+        assert_eq!(b.drink(true, T0 + 75 * MIN), Some(200));
+        assert_eq!(level(&b, Which::Water, T0 + 75 * MIN), 88);
+        assert_eq!(b.drink(true, T0 + 90 * MIN), Some(200));
+        assert_eq!(level(&b, Which::Water, T0 + 90 * MIN), 100);
         let w = b.view().unwrap().water.unwrap();
-        assert_eq!(w.last_label.as_deref(), Some("+1 cup"));
+        assert_eq!(w.last_label.as_deref(), Some("+200 ml"));
     }
 
     #[test]

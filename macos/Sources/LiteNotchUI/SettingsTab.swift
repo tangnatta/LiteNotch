@@ -405,9 +405,13 @@ struct SettingsTab: View {
                 options: SettingsLimits.eyeBreakMins.map { ($0, $0 == 0 ? "Off" : $0 == 20 ? "20 min" : "\($0)") },
                 selection: $draft.peek.eyeBreakMins, label: "Eye break", height: 22)
         }
-        wideRow("Water", caption: "A gauge that runs down with time at the Mac. A cup fills half; cups spaced out count more.") {
+        wideRow(
+            "Water",
+            caption:
+                "Empties with time at the Mac. A 200 ml cup fills half, less if drunk right after the last. 90 min is about 2 L a workday."
+        ) {
             SegmentedPill(
-                options: SettingsLimits.waterMins.map { ($0, $0 == 0 ? "Off" : $0 == 90 ? "90 min" : "\($0)") },
+                options: SettingsLimits.waterMins.map { ($0, $0 == 0 ? "Off" : $0 == 120 ? "2 h" : "\($0)") },
                 selection: $draft.body.waterMins, label: "Water", height: 22)
         }
         wideRow("Stretch", caption: "Tap once for each stretch until it is full. The notch says so once when either runs out.") {
@@ -483,7 +487,7 @@ struct SettingsTab: View {
                     .help("Opens Settings \u{203A} Timer")
                 }
             }
-        } else if !draft.day.enabled {
+        } else if !homeCardWorks {
             row("Day progress is off", caption: "Until it is on, the big card is always Now playing.", tint: NT.text2) {
                 TextPill(title: "Turn on", tint: NT.text1, height: 22) {
                     model.settingsSection = .day
@@ -496,12 +500,18 @@ struct SettingsTab: View {
     private var bodyOn: Bool { draft.body.waterMins > 0 || draft.body.stretchMins > 0 }
 
     /// The chosen big card has something to show.
-    private var homeCardWorks: Bool { draft.day.homeCard == .body ? bodyOn : draft.day.enabled }
+    private var homeCardWorks: Bool {
+        switch draft.day.homeCard {
+        case .body: return bodyOn
+        case .auto: return bodyOn || draft.day.enabled
+        default: return draft.day.enabled
+        }
+    }
 
     private var homeCardCaption: String {
         switch draft.day.homeCard {
         case .body: return "Water and stretch gauges, always."
-        case .auto: return "Music while something plays, the day otherwise."
+        case .auto: return "Music for a minute when a song starts, then water and stretch or the day."
         case .day: return "How far through the day, always."
         case .media: return "Now playing, always."
         }

@@ -683,6 +683,9 @@ pub struct MediaView {
     pub controllable: bool,
     /// Image file of the artwork, when the playing app provides one.
     pub artwork_path: Option<String>,
+    /// When this track started playing (a new title or artist), as far as
+    /// LiteNotch saw. Home's Auto card gives music a minute from here.
+    pub changed_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -821,6 +824,8 @@ pub struct Core {
     eye_since: Option<u64>,
     /// The water and stretch gauges.
     body: Body,
+    /// When the playing track last changed (`MediaView::changed_at_ms`).
+    track_at: Option<u64>,
     /// When a break completed, while its line waits for the banner to go.
     quote_due: Option<u64>,
     /// The next local midnight while day progress is on, when today's
@@ -938,6 +943,7 @@ impl Core {
             away: false,
             eye_since: None,
             body,
+            track_at: None,
             quote_due: None,
             day_wake: None,
             update: Update::default(),
@@ -1067,6 +1073,7 @@ impl Core {
                 let enabled = self.settings.media.enabled;
                 if self.media.set(playing.filter(|_| enabled)) {
                     self.track_changed(now);
+                    self.track_at = Some(now);
                 }
             }
             Input::UsageResetToday => self.usage.reset_today(),
@@ -1912,6 +1919,7 @@ impl Core {
             position_at_ms: np.updated_ms,
             controllable: true,
             artwork_path: np.artwork_path.clone(),
+            changed_at_ms: self.track_at,
         });
         let matches = self.clipboard.search(&self.clip_query);
         let clipboard = ClipboardView {

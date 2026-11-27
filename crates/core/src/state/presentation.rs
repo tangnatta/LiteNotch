@@ -710,6 +710,22 @@ mod tests {
     }
 
     #[test]
+    fn the_view_says_when_the_track_changed() {
+        let mut c = Core::default();
+        // Even with the peek off: Home's Auto card goes by it.
+        with(&mut c, |s| s.peek.track_change = false, T0);
+        play(&mut c, "One", T0);
+        let at = |c: &Core, now| c.view(now).media.and_then(|m| m.changed_at_ms);
+        assert_eq!(at(&c, T0), Some(T0));
+        // Pause and play again, or a position update: the same track.
+        c.apply(Input::NowPlaying(Some(track("One", false))), T0 + 5_000);
+        play(&mut c, "One", T0 + 6_000);
+        assert_eq!(at(&c, T0 + 6_000), Some(T0));
+        play(&mut c, "Two", T0 + 90_000);
+        assert_eq!(at(&c, T0 + 90_000), Some(T0 + 90_000));
+    }
+
+    #[test]
     fn a_track_change_peek_can_be_turned_off() {
         let mut c = Core::default();
         with(&mut c, |s| s.peek.track_change = false, T0);
@@ -916,15 +932,19 @@ mod tests {
             .and_then(|b| b.water)
             .expect("water");
         assert_eq!(w.empty_at_ms, Some(T0 + 91 * MIN), "a cup is half");
-        assert_eq!(w.last_label.as_deref(), Some("+1 cup"));
+        assert_eq!(w.last_label.as_deref(), Some("+200 ml"));
         cmd(&mut c, Command::BodyDrink, T0 + 61 * MIN);
         let w = c
             .view(T0 + 61 * MIN)
             .body
             .and_then(|b| b.water)
             .expect("water");
-        assert_eq!(w.empty_at_ms, Some(T0 + 97 * MIN), "right after, a sip");
-        assert_eq!(w.last_label.as_deref(), Some("+1 sip"));
+        assert_eq!(
+            w.empty_at_ms,
+            Some(T0 + 98 * MIN + 30_000),
+            "right after, a sip: 50 ml is 7.5 min"
+        );
+        assert_eq!(w.last_label.as_deref(), Some("+50 ml"));
         let cmd: Command = serde_json::from_str(r#"{"cmd":"body_drink"}"#).expect("command");
         assert_eq!(cmd, Command::BodyDrink);
         let cmd: Command = serde_json::from_str(r#"{"cmd":"body_stretch"}"#).expect("command");

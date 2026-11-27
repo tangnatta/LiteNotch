@@ -162,7 +162,13 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   withers. With the tree the closed notch's icon and value are green
   (`NT.grow`), the same all day; Home stays grey. Home's big left card (Settings › Home,
   `day.home_card`: Auto, Day, Music, Body) shows the day instead of now
-  playing; Auto gives way to music while it plays. The line under the
+  playing. The rule is `HomeCardPick` (Models.swift): a fixed choice shows
+  that card, or now playing when it has nothing to show; Auto gives music
+  one minute from the moment a new track starts (`media.changed_at_ms`,
+  set by the core when the title or artist changes while playing), then
+  the gauges if on, else the day if on, else music stays. Home redraws once
+  when the minute ends (`HomeCardTimeline`, an explicit `TimelineView`
+  date, no timer). The line under the
   number is one of `DAY_LINES`, one per day.
   The principle: people have a life before and after work, so nothing
   here limits or judges their time. No bar, no colour, no overtime
@@ -178,10 +184,16 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   view model would change on every settle (the pasteboard poll) and the
   panel would redraw twice a second (measured: 1.3 % CPU, now 0.05–0.45 %). It
   says so once when empty (the Move peek above), then stays empty and
-  quiet. `body_drink`: a cup is worth `CUP_PCT` (50 %) when the last was
-  `CUP_SPACING_MS` (10 min) or more ago, down to `SIP_PCT` (10 %) right
-  after it (`water_gain`), so drinking spaced out counts more; the label
-  is "+1 cup" or "+1 sip". `body_stretch`: `REP_PCT` (10 %) per tap, no
+  quiet. Water counts in ml, the card shows percent: the tank is `TANK_ML`
+  (400 ml, two cups); `body_drink` adds `CUP_ML` (200 ml) when the last cup
+  was `CUP_SPACING_MS` (15 min) or more ago, down to `SIP_ML` (50 ml) right
+  after it, in 10 ml steps (`water_gain`), so drinking spaced out counts
+  more; the label is "+200 ml", "+130 ml", "+50 ml". Why (sources in the
+  module comment of `core::body`): about 2 L of drinks a day (EFSA, US
+  National Academies, NHS), kidneys clear about 0.8 to 1 L an hour, spread
+  drinks are kept a little better (small studies); 90 min to empty is
+  about 250 ml an hour. No daily total is shown: thirst is a fine guide for
+  healthy adults at rest, and a total would be a quota. `body_stretch`: `REP_PCT` (10 %) per tap, no
   limit, one tap per movement. Home's big card (`home_card: body`,
   `body.show`: Water | Both) is `BodyCard` (`Body.swift`): each gauge a
   tank filled from the bottom, blue water and orange stretch at every

@@ -353,11 +353,13 @@ it was showing. These never land in the inbox. All are set in
   screen, a blinking face and "Look away".
 - **Water** and **Stretch** (off unless you turn them on): two gauges that
   run down while you're at the Mac. When one runs empty the notch says so
-  once. Fill water with **Drank**: a cup fills half, and a cup right after
-  another counts as a sip, so spacing them out counts more. Fill stretch by
+  once. Fill water with **Drank**: a 200 ml cup fills half the tank, and a
+  cup right after another counts as 50 ml, so spacing them out (15 minutes)
+  counts more. Fill stretch by
   tapping **Stretch** once per movement. Show them on Home with
   **Settings › Home › Big card: Body** (water alone, or water and stretch
-  side by side). They replace the older Move reminder; its setting carries
+  side by side). **Auto** shows a new song for a minute, then the gauges
+  or the day. They replace the older Move reminder; its setting carries
   over.
 
 These count only the minutes you are at the Mac, whatever the focus timer is

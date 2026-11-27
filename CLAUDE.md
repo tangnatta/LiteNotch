@@ -234,7 +234,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   `body.show`: Water | Both) is `BodyCard` (`Body.swift`): each gauge a
   tank filled from the bottom, blue water and orange stretch at every
   level (never a warning colour), the number centred like day progress,
-  a button that floats the label up ("+2", "+3" for stretch taps in a
+  a button that floats the label up (a click anywhere on the tank counts the same; the card does not open Settings, a near miss did) ("+2", "+3" for stretch taps in a
   row, counted in the shell). The water falls, rises over 0.6 s after a tap
   (from where it is on screen; none on a resize), and its wave slides by Core
   Animation only (`LiquidNSView`, the wave capped at 30 fps, the fall at

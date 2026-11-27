@@ -179,6 +179,10 @@ private struct GaugeColumn: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous))
         .background(NT.fill, in: RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous))
+        // A click anywhere on the tank counts like its button: a near miss
+        // used to open Settings instead.
+        .contentShape(RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous))
+        .onTapGesture { send(kind.command) }
         .onChange(of: gauge.lastMs) { _, _ in
             guard let label = gauge.lastLabel else { return }
             var text = label

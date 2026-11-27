@@ -65,10 +65,6 @@ struct HomeTab: View {
                 model.showHomeCard(.body)
                 model.send(command)
             }
-            .opens("water and stretch settings", model) {
-                model.settingsSection = .day
-                model.selectTab(.settings)
-            }
         case (.day, _, let day?):
             dayCard(day)
         default:

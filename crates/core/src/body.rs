@@ -29,6 +29,9 @@ pub const CUP_ML: u32 = 200;
 pub const SIP_ML: u32 = 50;
 /// How long after a cup the next one counts whole again.
 pub const CUP_SPACING_MS: u64 = 15 * 60_000;
+/// Below this a gauge says so once (as when it runs empty), so there is a
+/// little warning before it is empty. Filling it above re-arms it.
+pub const LOW_PCT: u32 = 20;
 /// One stretching movement: ten from empty fill it.
 pub const REP_PCT: u32 = 10;
 /// Where a gauge starts when turned on or when LiteNotch starts: half, so
@@ -151,10 +154,16 @@ impl Gauge {
     /// change on every settle (the pasteboard poll runs twice a second)
     /// and the shell would redraw the panel each time.
     fn sync(&mut self, counting: bool, now: u64) -> Option<u64> {
-        let mut emptied = None;
+        let mut said = None;
         if let Some(s) = self.since {
-            if self.left_ms > 0 && self.left(now) == 0 {
-                emptied = Some(s.saturating_add(self.left_ms));
+            let low = self.low_ms();
+            let left = self.left(now);
+            if self.left_ms > 0 && left == 0 {
+                said = Some(s.saturating_add(self.left_ms));
+                self.rebase(now);
+            } else if self.left_ms > low && left <= low {
+                // Rebased, so it is said once per fall past the mark.
+                said = Some(s.saturating_add(self.left_ms - low));
                 self.rebase(now);
             }
         }
@@ -162,7 +171,23 @@ impl Gauge {
             self.rebase(now);
             self.since = counting.then_some(now);
         }
-        emptied
+        said
+    }
+
+    /// Time left at `LOW_PCT`.
+    fn low_ms(&self) -> u64 {
+        self.span_ms * u64::from(LOW_PCT) / 100
+    }
+
+    /// When `sync` has something to say: falling past `LOW_PCT`, or empty.
+    fn wake(&self) -> Option<u64> {
+        let s = self.since?;
+        let low = self.low_ms();
+        match self.left_ms {
+            0 => None,
+            l if l > low => Some(s.saturating_add(l - low)),
+            l => Some(s.saturating_add(l)),
+        }
     }
 
     /// Makes `left_ms` the time left at `now`.
@@ -288,8 +313,8 @@ impl Body {
         }
     }
 
-    /// Brings both to `now`. Returns the gauges that ran empty since the
-    /// last call, with when.
+    /// Brings both to `now`. Returns the gauges that fell past `LOW_PCT` or
+    /// ran empty since the last call, with when.
     pub fn sync(&mut self, counting: bool, now: u64) -> Vec<(Which, u64)> {
         let mut out = Vec::new();
         for (which, gauge) in [
@@ -326,7 +351,7 @@ impl Body {
         [self.water, self.stretch]
             .iter()
             .flatten()
-            .filter_map(Gauge::deadline)
+            .filter_map(Gauge::wake)
             .min()
     }
 
@@ -398,8 +423,18 @@ mod tests {
         };
         b.set_config(&cfg, true, T0);
         assert_eq!(level(&b, Which::Water, T0), u64::from(START_PCT));
-        assert_eq!(b.next_deadline(), Some(T0 + 30 * MIN));
+        assert_eq!(empties(&b), Some(T0 + 30 * MIN));
         assert_eq!(b.view().unwrap().water.unwrap().last_ms, None);
+    }
+
+    /// When the first gauge runs empty, as the view says.
+    fn empties(b: &Body) -> Option<u64> {
+        let v = b.view()?;
+        [v.water, v.stretch]
+            .into_iter()
+            .flatten()
+            .filter_map(|g| g.empty_at_ms)
+            .min()
     }
 
     fn level(b: &Body, which: Which, now: u64) -> u64 {
@@ -433,16 +468,24 @@ mod tests {
     fn a_gauge_starts_full_and_runs_down_with_screen_time() {
         let mut b = both(60, 45);
         assert_eq!(level(&b, Which::Water, T0), 100);
-        assert_eq!(b.next_deadline(), Some(T0 + 45 * MIN));
+        assert_eq!(empties(&b), Some(T0 + 45 * MIN));
+        // The first wake: stretch falling past 20 % (36 of its 45 minutes).
+        assert_eq!(b.next_deadline(), Some(T0 + 36 * MIN));
         assert_eq!(level(&b, Which::Water, T0 + 15 * MIN), 75);
         assert!(b.sync(true, T0 + 30 * MIN).is_empty());
         assert_eq!(level(&b, Which::Stretch, T0 + 30 * MIN), 33);
         assert_eq!(
+            b.sync(true, T0 + 36 * MIN),
+            [(Which::Stretch, T0 + 36 * MIN)]
+        );
+        assert!(b.sync(true, T0 + 40 * MIN).is_empty(), "said once");
+        assert_eq!(b.next_deadline(), Some(T0 + 45 * MIN));
+        assert_eq!(
             b.sync(true, T0 + 45 * MIN),
             [(Which::Stretch, T0 + 45 * MIN)]
         );
-        assert_eq!(b.next_deadline(), Some(T0 + 60 * MIN));
-        // Empty stays empty and quiet.
+        assert_eq!(b.next_deadline(), Some(T0 + 48 * MIN), "water's 20 %");
+        // Slept past both of water's marks: said once, as empty.
         assert_eq!(b.sync(true, T0 + 70 * MIN), [(Which::Water, T0 + 60 * MIN)]);
         assert_eq!(b.next_deadline(), None);
         assert!(b.sync(true, T0 + 90 * MIN).is_empty());
@@ -450,15 +493,36 @@ mod tests {
     }
 
     #[test]
+    fn filling_above_the_mark_arms_it_again() {
+        let mut b = both(0, 50);
+        assert_eq!(
+            b.sync(true, T0 + 40 * MIN),
+            [(Which::Stretch, T0 + 40 * MIN)]
+        );
+        // At 18 %, two stretches: 38 %, above the mark again (19 of 50
+        // minutes left, the mark at 10).
+        b.stretch(true, T0 + 41 * MIN);
+        b.stretch(true, T0 + 41 * MIN);
+        assert_eq!(b.next_deadline(), Some(T0 + 50 * MIN));
+        assert_eq!(
+            b.sync(true, T0 + 50 * MIN),
+            [(Which::Stretch, T0 + 50 * MIN)]
+        );
+        // At 18 % again, one stretch: 28 %, the mark 4 minutes away.
+        b.stretch(true, T0 + 51 * MIN);
+        assert_eq!(b.next_deadline(), Some(T0 + 55 * MIN));
+    }
+
+    #[test]
     fn the_view_does_not_change_while_it_only_counts_down() {
         let mut b = both(60, 45);
         let before = b.view();
-        for minute in 1..40 {
+        for minute in 1..36 {
             assert!(b.sync(true, T0 + minute * MIN).is_empty());
         }
         assert_eq!(b.view(), before, "the shell draws the fall itself");
-        b.sync(true, T0 + 45 * MIN);
-        assert_ne!(b.view(), before, "running empty is news");
+        b.sync(true, T0 + 36 * MIN);
+        assert_ne!(b.view(), before, "falling past 20 % is news, once");
     }
 
     #[test]
@@ -469,7 +533,7 @@ mod tests {
         assert_eq!(b.next_deadline(), None);
         assert_eq!(level(&b, Which::Water, T0 + 90 * MIN), 50);
         b.sync(true, T0 + 90 * MIN);
-        assert_eq!(b.next_deadline(), Some(T0 + 120 * MIN));
+        assert_eq!(empties(&b), Some(T0 + 120 * MIN));
         // Filled while away (a click after the lid opens, before the shell
         // says so) is kept too.
         b.sync(false, T0 + 100 * MIN);
@@ -534,7 +598,7 @@ mod tests {
         };
         b.set_config(&longer, true, T0 + 30 * MIN);
         assert_eq!(level(&b, Which::Water, T0 + 30 * MIN), 50);
-        assert_eq!(b.next_deadline(), Some(T0 + 45 * MIN));
+        assert_eq!(empties(&b), Some(T0 + 45 * MIN));
         let water_off = BodyConfig {
             water_mins: 0,
             ..longer.clone()

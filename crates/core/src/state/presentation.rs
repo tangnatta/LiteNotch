@@ -860,7 +860,16 @@ mod tests {
     #[test]
     fn an_empty_gauge_peeks_once_then_stays_quiet() {
         let mut c = moving();
-        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN));
+        // First at 20 %: 8 of 40 minutes left, 12 minutes in.
+        assert_eq!(c.next_deadline(), Some(T0 + 12 * MIN));
+        c.apply(Input::Tick, T0 + 12 * MIN);
+        let v = compact(&c, T0 + 12 * MIN);
+        assert_eq!(
+            (v.peek, v.title.as_str()),
+            (Some(PeekKind::Move), "Stretch")
+        );
+        run_to(&mut c, T0 + 12 * MIN + NUDGE_MS);
+        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN), "then when empty");
         c.apply(Input::Tick, T0 + 20 * MIN);
         let v = compact(&c, T0 + 20 * MIN);
         assert_eq!(
@@ -882,12 +891,12 @@ mod tests {
         for _ in 0..5 {
             cmd(&mut c, Command::BodyStretch, at);
         }
-        assert_eq!(c.next_deadline(), Some(at + 20 * MIN));
+        assert_eq!(c.next_deadline(), Some(at + 12 * MIN), "its 20 % again");
         // Locking stops it; coming back goes on from where it was.
         away(&mut c, true, at + 5 * MIN);
         assert_eq!(c.next_deadline(), None);
         away(&mut c, false, at + 60 * MIN);
-        assert_eq!(c.next_deadline(), Some(at + 75 * MIN));
+        assert_eq!(c.next_deadline(), Some(at + 67 * MIN));
 
         // A sleep without word from the shell: late, so no peek.
         c.apply(Input::Tick, at + 200 * MIN);
@@ -1070,10 +1079,13 @@ mod tests {
     fn gauges_count_screen_time_whatever_the_focus_timer_does() {
         assert_eq!(Core::default().settings().body, BodyConfig::default());
         assert_eq!(BodyConfig::default().stretch_mins, 0, "off by default");
-        // No focus session at all: it still comes after 20 minutes at the Mac.
+        // No focus session at all: it still comes after 12 minutes at the
+        // Mac (its 20 %), then at 20 (empty).
         let mut c = moving();
-        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN));
-        c.apply(Input::Tick, T0 + 20 * MIN);
+        assert_eq!(c.next_deadline(), Some(T0 + 12 * MIN));
+        c.apply(Input::Tick, T0 + 12 * MIN);
+        assert_eq!(compact(&c, T0 + 12 * MIN).peek, Some(PeekKind::Move));
+        run_to(&mut c, T0 + 20 * MIN);
         assert_eq!(compact(&c, T0 + 20 * MIN).peek, Some(PeekKind::Move));
 
         // Starting, pausing and finishing a focus session change nothing.
@@ -1081,7 +1093,7 @@ mod tests {
         cmd(&mut c, Command::PomodoroToggle, T0 + 5 * MIN);
         cmd(&mut c, Command::PomodoroToggle, T0 + 8 * MIN);
         cmd(&mut c, Command::PomodoroReset, T0 + 9 * MIN);
-        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN));
+        assert_eq!(c.next_deadline(), Some(T0 + 12 * MIN));
 
         // A break counts too: the user is still at the screen.
         let mut c = stretching(56);
@@ -1135,7 +1147,7 @@ mod tests {
         let mut c = moving();
         lid_mode_on(&mut c, T0);
         lid(&mut c, true, true, T0 + 2 * MIN);
-        assert_eq!(c.next_deadline(), Some(T0 + 20 * MIN));
+        assert_eq!(c.next_deadline(), Some(T0 + 12 * MIN), "its 20 %, on time");
     }
 
     #[test]

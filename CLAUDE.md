@@ -186,7 +186,10 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   draws the level itself; between events a gauge is left untouched, or the
   view model would change on every settle (the pasteboard poll) and the
   panel would redraw twice a second (measured: 1.3 % CPU, now 0.05–0.45 %). It
-  says so once when empty (the Move peek above), then stays empty and
+  says so twice, as the Move peek above: once when it falls past
+  `LOW_PCT` (20 %) and once when empty (`Gauge::wake` puts both in
+  `next_deadline`; the gauge is rebased at each, so each is said once,
+  and filling it above 20 % arms the first again), then stays empty and
   quiet. Water counts in ml, the card shows percent: the tank is `TANK_ML`
   (400 ml, two cups); `body_drink` adds `CUP_ML` (200 ml) when the last cup
   was `CUP_SPACING_MS` (15 min) or more ago, down to `SIP_ML` (50 ml) right

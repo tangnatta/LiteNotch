@@ -353,8 +353,8 @@ water and stretch in **Settings › Day**):
 - **Eye break** (off unless you turn it on): every few minutes at the
   screen, a blinking face and "Look away".
 - **Water** and **Stretch** (off unless you turn them on): two gauges that
-  run down while you're at the Mac. When one runs empty the notch says so
-  once. Fill water with **Drank**: a 200 ml cup fills half the tank, and a
+  run down while you're at the Mac. When one falls below 20 % and again when
+  it runs empty, the notch says so once. Fill water with **Drank**: a 200 ml cup fills half the tank, and a
   cup right after another counts as 50 ml, so spacing them out (15 minutes)
   counts more. Fill stretch by
   tapping **Stretch** once per movement. Show them on Home with

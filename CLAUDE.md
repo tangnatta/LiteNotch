@@ -109,7 +109,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   mark while running; pausing keeps time left still, so it never repeats.
   Warning times join `next_deadline`, so peeks add no polling.
   Three wellbeing peeks (`ActivityKind::Nudge`), each with an Off choice
-  (the eye break in Settings › Timer, the gauges in Settings › Day). The eye break and the gauges both count screen time only
+  (the eye break and the gauges in Settings › Day, the line after a break in Settings › Timer). The eye break and the gauges both count screen time only
   (`Core::is_away`: the shell's `screen_away` or `lid_shut`, which is the lid
   shut in closed-lid mode with no other display, so caffeine holding a shut
   Mac awake does not count); they never follow the focus timer (an earlier

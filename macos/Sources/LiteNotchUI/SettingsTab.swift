@@ -400,11 +400,6 @@ struct SettingsTab: View {
             }
         }
         Hairline().padding(.vertical, 2)
-        wideRow("Eye break", caption: "A quick blink and look away, every so many minutes at the Mac.") {
-            SegmentedPill(
-                options: SettingsLimits.eyeBreakMins.map { ($0, $0 == 0 ? "Off" : $0 == 20 ? "20 min" : "\($0)") },
-                selection: $draft.peek.eyeBreakMins, label: "Eye break", height: 22)
-        }
         toggle(
             "A few words after a break", $draft.peek.breakQuote,
             caption: "The closed notch shows a short line of encouragement when a break ends.")
@@ -450,6 +445,11 @@ struct SettingsTab: View {
         // Water and stretch: like day progress, a quiet reading of the day
         // that Home can show; on or off apart from it.
         Hairline().padding(.vertical, 2)
+        wideRow("Eye break", caption: "A quick blink and look away, every so many minutes at the Mac.") {
+            SegmentedPill(
+                options: SettingsLimits.eyeBreakMins.map { ($0, $0 == 0 ? "Off" : $0 == 20 ? "20 min" : "\($0)") },
+                selection: $draft.peek.eyeBreakMins, label: "Eye break", height: 22)
+        }
         toggle(
             "Water", gauge($draft.body.waterMins, SettingsLimits.waterMins),
             caption: "Runs down while you\u{2019}re at the Mac. A 200 ml cup fills half; spaced-out cups count more.")

@@ -484,12 +484,19 @@ public enum HomeCardShown: Equatable {
 /// The rule for Home's big card.
 ///
 /// A fixed choice shows that card, or now playing when it has nothing to
-/// show (day progress off or a day off, both gauges off). Auto gives music
-/// one minute from the moment a new track starts (`musicMs`), then the
-/// gauges if they are on, else the day if it is on; with neither, now
-/// playing stays.
+/// show (day progress off or a day off, both gauges off). Auto takes the
+/// first that applies:
+/// 1. the gauges, if one is below `lowPct` (20 %);
+/// 2. music, for `musicMs` (one minute) after a new track starts;
+/// 3. the gauges, if one is below `halfPct` (50 %);
+/// 4. the day, if day progress is on;
+/// 5. music, while something plays;
+/// 6. the gauges, if on (rather than an empty "Nothing playing");
+/// 7. now playing.
 public enum HomeCardPick {
     public static let musicMs = 60_000
+    public static let lowPct = 20
+    public static let halfPct = 50
 
     public static func card(_ vm: ViewModel, nowMs: Int) -> HomeCardShown {
         switch vm.settings.day.homeCard {
@@ -497,22 +504,45 @@ public enum HomeCardPick {
         case .day: return vm.day != nil ? .day : .media
         case .body: return vm.body != nil ? .body : .media
         case .auto:
-            let other: HomeCardShown? = vm.body != nil ? .body : vm.day != nil ? .day : nil
-            guard let other else { return .media }
-            if let m = vm.media, m.playing, let at = m.changedAtMs, nowMs < at + musicMs {
-                return .media
-            }
-            return other
+            let lowest = lowestPct(vm, nowMs: nowMs)
+            let playing = vm.media?.playing ?? false
+            if let l = lowest, l < lowPct { return .body }
+            if newTrack(vm, nowMs: nowMs) { return .media }
+            if let l = lowest, l < halfPct { return .body }
+            if vm.day != nil { return .day }
+            if playing { return .media }
+            if vm.body != nil { return .body }
+            return .media
         }
     }
 
-    /// When `card` will give another answer without a new view model: the
-    /// end of the music's minute.
+    /// When `card` may give another answer without a new view model: the
+    /// end of a new track's minute, or a gauge falling past 50 % or 20 %.
     public static func nextChangeMs(_ vm: ViewModel, nowMs: Int) -> Int? {
-        guard vm.settings.day.homeCard == .auto, let m = vm.media, m.playing,
-            let at = m.changedAtMs, nowMs < at + musicMs
-        else { return nil }
-        return at + musicMs
+        guard vm.settings.day.homeCard == .auto else { return nil }
+        var times: [Int] = []
+        if newTrack(vm, nowMs: nowMs), let at = vm.media?.changedAtMs { times.append(at + musicMs) }
+        for g in [vm.body?.water, vm.body?.stretch].compactMap({ $0 }) {
+            guard let end = g.emptyAtMs else { continue }
+            for pct in [halfPct, lowPct] {
+                // Below `pct` from this moment on (the level rounds to whole
+                // percent, so a hair past the mark).
+                let t = end - g.spanMs * pct / 100 + g.spanMs / 200 + 1
+                if t > nowMs { times.append(t) }
+            }
+        }
+        return times.min()
+    }
+
+    static func newTrack(_ vm: ViewModel, nowMs: Int) -> Bool {
+        guard let m = vm.media, m.playing, let at = m.changedAtMs else { return false }
+        return nowMs < at + musicMs
+    }
+
+    /// The lower of the two gauges, in whole percent, or nil when both are off.
+    static func lowestPct(_ vm: ViewModel, nowMs: Int) -> Int? {
+        [vm.body?.water, vm.body?.stretch].compactMap { $0 }
+            .map { BodyMath.percent($0, nowMs: nowMs) }.min()
     }
 }
 

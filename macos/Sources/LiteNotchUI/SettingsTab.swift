@@ -506,7 +506,7 @@ struct SettingsTab: View {
     private var homeCardCaption: String {
         switch draft.day.homeCard {
         case .body: return "Water and stretch gauges, always."
-        case .auto: return "Music for a minute when a song starts, then water and stretch or the day."
+        case .auto: return "Water and stretch when low, a new song for a minute, then the day or music."
         case .day: return "How far through the day, always."
         case .media: return "Now playing, always."
         }

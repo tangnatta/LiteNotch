@@ -44,11 +44,7 @@ final class BodyTests: XCTestCase {
         var off = vm
         off.body = nil
         XCTAssertEqual(HomeCardPick.card(off, nowMs: 0), .media, "gauges off: now playing instead")
-        // Auto prefers the gauges to the day once a song's minute is over.
-        var auto = vm
-        auto.settings.day.homeCard = .auto
-        auto.day = DayView(startMs: 0, endMs: 1, line: "")
-        XCTAssertEqual(HomeCardPick.card(auto, nowMs: 0), .body)
+
         XCTAssertNil(try fixture("idle").body)
         XCTAssertEqual(try fixture("idle").settings.body, .default)
     }
@@ -75,5 +71,59 @@ final class LiquidLayoutTests: XCTestCase {
         XCTAssertEqual(top(1000, emptyAt: 1000), 0, accuracy: 0.5, "counting: rests empty")
         XCTAssertEqual(top(250, emptyAt: nil), body / 4, accuracy: 0.5, "after a tap, still from the bottom")
         XCTAssertEqual(top(250, emptyAt: nil), body / 4, accuracy: 0.5, "and again")
+    }
+}
+
+final class HomeAutoTests: XCTestCase {
+    private let t0 = 10_000_000
+    private let span = 100 * 60_000
+
+    /// Everything on: a gauge at `pct` (still), the day, and a song.
+    private func vm(pct: Int, songAt: Int?, playing: Bool = true, day: Bool = true) throws -> ViewModel {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/body.json")
+        var v = try ViewModel.decode(Data(contentsOf: url))
+        v.settings.day.homeCard = .auto
+        v.body = BodyView(
+            water: GaugeView(spanMs: span, leftMs: span * pct / 100, emptyAtMs: nil),
+            stretch: GaugeView(spanMs: span, leftMs: span, emptyAtMs: nil))
+        v.day = day ? DayView(startMs: 0, endMs: 1, line: "") : nil
+        v.media = MediaView(
+            app: "Music", title: "One", artist: "Band", album: "", playing: playing, durationMs: nil,
+            positionMs: nil, positionAtMs: t0, controllable: true, artworkPath: nil, changedAtMs: songAt)
+        return v
+    }
+
+    func testTheOrder() throws {
+        let song = t0 - 10_000
+        // 1. A gauge below 20 % comes before a new song.
+        XCTAssertEqual(HomeCardPick.card(try vm(pct: 19, songAt: song), nowMs: t0), .body)
+        // 2. A new song's minute.
+        XCTAssertEqual(HomeCardPick.card(try vm(pct: 30, songAt: song), nowMs: t0), .media)
+        XCTAssertEqual(HomeCardPick.card(try vm(pct: 80, songAt: song), nowMs: t0), .media)
+        // 3. Below 50 % once the minute is over.
+        XCTAssertEqual(HomeCardPick.card(try vm(pct: 49, songAt: t0 - 60_000), nowMs: t0), .body)
+        // 4. The day.
+        XCTAssertEqual(HomeCardPick.card(try vm(pct: 50, songAt: t0 - 60_000), nowMs: t0), .day)
+        // 5. Music while it plays, with day progress off.
+        XCTAssertEqual(HomeCardPick.card(try vm(pct: 80, songAt: nil, day: false), nowMs: t0), .media)
+        // 6. Nothing playing: the gauges rather than an empty card.
+        XCTAssertEqual(
+            HomeCardPick.card(try vm(pct: 80, songAt: nil, playing: false, day: false), nowMs: t0), .body)
+    }
+
+    func testItRedrawsWhenAGaugeFallsPastAMark() throws {
+        var v = try vm(pct: 60, songAt: nil)
+        // Counting: 60 % now, empty in 60 min.
+        v.body?.water = GaugeView(spanMs: span, leftMs: 0, emptyAtMs: t0 + span * 60 / 100)
+        let half = try XCTUnwrap(HomeCardPick.nextChangeMs(v, nowMs: t0))
+        XCTAssertEqual(BodyMath.percent(try XCTUnwrap(v.body?.water), nowMs: half - 1), 50)
+        XCTAssertEqual(BodyMath.percent(try XCTUnwrap(v.body?.water), nowMs: half), 49)
+        XCTAssertEqual(HomeCardPick.card(v, nowMs: half - 1), .day)
+        XCTAssertEqual(HomeCardPick.card(v, nowMs: half), .body)
+        let low = try XCTUnwrap(HomeCardPick.nextChangeMs(v, nowMs: half))
+        XCTAssertEqual(BodyMath.percent(try XCTUnwrap(v.body?.water), nowMs: low), 19)
+        XCTAssertNil(HomeCardPick.nextChangeMs(v, nowMs: low))
     }
 }

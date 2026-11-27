@@ -359,8 +359,9 @@ stretch in **Settings › Day**):
   counts more. Fill stretch by
   tapping **Stretch** once per movement. Show them on Home with
   **Settings › Home › Big card: Body** (water alone, or water and stretch
-  side by side). **Auto** shows a new song for a minute, then the gauges
-  or the day. They replace the older Move reminder; its setting carries
+  side by side). **Auto** shows the gauges when one is low (below 20 %),
+  a new song for a minute, the gauges again below 50 %, then the day or
+  music. They replace the older Move reminder; its setting carries
   over.
 
 These count only the minutes you are at the Mac, whatever the focus timer is

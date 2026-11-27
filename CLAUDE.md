@@ -163,12 +163,15 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   (`NT.grow`), the same all day; Home stays grey. Home's big left card (Settings › Home,
   `day.home_card`: Auto, Day, Music, Body) shows the day instead of now
   playing. The rule is `HomeCardPick` (Models.swift): a fixed choice shows
-  that card, or now playing when it has nothing to show; Auto gives music
-  one minute from the moment a new track starts (`media.changed_at_ms`,
-  set by the core when the title or artist changes while playing), then
-  the gauges if on, else the day if on, else music stays. Home redraws once
-  when the minute ends (`HomeCardTimeline`, an explicit `TimelineView`
-  date, no timer). The line under the
+  that card, or now playing when it has nothing to show. Auto takes the
+  first that applies: the gauges if one is below 20 %; music for one
+  minute after a new track starts (`media.changed_at_ms`, set by the core
+  when the title or artist changes while playing); the gauges if one is
+  below 50 %; the day; music while it plays; the gauges; now playing.
+  Home redraws only when that answer can change, at the end of the
+  minute or when a gauge falls past 50 % or 20 % (`HomeCardTimeline`,
+  explicit `TimelineView` dates from `HomeCardPick.nextChangeMs`, no
+  timer). The line under the
   number is one of `DAY_LINES`, one per day.
   The principle: people have a life before and after work, so nothing
   here limits or judges their time. No bar, no colour, no overtime

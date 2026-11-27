@@ -899,8 +899,10 @@ impl Core {
         let mut pomodoro = Pomodoro::new(settings.pomodoro.clone());
         pomodoro.restore_stats(stats);
         let mut body = Body::default();
-        // Nothing has said the user is away yet.
-        body.set_config(&settings.body, true, 0);
+        // Not counting yet: there is no time here, and counting from 0 (1970)
+        // emptied the gauges at once. The first settle starts them at the
+        // real time.
+        body.set_config(&settings.body, false, 0);
         let clipboard = match clipboard.filter(|_| settings.general.persist_clipboard) {
             Some(saved) => ClipboardHistory::from_persisted(settings.clipboard.clone(), saved),
             None => ClipboardHistory::new(settings.clipboard.clone()),

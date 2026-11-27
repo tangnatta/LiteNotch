@@ -896,6 +896,23 @@ mod tests {
         assert_eq!(c.view(at + 201 * MIN).body, None, "off means gone");
     }
 
+    /// Reported: after a restart the gauges showed 0 %. They were started
+    /// at time 0, so the first look at the real time found them long empty.
+    #[test]
+    fn saved_gauges_start_at_half_when_litenotch_starts() {
+        let saved: crate::state::Persisted = serde_json::from_value(
+            json!({"settings":{"body":{"water_mins":90,"stretch_mins":60}}}),
+        )
+        .expect("saved");
+        let mut c = Core::new(saved);
+        c.apply(Input::Tick, T0);
+        let b = c.view(T0).body.expect("gauges");
+        let w = b.water.expect("water");
+        assert_eq!(w.empty_at_ms, Some(T0 + 45 * MIN), "half of 90 min");
+        assert_eq!(b.stretch.and_then(|s| s.empty_at_ms), Some(T0 + 30 * MIN));
+        assert_eq!(compact(&c, T0).peek, None, "not announced as empty");
+    }
+
     #[test]
     fn water_says_so_and_both_at_once_are_one_peek() {
         let mut c = Core::default();

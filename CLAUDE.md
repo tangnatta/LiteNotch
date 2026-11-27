@@ -189,7 +189,9 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   when it began over the big card (`homeCardFrame`), stops at the ends,
   and slides up to a later page and down to an earlier one
   (`homeCardForward`, drawn once before the change so the outgoing card
-  leaves the same way). The dots sit inside the card and do not slide. None while an approval, the welcome or a
+  leaves the same way). The dots sit inside the card and do not slide; they show only while the
+  pointer is over the card and for 1.5 s after a page change
+  (`AutoHidingDots`), then fade out. None while an approval, the welcome or a
   text field is up. Direction follows the system's natural scrolling. The line under the
   number is one of `DAY_LINES`, one per day.
   With the sun icons Home's day card sits on a grainy sky gradient at 50 % (`DaySky.swift`): morning, day, evening, night follow `Format.daySymbol`; still, no animation.

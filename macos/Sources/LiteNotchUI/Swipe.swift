@@ -143,6 +143,44 @@ extension PanelState {
     }
 }
 
+/// The page dots, inside the card's right edge while there is more than
+/// one page, shown only while the pointer is over the card and for a
+/// moment after the page changes; otherwise they fade out.
+struct AutoHidingDots: ViewModifier {
+    let pages: [HomeCardShown]
+    let shown: HomeCardShown
+    let select: (HomeCardShown) -> Void
+    static let lingerSecs: TimeInterval = 1.5
+
+    @State private var hovering = false
+    @State private var recent = false
+    @State private var hide: DispatchWorkItem?
+
+    func body(content: Content) -> some View {
+        let visible = hovering || recent
+        content
+            .onHover { hovering = $0 }
+            .overlay(alignment: .trailing) {
+                if pages.count > 1 {
+                    CardPageDots(pages: pages, shown: shown, select: select)
+                        .padding(.trailing, 1)
+                        .opacity(visible ? 1 : 0)
+                        .allowsHitTesting(visible)
+                        .animation(.easeOut(duration: 0.2), value: visible)
+                }
+            }
+            .onChange(of: shown) { _, _ in flash() }
+    }
+
+    private func flash() {
+        recent = true
+        hide?.cancel()
+        let work = DispatchWorkItem { recent = false }
+        hide = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.lingerSecs, execute: work)
+    }
+}
+
 /// Dots down the right edge of Home's big card, one per page; the shown
 /// one is bright. A click shows that page.
 struct CardPageDots: View {

@@ -28,7 +28,11 @@ struct HomeTab: View {
                 .frame(width: 236)
                 .clipped()
                 // Outside the sliding card, so the dots stay put.
-                .overlay(alignment: .trailing) { pageDots(shown) }
+                .modifier(
+                    AutoHidingDots(pages: HomeCardPick.pages(vm), shown: shown) {
+                        model.showHomeCard($0, from: shown)
+                    }
+                )
                 .background(CardFrameReporter(model: model))
                 // One list, not three cards: the now-playing card is the only
                 // container on this screen.
@@ -69,16 +73,6 @@ struct HomeTab: View {
             dayCard(day)
         default:
             nowPlaying
-        }
-    }
-
-    /// Dots inside the card's right edge, one per page, while there is
-    /// more than one; up/down swipes over the card move between them.
-    @ViewBuilder private func pageDots(_ shown: HomeCardShown) -> some View {
-        let pages = HomeCardPick.pages(vm)
-        if pages.count > 1 {
-            CardPageDots(pages: pages, shown: shown) { model.showHomeCard($0, from: shown) }
-                .padding(.trailing, 1)
         }
     }
 

@@ -26,6 +26,12 @@ final class SwipeTrackerTests: XCTestCase {
         XCTAssertEqual(steps, [.init(axis: .vertical, forward: true)])
     }
 
+    func testAListScrolledDownAskewDoesNotTurnATab() {
+        // More across than down at first, but not twice as much.
+        XCTAssertEqual(run([(-6, -4), (-20, -15), (-30, -25)]), [.init(axis: .vertical, forward: true)])
+        XCTAssertEqual(run([(-8, -3), (-40, -5)]), [.init(axis: .horizontal, forward: true)])
+    }
+
     func testASmallMoveDoesNothing() {
         XCTAssertEqual(run([(-5, 0), (-10, 0), (-10, 0)]), [])
     }

@@ -182,7 +182,8 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   a stretch tap past 50 % sent the card to the day under the finger.
   **Swipes** (`Swipe.swift`): a local `.scrollWheel` monitor in
   `NotchPanelController` feeds `SwipeTracker`, which locks the axis on the
-  first 8 pt and fires one step at 40 pt, then nothing until the fingers
+  first 8 pt (sideways only with twice as much across as down, so a list
+  scrolled askew keeps its tab) and fires one step at 40 pt, then nothing until the fingers
   lift; momentum and a mouse wheel are ignored, the event passes on
   unchanged. Left/right anywhere on the open panel moves one tab in the
   bar's order, round from Settings to Home and back; up/down counts only

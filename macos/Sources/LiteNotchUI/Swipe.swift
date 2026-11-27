@@ -4,7 +4,7 @@ import SwiftUI
 /// Turns a two-finger trackpad swipe into one page step.
 ///
 /// The first few points of movement pick the axis, so a diagonal swipe
-/// moves along one only. Once the fingers have gone `fireAfter` along it,
+/// moves along one only; sideways needs twice as much across as down. Once the fingers have gone `fireAfter` along it,
 /// one step fires; nothing more until they lift. Momentum after the lift
 /// and a mouse wheel (no precise deltas, no phase) are ignored, so a wheel
 /// never turns a page.
@@ -31,6 +31,8 @@ public struct SwipeTracker {
 
     static let lockAfter: CGFloat = 8
     static let fireAfter: CGFloat = 40
+    /// How much more across than down a swipe must start to be sideways.
+    static let sidewaysRatio: CGFloat = 2
 
     private var sum = CGSize.zero
     private var axis: Axis?
@@ -71,7 +73,10 @@ public struct SwipeTracker {
         if axis == nil {
             let ax = abs(sum.width), ay = abs(sum.height)
             guard max(ax, ay) >= Self.lockAfter else { return nil }
-            axis = ax >= ay ? .horizontal : .vertical
+            // Sideways only when clearly sideways: a list scrolled down a
+            // little askew must not change the tab. Up/down counts only
+            // over the big card, so leaning that way is safe.
+            axis = ax >= Self.sidewaysRatio * ay ? .horizontal : .vertical
         }
         let along = axis == .horizontal ? sum.width : sum.height
         guard abs(along) >= Self.fireAfter, let axis else { return nil }

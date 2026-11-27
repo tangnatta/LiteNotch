@@ -911,12 +911,12 @@ struct SegmentedPill<Value: Hashable>: View {
                             .nfont(on ? .emphasis : .bodyMedium)
                             .foregroundStyle(on ? NT.text1 : NT.text2)
                     }
-                        .lineLimit(1).fixedSize()
-                        .padding(.horizontal, 10)
-                        .frame(height: height - 4)
-                        .background(on ? NT.fillHi : Color.clear, in: Capsule())
-                        .contentShape(Capsule())
-                        .controlHover(Capsule())
+                    .lineLimit(1).fixedSize()
+                    .padding(.horizontal, 10)
+                    .frame(height: height - 4)
+                    .background(on ? NT.fillHi : Color.clear, in: Capsule())
+                    .contentShape(Capsule())
+                    .controlHover(Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(on ? .isSelected : [])

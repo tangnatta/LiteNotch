@@ -149,7 +149,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   end, `total_secs` = length). The shell works out the percentage:
   `−12%` before the start, `37%`, `+19%` past the end
   (`Format.dayProgress`), and redraws only when the whole percent changes
-  (`DaySchedule`). The core wakes once at local midnight. Settings › Day
+  (`DaySchedule`). The day turns over at 03:00 local (`ROLLOVER_MS`), so a late night still counts as the day it started; the core wakes once then. Settings › Day
   holds it all. The icon (`day.icons`) is Default, the time of day
   (`Format.daySymbol`): horizon before the start, sun until 3 h before
   the end, horizon, then moon; or Grow a tree (`GrowthIcon.swift`,
@@ -160,6 +160,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   `day.home_card`: Auto, Day, Music) shows the day instead of now
   playing; Auto gives way to music while it plays. The line under the
   number is one of `DAY_LINES`, one per day.
+  With the sun icons Home's day card sits on a grainy sky gradient at 50 % (`DaySky.swift`): morning, day, evening, night follow `Format.daySymbol`; still, no animation.
   The principle: people have a life before and after work, so nothing
   here limits or judges their time. No bar, no colour, no overtime
   warning, no line that says to finish or stop.

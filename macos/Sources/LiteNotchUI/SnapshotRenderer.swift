@@ -174,14 +174,21 @@ public enum SnapshotRenderer {
                 let context = AgentQuestion(
                     header: "Manual test",
                     question:
-                        "Everything is green and PR #55 is open with CI running. The one thing not yet exercised is the Calendar tab against your real calendar. Doing that means quitting your installed LiteNotch, opening the new build (dist/LiteNotch.app), clicking Allow on macOS\u{2019}s calendar prompt, then adding, editing and deleting one test event (it would briefly sync to your calendar account). How do you want to handle it before the v0.2.7-beta release?",
+                        "Everything is green and PR #55 is open with CI running. The one thing not yet exercised is "
+                        + "the Calendar tab against your real calendar. Doing that means quitting your installed "
+                        + "LiteNotch, opening the new build (dist/LiteNotch.app), clicking Allow on macOS\u{2019}s "
+                        + "calendar prompt, then adding, editing and deleting one test event (it would briefly sync "
+                        + "to your calendar account). How do you want to handle it before the v0.2.7-beta release?",
                     options: [
                         QuestionOption(
                             label: "I\u{2019}ll test it myself (Recommended)",
-                            description: "I launch the new build for you and give you a 2-minute checklist. You confirm it works, then I merge PR #55 and tag v0.2.7-beta."),
+                            description:
+                                "I launch the new build for you and give you a 2-minute checklist. You confirm it works, then I merge PR #55 and tag v0.2.7-beta."
+                        ),
                         QuestionOption(
                             label: "Release without it",
-                            description: "Merge and tag v0.2.7-beta once CI passes. The changelog and CLAUDE.md note the calendar writes were unit-tested against a fake store only."),
+                            description: "Merge and tag v0.2.7-beta once CI passes. The changelog and CLAUDE.md note the "
+                                + "calendar writes were unit-tested against a fake store only."),
                         QuestionOption(label: "Wait, don\u{2019}t release", description: "Leave PR #55 open; no merge or tag."),
                     ])
                 try add("question-long-expanded", asking([context]))

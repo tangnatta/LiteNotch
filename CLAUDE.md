@@ -560,10 +560,9 @@ command after changing the core.
   (`GlyphCache` in `DayMotion.swift`); and a control shown only behind a
   switch must be reached by a test: `OverflowTests.everythingOn` turns
   every such switch on, so add new ones there. CI's Swift tests have a
-  15-minute timeout so a hang fails instead of running for hours. This
-  Mac has only the Command Line Tools: `swift test` cannot run here, so
-  render the changed screen with `LiteNotchSnapshot` (fixture with the
-  feature on) and open the built app on it before pushing Swift changes.
+  15-minute timeout so a hang fails instead of running for hours. Before
+  pushing Swift changes, run `swift test` and open the built app on the
+  changed screen with the feature on.
 - Every tab must fit the space the open panel gives it (220 pt high);
   anything longer scrolls inside a `NotchScroll`. A fixed column that is
   too tall pushes the whole tab past the bottom edge, and the scroll view

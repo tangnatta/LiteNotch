@@ -91,7 +91,7 @@ public enum NotchGeometry {
         case .timer: value = 62
         case .calendar: value = 62
         // Icon and `−125%` side by side on the left.
-        case .day: value = 78
+        case .day, .body: value = 78
         case .approval:
             let extra: CGFloat = compact.count > 1 ? 22 : 0
             value = textWidth(compact.value) + extra + 18
@@ -182,7 +182,7 @@ extension NotchGeometry {
         // `24:59` in 12 pt semibold digits is about 36 pt.
         case .pomodoro, .caffeine, .timer, .calendar: value = 46
         // Icon and `−125%` side by side on the left.
-        case .day: value = 72
+        case .day, .body: value = 72
         // `+12:34` over time, or `Paused`.
         case .meeting: value = 52
         case .approval:
@@ -237,7 +237,7 @@ extension NotchGeometry {
         switch c.kind {
         // `24:59` in 12 pt semibold digits is about 36 pt.
         case .pomodoro, .timer, .calendar: return 38
-        case .day: return 44
+        case .day, .body: return 44
         // `+12:34` over time; a pause mark when paused.
         case .meeting: return c.endsAtMs != nil ? 46 : 12
         case .caffeine: return c.endsAtMs != nil ? 38 : 0
@@ -290,7 +290,7 @@ extension NotchGeometry {
         case .idle, .unknown: return 0
         // `1:24:59` in semibold digits.
         case .pomodoro, .caffeine, .timer, .calendar: return 48
-        case .day: return 50
+        case .day, .body: return 50
         case .meeting: return 54
         case .media: return 24
         case .approval: return textWidth(c.value, chars: 32) + (c.count > 1 ? 20 : 0)

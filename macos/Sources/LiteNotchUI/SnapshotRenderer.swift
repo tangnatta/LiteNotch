@@ -137,6 +137,19 @@ public enum SnapshotRenderer {
                 at.body?.water = water
                 at.body?.stretch = stretch
                 try add("\(name)-draining-expanded-home", at)
+                if name == "body", let st = stretch {
+                    // The closed notch with the gauge that empties first.
+                    var closed = at
+                    closed.compact = CompactView(
+                        kind: .body, title: "Stretch", value: "", endsAtMs: st.emptyAtMs,
+                        totalSecs: st.spanMs / 1000, count: 0)
+                    closed.compactSecondary = nil
+                    try add("body-closed-gauge", closed, expanded: false)
+                    try add("notchless-body-closed-gauge", closed, expanded: false, notchless: true)
+                    var island = closed
+                    island.settings.appearance.notchStyle = .island
+                    try add("island-body-closed-gauge", island, expanded: false)
+                }
                 if name == "body" {
                     var light = at
                     light.settings.appearance.theme = .light

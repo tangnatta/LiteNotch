@@ -450,3 +450,122 @@ final class LiquidNSView: NSView {
         }
     }
 }
+
+// MARK: - Closed notch
+
+extension BodyMath {
+    /// The gauge a closed-notch `body` activity stands for: counting down
+    /// to `endsAtMs` over `totalSecs`, or standing still at `value` ("48%").
+    public static func gauge(_ c: CompactView) -> GaugeView {
+        let span = max(1, (c.totalSecs ?? 0) * 1000)
+        let still = Int(c.value.trimmingCharacters(in: CharacterSet(charactersIn: "%"))) ?? 0
+        return GaugeView(spanMs: span, leftMs: span * still / 100, emptyAtMs: c.endsAtMs)
+    }
+
+    /// When the whole percent next goes down, while counting; nil when still
+    /// or empty.
+    public static func nextPercentMs(_ g: GaugeView, nowMs: Int) -> Int? {
+        guard let end = g.emptyAtMs, g.spanMs > 0 else { return nil }
+        let p = percent(g, nowMs: nowMs)
+        guard p > 0 else { return nil }
+        // Below p − 0.5 % from this moment on.
+        return end - g.spanMs * (2 * p - 1) / 200 + 1
+    }
+}
+
+/// One entry each time a gauge's whole percent goes down.
+struct BodySchedule: TimelineSchedule {
+    let gauge: GaugeView
+    let offsetMs: Int
+
+    func entries(from startDate: Date, mode: TimelineScheduleMode) -> AnySequence<Date> {
+        let (g, off) = (gauge, offsetMs)
+        return AnySequence(
+            sequence(first: startDate) { date in
+                let now = nowMs(date, offset: off)
+                guard let next = BodyMath.nextPercentMs(g, nowMs: now) else { return nil }
+                return date.addingTimeInterval(Double(max(next - now, 1)) / 1000)
+            })
+    }
+}
+
+/// Redraws `content` with the level each time the whole percent changes;
+/// a still gauge draws once.
+private struct BodyReading<Content: View>: View {
+    let compact: CompactView
+    @ViewBuilder var content: (_ gauge: GaugeView, _ nowMs: Int) -> Content
+    @Environment(\.isSnapshot) private var snapshot
+    @Environment(\.clockOffsetMs) private var offset
+
+    var body: some View {
+        let g = BodyMath.gauge(compact)
+        if snapshot || g.emptyAtMs == nil {
+            content(g, nowMs(Date(), offset: offset))
+        } else {
+            TimelineView(BodySchedule(gauge: g, offsetMs: offset)) { _ in
+                // The clock, not the entry's date (see `DayPercent`).
+                content(g, nowMs(Date(), offset: offset))
+            }
+        }
+    }
+}
+
+extension BodyKind {
+    init(title: String) { self = title == "Stretch" ? .stretch : .water }
+}
+
+/// A small battery in the gauge's colour, filled to its level: still, no
+/// wave, so the closed notch costs nothing between percent changes. It
+/// follows the system's own battery: on macOS 27 and later a grey track with
+/// the level in colour and no outline; before, an outline with a nub.
+struct BodyIcon: View {
+    let compact: CompactView
+
+    /// macOS 27 drew its battery without an outline.
+    static var borderless: Bool {
+        if #available(macOS 27, *) { return true }
+        return false
+    }
+
+    var body: some View {
+        BodyReading(compact: compact) { g, now in
+            let level = BodyMath.level(g, nowMs: now)
+            let color = Color(nsColor: BodyKind(title: compact.title).color)
+            if Self.borderless {
+                ZStack(alignment: .bottom) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous).fill(NT.text3.opacity(0.55))
+                    Rectangle().fill(color).frame(height: 14 * level)
+                }
+                .frame(width: 8, height: 14)
+                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            } else {
+                ZStack(alignment: .bottom) {
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .strokeBorder(NT.text2, lineWidth: 1.2)
+                    RoundedRectangle(cornerRadius: 1.2, style: .continuous)
+                        .fill(color)
+                        .frame(height: max(0, 11 * level))
+                        .padding(2)
+                }
+                .frame(width: 9, height: 15)
+                .overlay(alignment: .top) {
+                    Capsule().fill(NT.text2).frame(width: 4, height: 1.5).offset(y: -2)
+                }
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// The level, "48%", regular weight and no colour of its own: a reading.
+struct BodyPercent: View {
+    let compact: CompactView
+
+    var body: some View {
+        BodyReading(compact: compact) { g, now in
+            let reading = String(BodyMath.percent(g, nowMs: now)) + "%"
+            VText(reading).font(NType.body.font).monospacedDigit()
+                .foregroundStyle(NT.text1).lineLimit(1)
+        }
+    }
+}

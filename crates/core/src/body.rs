@@ -213,6 +213,27 @@ impl Gauge {
     }
 }
 
+pub const WATER_TITLE: &str = "Water";
+pub const STRETCH_TITLE: &str = "Stretch";
+
+/// The gauge the closed notch shows (`Body::first_empty`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Closed {
+    pub title: &'static str,
+    pub span_ms: u64,
+    left_ms: u64,
+    /// Set while counting.
+    pub empty_at_ms: Option<u64>,
+    since: Option<u64>,
+}
+
+impl Closed {
+    /// The level in whole percent, when standing still.
+    pub fn percent(&self) -> u64 {
+        (self.left_ms * 100 + self.span_ms / 2) / self.span_ms.max(1)
+    }
+}
+
 /// One gauge as the shell draws it. While counting, the level is
 /// `(empty_at_ms − now) / span_ms`; otherwise `left_ms / span_ms`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -307,6 +328,30 @@ impl Body {
             .flatten()
             .filter_map(Gauge::deadline)
             .min()
+    }
+
+    /// The gauge to show in the closed notch: the one that runs empty first
+    /// (while counting), else the lower. Which one it is changes only when
+    /// a gauge does, so it needs no wake-up of its own.
+    pub fn first_empty(&self) -> Option<Closed> {
+        let mut gauges: Vec<Closed> = [(WATER_TITLE, self.water), (STRETCH_TITLE, self.stretch)]
+            .into_iter()
+            .filter_map(|(title, g)| {
+                g.map(|g| Closed {
+                    title,
+                    span_ms: g.span_ms,
+                    left_ms: g.left_ms,
+                    empty_at_ms: g.deadline(),
+                    since: g.since,
+                })
+            })
+            .collect();
+        gauges.sort_by_key(|c| match c.since {
+            Some(s) => s.saturating_add(c.left_ms),
+            // Standing still: by its share left, after any counting one.
+            None => u64::MAX / 2 + c.left_ms * 1000 / c.span_ms.max(1),
+        });
+        gauges.into_iter().next()
     }
 
     pub fn view(&self) -> Option<BodyView> {

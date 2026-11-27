@@ -308,7 +308,7 @@ impl SoundConfig {
 /// The running activities the closed notch can show, in the default order:
 /// what other people are waiting on, then what the user timed, then what
 /// merely is on.
-pub const LIVE_ORDER: [ActivityKind; 8] = [
+pub const LIVE_ORDER: [ActivityKind; 9] = [
     ActivityKind::Meeting,
     ActivityKind::Calendar,
     ActivityKind::Timer,
@@ -317,6 +317,7 @@ pub const LIVE_ORDER: [ActivityKind; 8] = [
     ActivityKind::Caffeine,
     ActivityKind::Agent,
     ActivityKind::Day,
+    ActivityKind::Body,
 ];
 
 /// What the closed notch shows when several things are running.
@@ -635,6 +636,11 @@ pub enum ActivityKind {
     /// Where the user is in their office hours: `ends_at_ms` is the end
     /// and `total_secs` the length, so the shell can draw the percentage.
     Day,
+    /// The water or stretch gauge, whichever runs empty first: `title` says
+    /// which, `ends_at_ms` is when it is empty and `total_secs` its full
+    /// span, so the shell draws the level; standing still (away) there is
+    /// no end and `value` is the level ("48%").
+    Body,
     /// Not one this version knows (settings written by a newer one).
     #[serde(other)]
     Unknown,
@@ -2168,6 +2174,18 @@ impl Core {
                 ..view(ActivityKind::Day, "Day", "")
             });
         }
+        if let Some(g) = self.body.first_empty() {
+            let value = if g.empty_at_ms.is_none() {
+                format!("{}%", g.percent())
+            } else {
+                String::new()
+            };
+            live.push(CompactView {
+                ends_at_ms: g.empty_at_ms,
+                total_secs: Some((g.span_ms / 1000) as u32),
+                ..view(ActivityKind::Body, g.title, &value)
+            });
+        }
         let notch = &self.settings.notch;
         live.retain(|c| !notch.hidden.contains(&c.kind));
         live.sort_by_key(|c| {
@@ -2641,6 +2659,7 @@ mod tests {
                 ActivityKind::Pomodoro,
                 ActivityKind::Caffeine,
                 ActivityKind::Day,
+                ActivityKind::Body,
             ]
         );
         assert_eq!(messy.hidden, [ActivityKind::Media]);
@@ -2662,7 +2681,7 @@ mod tests {
         assert!(c.settings().notch.hidden.is_empty());
         assert_eq!(
             serde_json::to_value(NotchConfig::default()).expect("serializes"),
-            json!({"order": ["meeting", "calendar", "timer", "pomodoro", "media", "caffeine", "agent", "day"],
+            json!({"order": ["meeting", "calendar", "timer", "pomodoro", "media", "caffeine", "agent", "day", "body"],
                    "hidden": [], "two_places": true, "waiting_dot": true})
         );
     }

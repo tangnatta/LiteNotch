@@ -130,7 +130,7 @@ final class DayTests: XCTestCase {
         XCTAssertEqual(vm.compact.totalSecs.map { $0 * 1000 }, day.endMs - day.startMs)
         XCTAssertFalse(day.line.isEmpty)
         XCTAssertNil(try fixture("idle").day)
-        XCTAssertEqual(NotchConfig.liveOrder.last, .day)
+        XCTAssertEqual(NotchConfig.liveOrder.suffix(2), [.day, .body])
     }
 
     func testOldSettingsWithoutDayGetTheDefault() throws {

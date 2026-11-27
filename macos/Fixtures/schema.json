@@ -14,7 +14,8 @@
       "timer",
       "calendar",
       "nudge",
-      "day"
+      "day",
+      "body"
     ],
     "agent_status": [
       "working",

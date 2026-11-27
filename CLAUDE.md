@@ -69,7 +69,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   pending approval, then a banner, then a peek, take it alone. Otherwise the running
   activities are ranked by `notch.order` (default `LIVE_ORDER`: meeting
   agenda, event about to start, countdown, pomodoro, media, keep awake,
-  working agent; deadlines other people wait on, then ones the user set,
+  working agent, day progress, water and stretch; deadlines other people wait on, then ones the user set,
   then things that are merely on), those in `notch.hidden` left out. The
   first is `compact`; with `notch.two_places` the second is
   `compact_secondary`. `waiting` (the dot, `notch.waiting_dot`, agents only) is true
@@ -209,8 +209,15 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   (`BodyMath.redrawSecs`). The tank clips itself (`clipsToBounds` and the
   card's corner radius): SwiftUI's `clipShape` does not reach a hosted
   NSView. `bench.sh` counts LiteNotch's process only; the wave's
-  compositing is WindowServer's and is not in its figure. Not yet: the gauges in the closed notch (an
-  `ActivityKind`), a button on the empty peek, keeping the levels across
+  compositing is WindowServer's and is not in its figure. In the closed notch the gauges are
+  `ActivityKind::Body`, last in `LIVE_ORDER`, while either is on: the one
+  that runs empty first (`Body::first_empty`; that choice changes only
+  when a gauge does, so no wake-up of its own), `title` Water or Stretch,
+  `ends_at_ms` = empty, `total_secs` = span, or `value` "48%" while
+  standing still. The shell draws it like day progress, a small battery in
+  the gauge's colour filled to the level (`BodyIcon`) and the percent
+  right after it (`BodyPercent`), still, redrawn once per whole percent
+  (`BodySchedule`). Not yet: a button on the empty peek, keeping the levels across
   a restart (they start at half), and a look at the wave in the running app
   (snapshots draw the liquid flat).
 - **Sound** (`settings.sound`, on by default, "Glass"): one of the 14
@@ -660,6 +667,7 @@ alone and only that result counts. `--serial` runs them one at a time:
 | calendar | an event about to start (the closed notch counts down to it) | ≤ 1.0 % | ≤ 30 MB |
 | pair | two countdowns side by side in the closed notch | ≤ 1.0 % | ≤ 30 MB |
 | body | the panel open on Home showing the water and stretch gauges (wave animating) | ≤ 1.5 % | ≤ 40 MB |
+| bodyclosed | the closed notch showing the water gauge (redrawn once per percent) | ≤ 1.0 % | ≤ 30 MB |
 | closedglass | the closed notch drawn with glass (Island, Match theme, light) and a countdown; needs a display without a notch | ≤ 1.0 % | ≤ 30 MB |
 
 Bundle ≤ 15 MB; Rust line coverage ≥ 90 %. The app reads a few

@@ -869,9 +869,11 @@ mod tests {
         );
         assert!(STRETCH_LINES.contains(&v.value.as_str()));
         run_to(&mut c, T0 + 20 * MIN + NUDGE_MS);
+        let v = compact(&c, T0 + 20 * MIN + NUDGE_MS);
         assert_eq!(
-            compact(&c, T0 + 20 * MIN + NUDGE_MS).kind,
-            ActivityKind::Idle
+            (v.kind, v.title.as_str(), v.value.as_str()),
+            (ActivityKind::Body, "Stretch", "0%"),
+            "the gauge stays in the closed notch, still and empty"
         );
         assert_eq!(c.next_deadline(), None, "empty: nothing more to say");
 
@@ -911,6 +913,63 @@ mod tests {
         assert_eq!(w.empty_at_ms, Some(T0 + 45 * MIN), "half of 90 min");
         assert_eq!(b.stretch.and_then(|s| s.empty_at_ms), Some(T0 + 30 * MIN));
         assert_eq!(compact(&c, T0).peek, None, "not announced as empty");
+    }
+
+    #[test]
+    fn the_closed_notch_shows_the_gauge_that_empties_first() {
+        let mut c = Core::default();
+        // Water 90 min from half: empty in 45. Stretch 60 from half: in 30.
+        with(
+            &mut c,
+            |s| {
+                s.body.water_mins = 90;
+                s.body.stretch_mins = 60;
+            },
+            T0,
+        );
+        let v = compact(&c, T0 + 1_000);
+        assert_eq!(
+            (v.kind, v.title.as_str(), v.ends_at_ms, v.total_secs),
+            (
+                ActivityKind::Body,
+                "Stretch",
+                Some(T0 + 30 * MIN),
+                Some(3600)
+            )
+        );
+        assert_eq!(v.value, "", "counting: the shell draws the level");
+        // Ten stretches: now water empties first.
+        for _ in 0..10 {
+            cmd(&mut c, Command::BodyStretch, T0 + 2_000);
+        }
+        let v = compact(&c, T0 + 3_000);
+        assert_eq!(
+            (v.title.as_str(), v.ends_at_ms),
+            ("Water", Some(T0 + 45 * MIN))
+        );
+        // Away: standing still, with the level written out.
+        away(&mut c, true, T0 + 15 * MIN);
+        let v = compact(&c, T0 + 20 * MIN);
+        assert_eq!(
+            (v.title.as_str(), v.ends_at_ms, v.value.as_str()),
+            ("Water", None, "33%")
+        );
+        // Last in the order: anything else running comes first, and it can
+        // be hidden.
+        away(&mut c, false, T0 + 20 * MIN);
+        cmd(&mut c, Command::PomodoroToggle, T0 + 20 * MIN);
+        let both = c.view(T0 + 21 * MIN);
+        assert_eq!(both.compact.kind, ActivityKind::Pomodoro);
+        assert_eq!(
+            both.compact_secondary.map(|s| s.kind),
+            Some(ActivityKind::Body)
+        );
+        with(
+            &mut c,
+            |s| s.notch.hidden = vec![ActivityKind::Body],
+            T0 + 21 * MIN,
+        );
+        assert_eq!(c.view(T0 + 21 * MIN).compact_secondary, None);
     }
 
     #[test]

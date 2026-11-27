@@ -129,7 +129,7 @@ pub fn schema() -> Value {
             "tab": variants!(Tab: Home, Music, Timer, Clipboard, Agents, Inbox, Settings),
             "peek_kind": variants!(PeekKind: TrackChanged, TimeWarning, EyeBreak, Move, Quote, StillWorking),
             "activity_kind": variants!(ActivityKind: Idle, Approval, Banner, Pomodoro, Media, Caffeine, Agent,
-                Meeting, Timer, Calendar, Nudge, Day, Unknown),
+                Meeting, Timer, Calendar, Nudge, Day, Body, Unknown),
         },
     })
 }

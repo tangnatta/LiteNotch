@@ -1,10 +1,10 @@
 {
   "compact": {
-    "kind": "idle",
-    "title": "",
+    "kind": "body",
+    "title": "Stretch",
     "value": "",
-    "ends_at_ms": null,
-    "total_secs": null,
+    "ends_at_ms": 1794404021000,
+    "total_secs": 2700,
     "count": 0,
     "peek": null
   },
@@ -448,7 +448,8 @@
         "media",
         "caffeine",
         "agent",
-        "day"
+        "day",
+        "body"
       ],
       "hidden": [],
       "two_places": true,

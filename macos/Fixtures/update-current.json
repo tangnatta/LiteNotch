@@ -429,7 +429,8 @@
         "media",
         "caffeine",
         "agent",
-        "day"
+        "day",
+        "body"
       ],
       "hidden": [],
       "two_places": true,

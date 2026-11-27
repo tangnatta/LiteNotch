@@ -17,7 +17,7 @@ private func decodeLenient<E: LenientEnum>(_ decoder: Decoder) throws -> E {
 }
 
 public enum ActivityKind: String, LenientEnum, CaseIterable {
-    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, calendar, nudge, day, unknown
+    case idle, approval, banner, pomodoro, media, caffeine, agent, meeting, timer, calendar, nudge, day, body, unknown
     static var unknownCase: ActivityKind { .unknown }
     public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
 }
@@ -424,7 +424,7 @@ public struct NotchConfig: Codable, Equatable {
     public var waitingDot: Bool
 
     /// The default order; mirrors `state::LIVE_ORDER`.
-    public static let liveOrder: [ActivityKind] = [.meeting, .calendar, .timer, .pomodoro, .media, .caffeine, .agent, .day]
+    public static let liveOrder: [ActivityKind] = [.meeting, .calendar, .timer, .pomodoro, .media, .caffeine, .agent, .day, .body]
     public static let `default` = NotchConfig(order: liveOrder, hidden: [], twoPlaces: true, waitingDot: true)
 
     public init(order: [ActivityKind], hidden: [ActivityKind], twoPlaces: Bool, waitingDot: Bool) {

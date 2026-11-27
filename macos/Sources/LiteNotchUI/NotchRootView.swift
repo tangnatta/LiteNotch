@@ -172,7 +172,7 @@ struct ClosedActivityView: View {
     private var paired: Bool { content.secondary != nil }
     /// Day progress alone: its short value sits right after the icon, as
     /// when sharing the notch, rather than across on the other side.
-    private var besideIcon: Bool { !paired && content.primary?.kind == .day }
+    private var besideIcon: Bool { !paired && [.day, .body].contains(content.primary?.kind) }
 
     var body: some View {
         Group {
@@ -290,6 +290,8 @@ struct ClosedActivityView: View {
             Image(systemName: "calendar").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NT.accentText)
         case .day:
             DayIcon(compact: compact)
+        case .body:
+            BodyIcon(compact: compact)
         case .approval:
             Circle().fill(NT.accentText).frame(width: 9, height: 9)
         case .banner:
@@ -385,6 +387,8 @@ struct ClosedActivityView: View {
             VText(compact.value).wingText(mono: false)
         case .day:
             DayPercent(compact: compact)
+        case .body:
+            BodyPercent(compact: compact)
         case .idle, .unknown:
             EmptyView()
         }

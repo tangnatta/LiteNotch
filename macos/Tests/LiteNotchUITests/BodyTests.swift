@@ -127,3 +127,27 @@ final class HomeAutoTests: XCTestCase {
         XCTAssertNil(HomeCardPick.nextChangeMs(v, nowMs: low))
     }
 }
+
+final class ClosedBodyTests: XCTestCase {
+    func testTheClosedNotchReadsTheCoresGauge() {
+        let counting = CompactView(
+            kind: .body, title: "Water", value: "", endsAtMs: 10_000_000 + 2_700_000, totalSecs: 5400,
+            count: 0)
+        XCTAssertEqual(BodyMath.percent(BodyMath.gauge(counting), nowMs: 10_000_000), 50)
+        let still = CompactView(kind: .body, title: "Stretch", value: "33%", endsAtMs: nil, totalSecs: 3600, count: 0)
+        XCTAssertEqual(BodyMath.percent(BodyMath.gauge(still), nowMs: 0), 33)
+        XCTAssertNil(BodyMath.nextPercentMs(BodyMath.gauge(still), nowMs: 0), "still: drawn once")
+    }
+
+    func testItRedrawsOncePerPercent() {
+        let g = GaugeView(spanMs: 100_000, leftMs: 0, emptyAtMs: 100_000)
+        var now = 0
+        var seen: [Int] = []
+        while let next = BodyMath.nextPercentMs(g, nowMs: now), seen.count < 200 {
+            XCTAssertGreaterThan(next, now)
+            now = next
+            seen.append(BodyMath.percent(g, nowMs: now))
+        }
+        XCTAssertEqual(seen, Array((0...99).reversed()), "every whole percent once, down to empty")
+    }
+}

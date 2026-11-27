@@ -386,7 +386,8 @@
       "end_min": 1080,
       "days": 31,
       "home_card": "auto",
-      "icons": "sun"
+      "icons": "sun",
+      "motion": false
     }
   }
 }

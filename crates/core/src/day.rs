@@ -10,6 +10,9 @@ const DAY_MS: u64 = 86_400_000;
 const MINUTES_PER_DAY: u16 = 24 * 60;
 /// Shortest working day accepted, in minutes.
 const MIN_SPAN: u16 = 30;
+/// The day turns over at 03:00 local, not midnight, so a late night still
+/// counts as the day it started in.
+const ROLLOVER_MS: u64 = 3 * 3_600_000;
 
 /// A line under the number, one per day. About the person, not the work:
 /// the day is theirs before and after office hours too, so no line tells
@@ -62,6 +65,9 @@ pub struct DayConfig {
     /// Home's left card, while day progress is on.
     pub home_card: HomeCard,
     pub icons: DayIcons,
+    /// The icon moves a little (sun turns, tree sways). Off by default: it
+    /// is drawn by Core Animation and costs a little GPU time while shown.
+    pub motion: bool,
 }
 
 impl Default for DayConfig {
@@ -73,6 +79,7 @@ impl Default for DayConfig {
             days: 0b001_1111,
             home_card: HomeCard::Auto,
             icons: DayIcons::Sun,
+            motion: false,
         }
     }
 }
@@ -116,7 +123,7 @@ pub fn today(cfg: &DayConfig, now_ms: u64, utc_offset_secs: i32) -> Option<DayVi
     if !cfg.enabled {
         return None;
     }
-    let day = day_index(now_ms, utc_offset_secs);
+    let day = day_index(now_ms.saturating_sub(ROLLOVER_MS), utc_offset_secs);
     if cfg.days & (1 << weekday(day)) == 0 {
         return None;
     }
@@ -128,10 +135,12 @@ pub fn today(cfg: &DayConfig, now_ms: u64, utc_offset_secs: i32) -> Option<DayVi
     })
 }
 
-/// The next local midnight, when `today` gives another answer.
+/// The next local 03:00, when `today` gives another answer.
 pub fn next_deadline(cfg: &DayConfig, now_ms: u64, utc_offset_secs: i32) -> Option<u64> {
-    cfg.enabled
-        .then(|| local_midnight_ms(day_index(now_ms, utc_offset_secs) + 1, utc_offset_secs))
+    cfg.enabled.then(|| {
+        let day = day_index(now_ms.saturating_sub(ROLLOVER_MS), utc_offset_secs);
+        local_midnight_ms(day + 1, utc_offset_secs) + ROLLOVER_MS
+    })
 }
 
 #[cfg(test)]
@@ -187,21 +196,37 @@ mod tests {
     }
 
     #[test]
-    fn wakes_at_the_next_local_midnight() {
+    fn wakes_at_the_next_local_three_am() {
         assert_eq!(
             next_deadline(&on(), MONDAY + 13 * HOUR, 0),
-            Some(MONDAY + 24 * HOUR)
+            Some(MONDAY + 27 * HOUR)
         );
         assert_eq!(
             next_deadline(&on(), MONDAY + 13 * HOUR, 7 * 3600),
-            Some(MONDAY + 24 * HOUR - 7 * HOUR)
+            Some(MONDAY + 27 * HOUR - 7 * HOUR)
+        );
+        // 01:00 Tuesday still belongs to Monday; it wakes at 03:00.
+        assert_eq!(
+            next_deadline(&on(), MONDAY + 25 * HOUR, 0),
+            Some(MONDAY + 27 * HOUR)
         );
     }
 
     #[test]
+    fn a_late_night_is_still_the_same_day() {
+        // 02:00 Tuesday: still Monday's hours, past the end.
+        let v = today(&on(), MONDAY + 26 * HOUR, 0).unwrap();
+        assert_eq!(v.start_ms, MONDAY + 10 * HOUR);
+        // 02:00 Saturday still shows Friday.
+        assert!(today(&on(), MONDAY + 5 * 24 * HOUR + 2 * HOUR, 0).is_some());
+        // 02:00 Monday is still Sunday: off.
+        assert_eq!(today(&on(), MONDAY + 2 * HOUR, 0), None);
+    }
+
+    #[test]
     fn a_new_line_each_day() {
-        let a = today(&on(), MONDAY, 0).unwrap().line;
-        let b = today(&on(), MONDAY + 24 * HOUR, 0).unwrap().line;
+        let a = today(&on(), MONDAY + 12 * HOUR, 0).unwrap().line;
+        let b = today(&on(), MONDAY + 36 * HOUR, 0).unwrap().line;
         assert_ne!(a, b);
     }
 

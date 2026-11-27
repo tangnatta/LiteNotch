@@ -110,6 +110,7 @@ public struct NotchRootView: View {
                     }
                     .environment(\.colorScheme, closedScheme)
                     .environment(\.dayIcons, model.view?.settings.day.icons ?? .sun)
+                    .environment(\.dayMotion, model.view?.settings.day.motion ?? false)
                     .transition(.opacity)
                 }
             case .toast:
@@ -1067,6 +1068,7 @@ struct DayIcon: View {
     @Environment(\.isSnapshot) private var snapshot
     @Environment(\.clockOffsetMs) private var offset
     @Environment(\.dayIcons) private var icons
+    @Environment(\.dayMotion) private var motion
 
     var body: some View {
         if let end = compact.endsAtMs, let total = compact.totalSecs {
@@ -1093,7 +1095,7 @@ struct DayIcon: View {
     private func glyph(_ start: Int, _ end: Int) -> some View {
         DayGlyph(
             icons: icons, startMs: start, endMs: end, nowMs: nowMs(Date(), offset: offset),
-            symbolFont: font, plantSize: plant, color: color)
+            symbolFont: font, plantSize: plant, color: color, motion: motion && !snapshot)
     }
 
     private var font: Font { .system(size: 11.5, weight: .semibold) }

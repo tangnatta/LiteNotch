@@ -2675,7 +2675,7 @@ mod tests {
     }
 
     #[test]
-    fn day_progress_fills_an_empty_notch_last_and_wakes_at_midnight() {
+    fn day_progress_fills_an_empty_notch_last_and_wakes_at_three_am() {
         // Monday 2026-11-16 13:00 UTC.
         let monday_1pm = 1_794_787_200_000 + 13 * 3_600_000;
         let mut c = Core::default();
@@ -2687,7 +2687,10 @@ mod tests {
         assert_eq!(v.compact.kind, ActivityKind::Day);
         assert_eq!(v.compact.ends_at_ms, Some(day.end_ms));
         assert_eq!(v.compact.total_secs, Some(8 * 3600));
-        assert_eq!(c.next_deadline(), Some(1_794_787_200_000 + 86_400_000));
+        assert_eq!(
+            c.next_deadline(),
+            Some(1_794_787_200_000 + 86_400_000 + 3 * 3_600_000)
+        );
         // Anything running comes first.
         c.apply(Input::Command(Command::PomodoroToggle), monday_1pm);
         let v = c.view(monday_1pm);

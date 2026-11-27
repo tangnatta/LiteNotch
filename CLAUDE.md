@@ -149,7 +149,9 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   end, `total_secs` = length). The shell works out the percentage:
   `−12%` before the start, `37%`, `+19%` past the end
   (`Format.dayProgress`), and redraws only when the whole percent changes
-  (`DaySchedule`). The core wakes once at local midnight. Settings › Work day
+  (`DaySchedule`). The day turns over at 03:00 local (`ROLLOVER_MS`), so a
+  late night still counts as the day it started; the core wakes once then.
+  Settings › Work day
   holds it all. The icon (`day.icons`) is Default, the time of day
   (`Format.daySymbol`): horizon before the start, sun until 3 h before
   the end, horizon, then moon; or Grow a tree (`GrowthIcon.swift`,
@@ -160,6 +162,15 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   `day.home_card`: Auto, Day, Music) shows the day instead of now
   playing; Auto gives way to music while it plays. The line under the
   number is one of `DAY_LINES`, one per day.
+  With the sun icons Home's day card sits on a grainy sky gradient at 50 % (`DaySky.swift`): morning, day, evening, night follow `Format.daySymbol`; still, no animation.
+  Settings › Day › Animate (`day.motion`, off by default): the sun turns
+  once a minute, horizon and moon bob 1 pt, the tree sways ±5° about its
+  soil line while the soil stays (`DayMotion.swift`: the glyph is drawn
+  once to a bitmap, cached in `GlyphCache`, that a Core Animation layer
+  moves). Off draws the
+  exact still icon. Bench scenarios `day`/`dayanim`/`treeanim`/
+  `daypanel`/`daypanelanim`; the app's own CPU barely changes, the
+  WindowServer/GPU cost was lost in noise when measured.
   The principle: people have a life before and after work, so nothing
   here limits or judges their time. No bar, no colour, no overtime
   warning, no line that says to finish or stop.
@@ -592,6 +603,20 @@ command after changing the core.
     payload and adds its own.
   - The socket lives in a 0700 directory with mode 0600; server and CLI both
     check the peer uid. A request line must arrive within 5 s in total.
+- **A view that never finishes building hangs the whole app** (main
+  thread pegged, memory climbing to gigabytes, the notch stuck open, the
+  Mac sluggish) and only `pkill -x LiteNotch` ends it. It happened once
+  (Nov 2026): a convenience `init` on `SegmentedPill` passed its closure
+  under the same label, so it called itself forever; the compiler gave no
+  warning. Rules: a convenience `init` that forwards to another must use
+  a label only the target has (`optionIcon:`, not `icon:`); never do
+  heavy work (`ImageRenderer`, file reads) in a `body` without a cache
+  (`GlyphCache` in `DayMotion.swift`); and a control shown only behind a
+  switch must be reached by a test: `OverflowTests.everythingOn` turns
+  every such switch on, so add new ones there. CI's Swift tests have a
+  15-minute timeout so a hang fails instead of running for hours. Before
+  pushing Swift changes, run `swift test` and open the built app on the
+  changed screen with the feature on.
 - Every tab must fit the space the open panel gives it (220 pt high);
   anything longer scrolls inside a `NotchScroll`. A fixed column that is
   too tall pushes the whole tab past the bottom edge, and the scroll view

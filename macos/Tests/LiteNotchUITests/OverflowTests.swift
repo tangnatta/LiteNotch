@@ -43,21 +43,33 @@ final class OverflowTests: XCTestCase {
     }
     private var keep: [AppModel] = []
 
+    /// Every switch that reveals more rows is on, so every control in
+    /// Settings gets drawn here at least once. A control hidden behind a
+    /// switch that is off in the fixtures is never built by any test: the
+    /// Day icon picker once hung the app (an init that called itself)
+    /// and nothing noticed, because Day progress was off.
+    static func everythingOn(_ vm: inout ViewModel, icons: DayIcons) {
+        vm.settings.calendar.enabled = true
+        vm.settings.notify.system = true
+        vm.settings.day.enabled = true
+        vm.settings.day.motion = true
+        vm.settings.day.icons = icons
+    }
+
     func testEverySettingsSectionFitsThePanel() throws {
         SettingsTab.showMoreOptions = true
         defer { SettingsTab.showMoreOptions = false }
         for name in ["idle", "media", "pair"] {
             for section in SettingsSection.allCases {
-                let (vm, p) = try panel(name) {
-                    $0.settings.calendar.enabled = true
-                    $0.settings.notify.system = true
+                for icons in DayIcons.allCases {
+                    let (vm, p) = try panel(name) { Self.everythingOn(&$0, icons: icons) }
+                    p.settingsSection = section
+                    p.app?.accessibilityNeeded = true
+                    p.app?.calendarAccess = .denied
+                    XCTAssertLessThanOrEqual(
+                        height(SettingsTab(vm: vm, model: p)), room.height,
+                        "Settings › \(section.title) with the \(name) fixture, \(icons) icons")
                 }
-                p.settingsSection = section
-                p.app?.accessibilityNeeded = true
-                p.app?.calendarAccess = .denied
-                XCTAssertLessThanOrEqual(
-                    height(SettingsTab(vm: vm, model: p)), room.height,
-                    "Settings › \(section.title) with the \(name) fixture")
             }
         }
     }

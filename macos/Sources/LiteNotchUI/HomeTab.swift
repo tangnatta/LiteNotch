@@ -51,29 +51,41 @@ struct HomeTab: View {
     // MARK: Day
 
     /// The day in the space now playing has: a big quiet number, the day's
-    /// line, the hours. No bar and no colour: hours before and after work
-    /// are the user's own, not a deficit or an overrun.
+    /// line, the hours. No bar and no judging colour: hours before and after
+    /// work are the user's own, not a deficit or an overrun. With the sun
+    /// icons the card is a sky for the part of the day (`DaySky`).
     private func dayCard(_ d: DayView) -> some View {
-        Card(padding: 12, expand: true) {
-            EverySecond(interval: 60) { now in
-                let p = Format.dayPercent(startMs: d.startMs, endMs: d.endMs, nowMs: now)
+        EverySecond(interval: 60) { now in
+            let p = Format.dayPercent(startMs: d.startMs, endMs: d.endMs, nowMs: now)
+            let sky = icons == .sun ? SkyPhase.at(startMs: d.startMs, endMs: d.endMs, nowMs: now) : nil
+            let ink1 = sky == nil ? NT.text1 : Color.white
+            let ink2 = sky == nil ? NT.text2 : Color.white.opacity(0.85)
+            Card(padding: 12, expand: true) {
                 VStack(spacing: 6) {
                     Spacer(minLength: 0)
                     DayGlyph(
                         icons: icons, startMs: d.startMs, endMs: d.endMs, nowMs: now,
-                        symbolFont: .system(size: 22, weight: .regular), plantSize: 28, color: NT.text2)
+                        symbolFont: .system(size: 22, weight: .regular), plantSize: 28, color: icons == .tree ? NT.grow : ink2,
+                        motion: vm.settings.day.motion)
                     // The number large and light, the `%` at half size on its baseline.
                     (Text(verbatim: String(Format.dayProgress(p).dropLast()))
                         .font(.system(size: 52, weight: .light)).monospacedDigit()
                         + Text(verbatim: "%").font(.system(size: 26, weight: .light)))
-                        .foregroundStyle(NT.text1).lineLimit(1).minimumScaleFactor(0.6)
+                        .foregroundStyle(ink1).lineLimit(1).minimumScaleFactor(0.6)
                         .accessibilityLabel(Text(verbatim: Format.dayProgress(p)))
-                    VText(d.line).nfont(.body).foregroundStyle(NT.text2)
+                    VText(d.line).nfont(.body).foregroundStyle(ink2)
                         .multilineTextAlignment(.center).lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .shadow(color: sky == nil ? .clear : .black.opacity(0.25), radius: 2, y: 1)
+            }
+            .background {
+                if let sky {
+                    DaySky(phase: sky)
+                        .clipShape(RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous))
+                }
             }
         }
         .opens("day settings", model) {

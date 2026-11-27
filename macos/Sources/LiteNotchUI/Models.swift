@@ -516,10 +516,17 @@ public enum HomeCardPick {
         }
     }
 
-    /// When `card` may give another answer without a new view model: the
-    /// end of a new track's minute, or a gauge falling past 50 % or 20 %.
+    /// When `card` may next give another answer without a new view model.
     public static func nextChangeMs(_ vm: ViewModel, nowMs: Int) -> Int? {
-        guard vm.settings.day.homeCard == .auto else { return nil }
+        changeTimesMs(vm, nowMs: nowMs).first
+    }
+
+    /// Every time ahead when `card` may give another answer without a new
+    /// view model, soonest first: the end of a new track's minute, a gauge
+    /// falling past 50 % or 20 %. All of them, not only the next: the view
+    /// is not rebuilt when one passes, so a later one must already be there.
+    public static func changeTimesMs(_ vm: ViewModel, nowMs: Int) -> [Int] {
+        guard vm.settings.day.homeCard == .auto else { return [] }
         var times: [Int] = []
         if newTrack(vm, nowMs: nowMs), let at = vm.media?.changedAtMs { times.append(at + musicMs) }
         for g in [vm.body?.water, vm.body?.stretch].compactMap({ $0 }) {
@@ -531,7 +538,7 @@ public enum HomeCardPick {
                 if t > nowMs { times.append(t) }
             }
         }
-        return times.min()
+        return times.sorted()
     }
 
     static func newTrack(_ vm: ViewModel, nowMs: Int) -> Bool {

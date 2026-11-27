@@ -426,10 +426,10 @@ private struct HomeCardTimeline<Content: View>: View {
         if snapshot {
             content(HomeCardPick.card(vm, nowMs: now))
         } else {
-            let next = HomeCardPick.nextChangeMs(vm, nowMs: now).map {
+            let changes = HomeCardPick.changeTimesMs(vm, nowMs: now).map {
                 Date(timeIntervalSince1970: Double($0 - offset) / 1000)
             }
-            TimelineView(.explicit([Date()] + (next.map { [$0] } ?? []))) { ctx in
+            TimelineView(.explicit([Date()] + changes)) { ctx in
                 content(HomeCardPick.card(vm, nowMs: nowMs(ctx.date, offset: offset)))
             }
         }

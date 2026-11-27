@@ -151,3 +151,37 @@ final class ClosedBodyTests: XCTestCase {
         XCTAssertEqual(seen, Array((0...99).reversed()), "every whole percent once, down to empty")
     }
 }
+
+final class BodyReviewTests: XCTestCase {
+    /// The Settings › Notch preview has no span; it showed 0 % for "48%".
+    func testAStandInWithoutASpanKeepsItsPercent() {
+        let sample = NotchPriority.sample(.body)
+        XCTAssertNil(sample.totalSecs)
+        XCTAssertEqual(BodyMath.percent(BodyMath.gauge(sample), nowMs: 0), 48)
+    }
+
+    /// Auto: a new song while water falls past 50 % inside the song's
+    /// minute. Both times must be handed over, or the card stays on music.
+    func testEveryChangeTimeIsHandedToTheTimeline() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/body.json")
+        var v = try ViewModel.decode(Data(contentsOf: url))
+        v.settings.day.homeCard = .auto
+        let t0 = 10_000_000
+        let span = 100 * 60_000
+        // 50.2 % now: below 50 % (49 shown) after 42 s, inside the minute.
+        v.body = BodyView(
+            water: GaugeView(spanMs: span, leftMs: 0, emptyAtMs: t0 + span * 502 / 1000), stretch: nil)
+        v.media = MediaView(
+            app: "Music", title: "One", artist: "Band", album: "", playing: true, durationMs: nil,
+            positionMs: nil, positionAtMs: t0, controllable: true, artworkPath: nil, changedAtMs: t0)
+        let times = HomeCardPick.changeTimesMs(v, nowMs: t0)
+        XCTAssertEqual(times.count, 3, "half, low and the end of the minute")
+        XCTAssertEqual(times, times.sorted())
+        XCTAssertTrue(times.contains(t0 + HomeCardPick.musicMs))
+        XCTAssertLessThan(times[0], t0 + HomeCardPick.musicMs, "50 % falls first")
+        XCTAssertEqual(HomeCardPick.card(v, nowMs: times[0]), .media, "past 50 %, still the minute")
+        XCTAssertEqual(HomeCardPick.card(v, nowMs: t0 + HomeCardPick.musicMs), .body)
+    }
+}

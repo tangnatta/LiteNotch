@@ -457,7 +457,9 @@ extension BodyMath {
     /// The gauge a closed-notch `body` activity stands for: counting down
     /// to `endsAtMs` over `totalSecs`, or standing still at `value` ("48%").
     public static func gauge(_ c: CompactView) -> GaugeView {
-        let span = max(1, (c.totalSecs ?? 0) * 1000)
+        // Without a span (a stand-in, such as the Settings › Notch preview)
+        // percent itself is the unit, so "48%" stays 48 %.
+        let span = (c.totalSecs ?? 0) > 0 ? (c.totalSecs ?? 0) * 1000 : 100
         let still = Int(c.value.trimmingCharacters(in: CharacterSet(charactersIn: "%"))) ?? 0
         return GaugeView(spanMs: span, leftMs: span * still / 100, emptyAtMs: c.endsAtMs)
     }
@@ -539,6 +541,8 @@ struct BodyPercent: View {
             // Secondary text: a quiet reading, quieter than a countdown.
             VText(reading).font(NType.body.font).monospacedDigit()
                 .foregroundStyle(NT.text2).lineLimit(1)
+                // The icon is hidden: say which gauge.
+                .accessibilityLabel(Text(verbatim: compact.title + " " + reading))
         }
     }
 }

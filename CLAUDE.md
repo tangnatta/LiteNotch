@@ -170,7 +170,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   below 50 %; the day; music while it plays; the gauges; now playing.
   Home redraws only when that answer can change, at the end of the
   minute or when a gauge falls past 50 % or 20 % (`HomeCardTimeline`,
-  explicit `TimelineView` dates from `HomeCardPick.nextChangeMs`, no
+  explicit `TimelineView` dates, all of them, from `HomeCardPick.changeTimesMs`, no
   timer). The line under the
   number is one of `DAY_LINES`, one per day.
   The principle: people have a life before and after work, so nothing

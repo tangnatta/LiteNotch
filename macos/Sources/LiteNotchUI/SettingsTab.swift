@@ -455,7 +455,7 @@ struct SettingsTab: View {
             caption: "Runs down while you\u{2019}re at the Mac. A 200 ml cup fills half; spaced-out cups count more.")
         toggle(
             "Stretch", gauge($draft.body.stretchMins, SettingsLimits.stretchMins),
-            caption: "Tap once for each stretch. The notch says so once when either runs out.")
+            caption: "Tap once for each stretch. The notch says so at 20 % and when either runs out.")
     }
 
     @ViewBuilder private var home: some View {

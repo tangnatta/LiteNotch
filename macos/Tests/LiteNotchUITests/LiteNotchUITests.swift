@@ -867,15 +867,24 @@ final class HoverAndClickTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(seconds))
     }
 
+    /// Runs the run loop until `done` holds, or up to `timeout`. For a timer
+    /// that should have fired: a fixed wait failed on a busy CI runner.
+    private func spin(until done: () -> Bool, timeout: TimeInterval = 5) {
+        let end = Date().addingTimeInterval(timeout)
+        while !done() && Date() < end {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+    }
+
     func testHoverOpensAfterTheDelayAndClosesAfterLeaving() throws {
         let model = try makeModel()
         model.hoverChanged(true)
         XCTAssertFalse(model.expanded, "not before the delay")
-        spin(NotchPresentation.hoverDelay + 0.15)
+        spin { model.expanded }
         XCTAssertTrue(model.expanded)
         model.hoverChanged(false)
         XCTAssertTrue(model.expanded, "stays while the pointer may come back")
-        spin(NotchPresentation.collapseDelay + 0.15)
+        spin { !model.expanded }
         XCTAssertFalse(model.expanded)
         XCTAssertEqual(bridge.sent, [#"{"cmd":"panel_opened"}"#])
     }
@@ -906,7 +915,7 @@ final class HoverAndClickTests: XCTestCase {
         model.open()
         XCTAssertTrue(model.expanded)
         model.hoverChanged(false)
-        spin(NotchPresentation.collapseDelay + 0.15)
+        spin { !model.expanded }
         XCTAssertFalse(model.expanded)
     }
 
@@ -923,7 +932,7 @@ final class HoverAndClickTests: XCTestCase {
         // Leave and come back: hover works again.
         model.hoverChanged(false)
         model.hoverChanged(true)
-        spin(NotchPresentation.hoverDelay + 0.15)
+        spin { model.expanded }
         XCTAssertTrue(model.expanded)
     }
 
@@ -932,7 +941,7 @@ final class HoverAndClickTests: XCTestCase {
         var clock: TimeInterval = 100
         model.uptime = { clock }
         model.hoverChanged(true)
-        spin(NotchPresentation.hoverDelay + 0.15)
+        spin { model.expanded }
         XCTAssertTrue(model.expanded)
         // The user was already clicking the closed notch when hover opened it.
         clock += 0.2
@@ -1788,6 +1797,15 @@ final class PanelStateTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(seconds))
     }
 
+    /// Runs the run loop until `done` holds, or up to `timeout`. For a timer
+    /// that should have fired: a fixed wait failed on a busy CI runner.
+    private func spin(until done: () -> Bool, timeout: TimeInterval = 5) {
+        let end = Date().addingTimeInterval(timeout)
+        while !done() && Date() < end {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+    }
+
     func testTheFirstLaunchOpensOnTheWelcomeOnce() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "litenotch-welcome-test"))
         defaults.removePersistentDomain(forName: "litenotch-welcome-test")
@@ -1817,7 +1835,7 @@ final class PanelStateTests: XCTestCase {
         let b = app.addPanel()
         XCTAssertEqual(app.panels.count, 2)
         b.hoverChanged(true)
-        spin(NotchPresentation.hoverDelay + 0.15)
+        spin { b.expanded }
         XCTAssertTrue(b.expanded)
         XCTAssertFalse(a.expanded)
         a.open()

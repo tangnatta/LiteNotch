@@ -109,7 +109,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   mark while running; pausing keeps time left still, so it never repeats.
   Warning times join `next_deadline`, so peeks add no polling.
   Three wellbeing peeks (`ActivityKind::Nudge`), each with an Off choice
-  in Settings › Timer. The eye break and the gauges both count screen time only
+  (the eye break in Settings › Timer, the gauges in Settings › Day). The eye break and the gauges both count screen time only
   (`Core::is_away`: the shell's `screen_away` or `lid_shut`, which is the lid
   shut in closed-lid mode with no other display, so caffeine holding a shut
   Mac awake does not count); they never follow the focus timer (an earlier
@@ -174,7 +174,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   here limits or judges their time. No bar, no colour, no overtime
   warning, no line that says to finish or stop.
 - **Water and stretch** (`settings.body`, `core::body`, both off by
-  default, Settings › Timer): two gauges that replaced the Move reminder
+  default, Settings › Day below day progress, on or off apart from it; only on and off, on being 90 min for water and 60 for stretch, `SettingsLimits`): two gauges that replaced the Move reminder
   (an old `peek.move_mins` loads into both, `BodyConfig::from_move`, and
   is never written back). Each runs from full to empty over
   `water_mins` / `stretch_mins` of screen time (starting at half, `START_PCT`, when turned on or at launch) and stands still while

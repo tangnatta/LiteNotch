@@ -142,7 +142,7 @@ public enum SnapshotRenderer {
                     light.settings.appearance.theme = .light
                     try add("body-draining-light-expanded-home", light)
                     try add("body-draining-expanded-settings-home", at, tab: .settings, section: .home)
-                    try add("body-draining-expanded-settings-timer", at, tab: .settings, section: .timer)
+                    try add("body-draining-expanded-settings-day", at, tab: .settings, section: .day)
                 }
             }
             if name == "approval" {

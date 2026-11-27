@@ -405,20 +405,6 @@ struct SettingsTab: View {
                 options: SettingsLimits.eyeBreakMins.map { ($0, $0 == 0 ? "Off" : $0 == 20 ? "20 min" : "\($0)") },
                 selection: $draft.peek.eyeBreakMins, label: "Eye break", height: 22)
         }
-        wideRow(
-            "Water",
-            caption:
-                "Empties with time at the Mac. A 200 ml cup fills half, less if drunk right after the last. 90 min is about 2 L a workday."
-        ) {
-            SegmentedPill(
-                options: SettingsLimits.waterMins.map { ($0, $0 == 0 ? "Off" : $0 == 120 ? "2 h" : "\($0)") },
-                selection: $draft.body.waterMins, label: "Water", height: 22)
-        }
-        wideRow("Stretch", caption: "Tap once for each stretch until it is full. The notch says so once when either runs out.") {
-            SegmentedPill(
-                options: SettingsLimits.stretchMins.map { ($0, $0 == 0 ? "Off" : $0 == 60 ? "60 min" : "\($0)") },
-                selection: $draft.body.stretchMins, label: "Stretch", height: 22)
-        }
         toggle(
             "A few words after a break", $draft.peek.breakQuote,
             caption: "The closed notch shows a short line of encouragement when a break ends.")
@@ -461,6 +447,15 @@ struct SettingsTab: View {
                     selection: $draft.day.icons, label: "Icon", height: 22)
             }
         }
+        // Water and stretch: like day progress, a quiet reading of the day
+        // that Home can show; on or off apart from it.
+        Hairline().padding(.vertical, 2)
+        toggle(
+            "Water", gauge($draft.body.waterMins, SettingsLimits.waterMins),
+            caption: "Runs down while you\u{2019}re at the Mac. A 200 ml cup fills half; spaced-out cups count more.")
+        toggle(
+            "Stretch", gauge($draft.body.stretchMins, SettingsLimits.stretchMins),
+            caption: "Tap once for each stretch. The notch says so once when either runs out.")
     }
 
     @ViewBuilder private var home: some View {
@@ -482,9 +477,9 @@ struct SettingsTab: View {
             if !bodyOn {
                 row("Water and stretch are off", caption: "Until one is on, the big card is Now playing.", tint: NT.text2) {
                     TextPill(title: "Turn on", tint: NT.text1, height: 22) {
-                        model.settingsSection = .timer
+                        model.settingsSection = .day
                     }
-                    .help("Opens Settings \u{203A} Timer")
+                    .help("Opens Settings \u{203A} Day")
                 }
             }
         } else if !homeCardWorks {
@@ -820,6 +815,12 @@ struct SettingsTab: View {
             control()
         }
         .frame(minHeight: 22)
+    }
+
+    /// On or off for a gauge: on is its one length (`SettingsLimits`). A
+    /// length saved before, when there was a choice, stays until turned off.
+    private func gauge(_ mins: Binding<Int>, _ on: Int) -> Binding<Bool> {
+        Binding(get: { mins.wrappedValue > 0 }, set: { mins.wrappedValue = $0 ? on : 0 })
     }
 
     private func toggle(_ title: String, _ b: Binding<Bool>, caption: String = "") -> some View {

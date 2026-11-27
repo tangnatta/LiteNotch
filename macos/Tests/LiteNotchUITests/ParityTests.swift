@@ -113,8 +113,8 @@ final class ParityTests: XCTestCase {
         try within(SettingsLimits.dayStart, "day.start_min")
         try choices(SettingsLimits.timeWarningSecs, "peek.time_warning_secs")
         try choices(SettingsLimits.eyeBreakMins, "peek.eye_break_mins")
-        try choices(SettingsLimits.waterMins, "body.water_mins")
-        try choices(SettingsLimits.stretchMins, "body.stretch_mins")
+        try choices([0, SettingsLimits.waterMins], "body.water_mins")
+        try choices([0, SettingsLimits.stretchMins], "body.stretch_mins")
     }
 
     func testTheOfficeHoursSpanIsTheCores() throws {

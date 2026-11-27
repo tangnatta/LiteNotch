@@ -342,7 +342,8 @@ situations.
 
 For a few seconds the closed notch can show one thing, then go back to what
 it was showing. These never land in the inbox. All are set in
-**Settings › Timer** (the song one in **Settings › Music**):
+**Settings › Timer** (the song one in **Settings › Music**, water and
+stretch in **Settings › Day**):
 
 - **Heads-up before it ends:** a focus session or countdown shows the time
   left 1, 3, 5 or 10 minutes before it ends.

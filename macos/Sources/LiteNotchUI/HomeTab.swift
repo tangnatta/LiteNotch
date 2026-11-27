@@ -17,7 +17,7 @@ struct HomeTab: View {
                     case (.body, let gauges?, _):
                         BodyCard(gauges: gauges, show: vm.settings.body.show, send: model.send)
                             .opens("water and stretch settings", model) {
-                                model.settingsSection = .timer
+                                model.settingsSection = .day
                                 model.selectTab(.settings)
                             }
                     case (.day, _, let day?):

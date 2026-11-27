@@ -96,6 +96,15 @@ enum BodyKind {
     var command: ShellCommand { self == .water ? .bodyDrink : .bodyStretch }
     /// Blue water, orange stretch; the same at every level, never a warning.
     var color: NSColor { self == .water ? .systemBlue : .systemOrange }
+
+    /// The "+200 ml" that floats up: the gauge's colour made lighter on dark
+    /// and deeper on light, so it stands out from the water it rises over.
+    func floatColor(dark: Bool) -> Color {
+        let base = color.resolved(dark: dark)
+        let ns = NSColor(cgColor: base) ?? color
+        let mixed = dark ? ns.blended(withFraction: 0.6, of: .white) : ns.blended(withFraction: 0.25, of: .black)
+        return Color(nsColor: mixed ?? ns)
+    }
 }
 
 /// Home's big card as the water and stretch gauges: each column is its own
@@ -157,7 +166,7 @@ private struct GaugeColumn: View {
                         // "+1 cup" rises from the button, past the number.
                         .overlay {
                             ForEach(floats) { f in
-                                FloatingText(label: f, reduceMotion: reduceMotion, color: Color(nsColor: kind.color)) {
+                                FloatingText(label: f, reduceMotion: reduceMotion, color: kind.floatColor(dark: scheme == .dark)) {
                                     floats.removeAll { $0.id == f.id }
                                 }
                             }

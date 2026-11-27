@@ -185,8 +185,11 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   first 8 pt and fires one step at 40 pt, then nothing until the fingers
   lift; momentum and a mouse wheel are ignored, the event passes on
   unchanged. Left/right anywhere on the open panel moves one tab in the
-  bar's order (stops at the ends); up/down counts only when it began over
-  the big card (`homeCardFrame`). None while an approval, the welcome or a
+  bar's order, round from Settings to Home and back; up/down counts only
+  when it began over the big card (`homeCardFrame`), stops at the ends,
+  and slides up to a later page and down to an earlier one
+  (`homeCardForward`, drawn once before the change so the outgoing card
+  leaves the same way). The dots sit inside the card and do not slide. None while an approval, the welcome or a
   text field is up. Direction follows the system's natural scrolling. The line under the
   number is one of `DAY_LINES`, one per day.
   With the sun icons Home's day card sits on a grainy sky gradient at 50 % (`DaySky.swift`): morning, day, evening, night follow `Format.daySymbol`; still, no animation.

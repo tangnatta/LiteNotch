@@ -543,6 +543,8 @@ public final class PanelState: ObservableObject {
     /// Home's big card chosen by a swipe, a dot or a button on the card;
     /// kept until the panel closes, then Auto (or the fixed choice) again.
     @Published public var homeCardHeld: HomeCardShown?
+    /// Which way the last card change went, for its slide.
+    @Published public var homeCardForward = true
     /// Where Home's big card is, in the hosting view (top-left origin), so
     /// an up/down swipe counts only over it. Not published: layout only.
     var homeCardFrame: CGRect = .null

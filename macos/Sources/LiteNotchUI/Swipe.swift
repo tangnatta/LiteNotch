@@ -97,38 +97,48 @@ extension PanelState {
     }
 
     /// A finished step from `SwipeTracker`: left/right anywhere in the open
-    /// panel moves one tab; up/down that began over Home's big card moves
-    /// one card page. Stops at the ends. Nothing while an approval or the
-    /// welcome is showing or a text field has the keyboard.
+    /// panel moves one tab, round from Settings to Home and back; up/down
+    /// that began over Home's big card moves one card page and stops at the
+    /// ends. Nothing while an approval or the welcome is showing or a text
+    /// field has the keyboard.
     public func swiped(_ step: SwipeTracker.Step, from start: CGPoint?) {
         guard expanded, !keyboardRequested, !welcome, view?.agents.pending.isEmpty ?? true else { return }
         switch step.axis {
         case .horizontal:
             let tabs = swipeTabs
             guard let i = tabs.firstIndex(of: tab) else { return }
-            let j = i + (step.forward ? 1 : -1)
-            guard tabs.indices.contains(j) else { return }
+            let j = (i + (step.forward ? 1 : -1) + tabs.count) % tabs.count
             selectTab(tabs[j])
         case .vertical:
             guard tab == .home, let vm = view, let start, homeCardFrame.contains(start) else { return }
             let pages = HomeCardPick.pages(vm)
-            let now = nowMs(Date(), offset: 0)
-            let current = HomeCardPick.card(vm, nowMs: now, held: homeCardHeld)
+            let current = HomeCardPick.card(vm, nowMs: nowMs(Date(), offset: 0), held: homeCardHeld)
             guard let i = pages.firstIndex(of: current) else { return }
             let j = i + (step.forward ? 1 : -1)
             guard pages.indices.contains(j) else { return }
-            showHomeCard(pages[j], animated: true)
+            showHomeCard(pages[j], from: current)
         }
     }
 
     /// Keeps Home's big card on `card` until the panel closes: a swipe, a
-    /// dot, or a button on the card.
-    public func showHomeCard(_ card: HomeCardShown, animated: Bool = false) {
+    /// dot, or a button on the card. With `from` (a swipe or a dot) the
+    /// change slides: up to a later page, down to an earlier one.
+    public func showHomeCard(_ card: HomeCardShown, from current: HomeCardShown? = nil) {
         guard homeCardHeld != card else { return }
-        if animated {
-            withAnimation(.easeOut(duration: 0.22)) { homeCardHeld = card }
-        } else {
+        guard let current, let vm = view else {
             homeCardHeld = card
+            return
+        }
+        let pages = HomeCardPick.pages(vm)
+        let forward = (pages.firstIndex(of: card) ?? 0) > (pages.firstIndex(of: current) ?? 0)
+        let slide = { withAnimation(.easeOut(duration: 0.22)) { self.homeCardHeld = card } }
+        if forward == homeCardForward {
+            slide()
+        } else {
+            // The outgoing card leaves with the transition it was last drawn
+            // with, so the new direction must be drawn once before the change.
+            homeCardForward = forward
+            DispatchQueue.main.async(execute: slide)
         }
     }
 }

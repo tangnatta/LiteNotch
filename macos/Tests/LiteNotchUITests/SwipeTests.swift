@@ -89,6 +89,21 @@ final class CardSwipeTests: XCTestCase {
         XCTAssertEqual(p.homeCardHeld, .media, "up/down beside the card does nothing")
     }
 
+    func testTheSlideFollowsTheDirection() throws {
+        let p = try panel()
+        p.showHomeCard(.body, from: .day)
+        XCTAssertTrue(p.homeCardForward)
+        XCTAssertEqual(p.homeCardHeld, .body)
+        p.showHomeCard(.day, from: .body)
+        XCTAssertFalse(p.homeCardForward, "set first, the change follows a moment later")
+        let done = expectation(description: "changed")
+        DispatchQueue.main.async {
+            XCTAssertEqual(p.homeCardHeld, .day)
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 1)
+    }
+
     func testTheChoiceHoldsUntilThePanelCloses() throws {
         let p = try panel()
         p.showHomeCard(.body)
@@ -110,7 +125,9 @@ final class CardSwipeTests: XCTestCase {
         let left = SwipeTracker.Step(axis: .horizontal, forward: false)
         let right = SwipeTracker.Step(axis: .horizontal, forward: true)
         p.swiped(left, from: onCard)
-        XCTAssertEqual(p.tab, .home, "no tab before Home")
+        XCTAssertEqual(p.tab, .settings, "back from Home is Settings, the far right")
+        p.swiped(right, from: nil)
+        XCTAssertEqual(p.tab, .home)
         p.swiped(right, from: nil)
         XCTAssertEqual(p.tab, .music)
         p.selectTab(.agents)
@@ -118,7 +135,7 @@ final class CardSwipeTests: XCTestCase {
         XCTAssertEqual(p.tab, p.swipeTabs[TabBar.left.count], "past the notch to the right side")
         p.selectTab(.settings)
         p.swiped(right, from: nil)
-        XCTAssertEqual(p.tab, .settings, "no tab after Settings")
+        XCTAssertEqual(p.tab, .home, "and on from Settings is Home")
     }
 
     func testNothingTurnsWhileTypingOrClosed() throws {

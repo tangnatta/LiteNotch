@@ -20,29 +20,14 @@ struct HomeTab: View {
     private var dashboard: some View {
         HomeCardTimeline(vm: vm, held: model.homeCardHeld) { shown in
             HStack(alignment: .top, spacing: 12) {
-                Group {
-                    switch (shown, vm.body, vm.day) {
-                    case (.body, let gauges?, _):
-                        BodyCard(gauges: gauges, show: vm.settings.body.show) { command in
-                            // Tapping keeps the card: Auto would move on
-                            // once a gauge passes 50 %.
-                            model.showHomeCard(.body)
-                            model.send(command)
-                        }
-                        .opens("water and stretch settings", model) {
-                            model.settingsSection = .day
-                            model.selectTab(.settings)
-                        }
-                    case (.day, _, let day?):
-                        dayCard(day)
-                    default:
-                        nowPlaying
-                    }
+                ZStack {
+                    bigCard(shown)
+                        .id(shown)
+                        .transition(.push(from: model.homeCardForward ? .bottom : .top))
                 }
-                .id(shown)
-                .transition(.push(from: .bottom))
                 .frame(width: 236)
                 .clipped()
+                // Outside the sliding card, so the dots stay put.
                 .overlay(alignment: .trailing) { pageDots(shown) }
                 .background(CardFrameReporter(model: model))
                 // One list, not three cards: the now-playing card is the only
@@ -67,13 +52,33 @@ struct HomeTab: View {
         }
     }
 
-    /// Dots in the gap right of the card, one per page, while there is
+    @ViewBuilder private func bigCard(_ shown: HomeCardShown) -> some View {
+        switch (shown, vm.body, vm.day) {
+        case (.body, let gauges?, _):
+            BodyCard(gauges: gauges, show: vm.settings.body.show) { command in
+                // Tapping keeps the card: Auto would move on
+                // once a gauge passes 50 %.
+                model.showHomeCard(.body)
+                model.send(command)
+            }
+            .opens("water and stretch settings", model) {
+                model.settingsSection = .day
+                model.selectTab(.settings)
+            }
+        case (.day, _, let day?):
+            dayCard(day)
+        default:
+            nowPlaying
+        }
+    }
+
+    /// Dots inside the card's right edge, one per page, while there is
     /// more than one; up/down swipes over the card move between them.
     @ViewBuilder private func pageDots(_ shown: HomeCardShown) -> some View {
         let pages = HomeCardPick.pages(vm)
         if pages.count > 1 {
-            CardPageDots(pages: pages, shown: shown) { model.showHomeCard($0, animated: true) }
-                .offset(x: 11)
+            CardPageDots(pages: pages, shown: shown) { model.showHomeCard($0, from: shown) }
+                .padding(.trailing, 1)
         }
     }
 

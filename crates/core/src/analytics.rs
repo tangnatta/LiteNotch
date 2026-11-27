@@ -48,6 +48,7 @@ pub enum Feature {
     ColorPick,
     TimerStart,
     CalendarAlert,
+    TabCalendar,
 }
 
 impl Feature {
@@ -63,6 +64,7 @@ impl Feature {
             Feature::TabAgents => "tab_agents",
             Feature::TabInbox => "tab_inbox",
             Feature::TabSettings => "tab_settings",
+            Feature::TabCalendar => "tab_calendar",
             Feature::PomodoroStart => "pomodoro_start",
             Feature::PomodoroComplete => "pomodoro_complete",
             Feature::PomodoroSkip => "pomodoro_skip",
@@ -476,6 +478,7 @@ mod tests {
             Feature::TabAgents,
             Feature::TabInbox,
             Feature::TabSettings,
+            Feature::TabCalendar,
             Feature::PomodoroStart,
             Feature::PomodoroComplete,
             Feature::PomodoroSkip,

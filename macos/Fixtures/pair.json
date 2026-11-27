@@ -68,8 +68,8 @@
         "read": true,
         "open": {
           "kind": "tab",
-          "tab": "home",
-          "pane": null
+          "tab": "calendar",
+          "pane": "1794400240000-e1"
         },
         "action": null
       }
@@ -150,7 +150,8 @@
     ],
     "models": [],
     "projects": [],
-    "summary": ""
+    "summary": "",
+    "codex": null
   },
   "caffeine": {
     "mode": "off",
@@ -278,7 +279,7 @@
     }
   ],
   "update": {
-    "current": "0.2.6-beta",
+    "current": "0.2.7-beta",
     "status": "idle",
     "latest": null,
     "url": null,

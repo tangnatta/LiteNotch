@@ -73,6 +73,9 @@ public enum ShellCommand: Equatable {
     case notifySystem(app: String, title: String, body: String)
     /// The upcoming events, read by `CalendarObserver`; replaces the last list.
     case calendarEvents([CalendarEventInput])
+    /// One event in full, read when the user opened it in the Calendar tab.
+    case calendarDetail(EventDetailInput)
+    case calendarDetailClose
     case agentDecide(requestId: String, decision: Decision)
     /// The answers to a question: one list per question, the chosen labels or typed text.
     case agentAnswer(requestId: String, answers: [[String]])
@@ -145,6 +148,8 @@ public enum ShellCommand: Equatable {
         case .notifySystem(let app, let title, let body):
             return c("notify_system", ["app": app, "title": title, "body": body])
         case .calendarEvents(let events): return c("calendar_events", ["events": events.map(\.object)])
+        case .calendarDetail(let d): return c("calendar_detail", ["detail": d.object])
+        case .calendarDetailClose: return c("calendar_detail_close")
         case .agentSeen(let id): return c("agent_seen", ["session_id": id])
         case .updateCheck: return c("update_check")
         case .agentDecide(let id, let d): return c("agent_decide", ["request_id": id, "decision": d.rawValue])
@@ -197,7 +202,20 @@ public enum ShellCommand: Equatable {
 
 /// Categories of the Settings tab.
 public enum SettingsSection: String, CaseIterable, Equatable {
-    case general, notch, home, day, timer, music, notifications, calendar, clipboard, agents, keepAwake, privacy
+    // Most used first: with more sections than the panel's height, the
+    // last ones sit below the fold. Home's one choice lives under Day.
+    case general, notch, timer, music, calendar, clipboard, agents, notifications, keepAwake, day, privacy
+}
+
+/// What the Calendar tab shows.
+public enum CalendarPage: Equatable {
+    case list
+    /// One event in full, by `CalendarEvent.key` (`<start>-<id>`).
+    case event(String)
+    /// The form for changing that event.
+    case edit(String)
+    /// The form for a new event.
+    case new
 }
 
 /// The two halves of the Agents tab.
@@ -249,10 +267,33 @@ public final class AppModel: ObservableObject {
     @Published public var accessibilityNeeded = false
     /// Whether the calendars may be read; set by `CalendarObserver`.
     @Published public var calendarAccess: CalendarAccess = .unknown
+    /// Reads one event in full and writes events for the Calendar tab;
+    /// set by `CalendarObserver.start`, nil in tests and snapshots.
+    public weak var calendarEditor: CalendarEditing?
     /// One per notch; the first always exists (tests and snapshots use it).
     @Published public private(set) var panels: [PanelState] = []
     /// Fires whenever any panel goes from closed to open.
     public let panelOpened = PassthroughSubject<Void, Never>()
+
+    static let welcomedKey = "welcomed"
+
+    /// The first launch opens the panel once on a short welcome on Home,
+    /// since a black notch alone does not say it can be opened. Remembered
+    /// as soon as it shows, so it never comes back after a quit.
+    public func welcomeIfFirstRun(defaults: UserDefaults = .standard, after delay: TimeInterval = 1) {
+        guard !defaults.bool(forKey: Self.welcomedKey) else { return }
+        defaults.set(true, forKey: Self.welcomedKey)
+        primary.welcome = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let p = self?.primary else { return }
+            p.selectTab(.home)
+            p.open()
+        }
+    }
+
+    public func dismissWelcome() {
+        for p in panels { p.welcome = false }
+    }
 
     /// What "Quit" does. Defaults to `NSApplication.terminate`.
     public var onQuit: () -> Void = { NSApplication.shared.terminate(nil) }
@@ -460,7 +501,7 @@ public final class AppModel: ObservableObject {
         _ vm: ViewModel, expanded: Bool, tab: Tab,
         section: SettingsSection = .general, pane: AgentsPane = .sessions,
         timerPane: TimerPane = .focus, clipPreview: Int? = nil,
-        accessibilityNeeded: Bool = false
+        calendarPage: CalendarPage = .list, accessibilityNeeded: Bool = false
     ) {
         NT.setAccent(vm.settings.appearance.accent)
         view = vm
@@ -471,6 +512,7 @@ public final class AppModel: ObservableObject {
         p.agentsPane = pane
         p.timerPane = timerPane
         p.clipPreview = clipPreview
+        p.calendarPage = calendarPage
         self.accessibilityNeeded = accessibilityNeeded
         p.syncOpenState()
     }
@@ -484,6 +526,8 @@ public final class AppModel: ObservableObject {
 public final class PanelState: ObservableObject {
     @Published public var expanded = false
     @Published public var tab: Tab = .home
+    /// Home shows the first-run welcome instead of the dashboard.
+    @Published public var welcome = false
     /// Which Settings category is showing; other tabs deep-link through
     /// `openSettings(_:)`.
     @Published public var settingsSection: SettingsSection = .general
@@ -491,6 +535,19 @@ public final class PanelState: ObservableObject {
     @Published public var timerPane: TimerPane = .focus
     /// The clipboard item shown large instead of the list, if any.
     @Published public var clipPreview: Int?
+    @Published public var calendarPage: CalendarPage = .list
+    /// "Added", "Saved", "Deleted": shown beside the Calendar list's title
+    /// for a few seconds after a change, so it is clear it happened.
+    @Published public var calendarNotice: String?
+    private var noticeWork: DispatchWorkItem?
+
+    public func showCalendarNotice(_ text: String, for seconds: TimeInterval = 3) {
+        calendarNotice = text
+        noticeWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.calendarNotice = nil }
+        noticeWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
     /// True while a text field (clipboard search, agenda) wants to type;
     /// the panel then allows itself to become key.
     @Published public var keyboardRequested = false
@@ -616,6 +673,8 @@ public final class PanelState: ObservableObject {
         case (.agents, let p?): agentsPane = AgentsPane(rawValue: p) ?? agentsPane
         case (.settings, "keep_awake"): settingsSection = .keepAwake
         case (.settings, let p?): settingsSection = SettingsSection(rawValue: p) ?? settingsSection
+        case (.calendar, let p?): calendarPage = .event(p)
+        case (.calendar, nil): calendarPage = .list
         default: break
         }
     }
@@ -783,6 +842,13 @@ public final class PanelState: ObservableObject {
         if !value {
             keyboardRequested = false
             hoverOpenedAt = nil
+            // An unsaved Calendar form is dropped: a later hover must not
+            // land on it with a field ready to take the keyboard.
+            switch calendarPage {
+            case .new: calendarPage = .list
+            case .edit(let key): calendarPage = .event(key)
+            default: break
+            }
             closedAt = uptime()
             // A banner that came while the panel was open has been seen.
             bannersSeenUntil = closedAt ?? bannersSeenUntil

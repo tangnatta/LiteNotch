@@ -25,7 +25,7 @@ struct InboxTab: View {
                     Text(verbatim: "Focus: less urgent notifications wait until it ends")
                         .nfont(.body).foregroundStyle(NT.text2).lineLimit(1)
                 } else {
-                    Text(verbatim: vm.inbox.unread > 0 ? "\(vm.inbox.unread) unread" : "All caught up")
+                    Text(verbatim: vm.inbox.unread > 0 ? "\(vm.inbox.unread) unread" : rows.isEmpty ? "All caught up" : "All read")
                         .nfont(.body).foregroundStyle(NT.text3)
                 }
                 Spacer(minLength: 4)

@@ -13,7 +13,9 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 pub use litenotch_core::usage::local_day_start_ms as day_start_ms;
-use litenotch_core::usage::{parse_record_in, UsageRecord, HISTORY_DAYS};
+use litenotch_core::usage::{
+    parse_codex_limits, parse_record_in, AgentLimits, UsageRecord, HISTORY_DAYS,
+};
 
 /// Most bytes read from one file in one scan.
 const MAX_BYTES_PER_FILE: u64 = 32 * 1024 * 1024;
@@ -162,6 +164,125 @@ impl TranscriptScanner {
     }
 }
 
+/// Most bytes read from the end of a Codex session log. A `token_count`
+/// event follows every reply, so the last one is near the end.
+const CODEX_TAIL_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Finds Codex's newest usage-limit reading in `<codex home>/sessions`
+/// (`YYYY/MM/DD/rollout-*.jsonl`). Only the newest log is read, only its
+/// tail, and only again when it has grown.
+#[derive(Default)]
+pub struct CodexLimitsReader {
+    sessions_dir: PathBuf,
+    /// The log read last and its length then.
+    last: Option<(PathBuf, u64)>,
+}
+
+impl CodexLimitsReader {
+    pub fn new(sessions_dir: PathBuf) -> Self {
+        Self {
+            sessions_dir,
+            last: None,
+        }
+    }
+
+    /// The newest reading, or `None` when nothing changed or none was found.
+    /// A session that ended before Codex replied has none, so older logs
+    /// are tried too, a few at most.
+    pub fn read(&mut self) -> Option<AgentLimits> {
+        let logs = recent_logs(&self.sessions_dir, CODEX_LOGS_TRIED);
+        let newest = logs.first()?;
+        let key = (newest.clone(), fs::metadata(newest).ok()?.len());
+        if self.last.as_ref() == Some(&key) {
+            return None;
+        }
+        self.last = Some(key);
+        logs.iter().find_map(|path| last_reading(path))
+    }
+}
+
+/// Session logs tried for a reading, newest first.
+const CODEX_LOGS_TRIED: usize = 8;
+
+/// The last limit reading in the tail of one log.
+fn last_reading(path: &Path) -> Option<AgentLimits> {
+    // A regular file only, not followed through a link: a pipe would block
+    // the open and a device such as /dev/zero would never end.
+    if !fs::symlink_metadata(path).ok()?.file_type().is_file() {
+        return None;
+    }
+    let mut file = File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let start = len.saturating_sub(CODEX_TAIL_BYTES);
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut reader = BufReader::new(file);
+    let mut line = Vec::new();
+    if start > 0 {
+        // Partway into a line: skip to the next one.
+        read_line_bounded(&mut reader, &mut line)?;
+    }
+    let mut found = None;
+    // A log still being written is read up to the size it had, plus a line.
+    let mut budget = CODEX_TAIL_BYTES + MAX_LINE_BYTES as u64;
+    while let Some((took, kept)) = read_line_bounded(&mut reader, &mut line) {
+        budget = budget.saturating_sub(took);
+        if budget == 0 {
+            break;
+        }
+        if kept {
+            if let Some(l) = std::str::from_utf8(&line).ok().and_then(parse_codex_limits) {
+                found = Some(l);
+            }
+        }
+    }
+    found
+}
+
+/// Up to `max` session logs, newest first: by folder (`YYYY/MM/DD`), then
+/// by modification time within a day.
+fn recent_logs(sessions_dir: &Path, max: usize) -> Vec<PathBuf> {
+    // Folder names are numbers, so the newest sorts last.
+    fn children(dir: &Path) -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> = fs::read_dir(dir)
+            .map(|r| {
+                r.flatten()
+                    .map(|e| e.path())
+                    .filter(|p| p.is_dir())
+                    .collect()
+            })
+            .unwrap_or_default();
+        v.sort();
+        v.reverse();
+        v
+    }
+    let mut out = Vec::new();
+    for year in children(sessions_dir) {
+        for month in children(&year) {
+            for day in children(&month) {
+                let mut logs: Vec<(std::time::SystemTime, PathBuf)> = fs::read_dir(&day)
+                    .map(|r| {
+                        r.flatten()
+                            .filter(|e| {
+                                let name = e.file_name();
+                                let name = name.to_string_lossy();
+                                name.starts_with("rollout-") && name.ends_with(".jsonl")
+                            })
+                            .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                logs.sort();
+                out.extend(logs.into_iter().rev().map(|(_, p)| p));
+                if out.len() >= max {
+                    out.truncate(max);
+                    return out;
+                }
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,6 +290,23 @@ mod tests {
     use std::io::Write;
 
     const USAGE: &str = r#"{"type":"assistant","timestamp":"2023-11-14T22:14:00Z","message":{"usage":{"input_tokens":1}}}"#;
+
+    #[test]
+    fn a_codex_log_that_is_not_a_regular_file_is_skipped() {
+        // From review: a pipe here blocked the reader thread for good, and a
+        // link to /dev/zero kept it reading forever.
+        let dir = temp_dir("codex-odd");
+        let link = dir.join("rollout-zero.jsonl");
+        std::os::unix::fs::symlink("/dev/zero", &link).unwrap();
+        assert_eq!(last_reading(&link), None);
+        let fifo = dir.join("rollout-fifo.jsonl");
+        let made = std::process::Command::new("/usr/bin/mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap();
+        assert!(made.success());
+        assert_eq!(last_reading(&fifo), None);
+    }
 
     fn project(dir: &Path, name: &str) -> PathBuf {
         let p = dir.join(name);
@@ -305,5 +443,61 @@ mod tests {
         .unwrap();
         let mut scanner = TranscriptScanner::new(dir);
         assert_eq!(scanner.scan(0).records.len(), 1);
+    }
+
+    fn codex_line(pct: f64) -> String {
+        format!(
+            "{{\"timestamp\":\"2026-11-26T08:00:00Z\",\"payload\":{{\"type\":\"token_count\",\"rate_limits\":{{\"primary\":{{\"used_percent\":{pct},\"window_minutes\":300,\"resets_at\":1795000000}}}}}}}}\n"
+        )
+    }
+
+    #[test]
+    fn codex_limits_come_from_the_newest_log_and_only_when_it_grew() {
+        let dir = temp_dir("codex-limits");
+        let old = project(&dir, "2026/10/31");
+        let new = project(&dir, "2026/11/02");
+        append(&old.join("rollout-old.jsonl"), &codex_line(90.0));
+        append(
+            &new.join("rollout-b.jsonl"),
+            "{\"type\":\"session_meta\"}\n",
+        );
+        append(&new.join("rollout-b.jsonl"), &codex_line(10.0));
+        append(&new.join("rollout-b.jsonl"), &codex_line(20.0));
+        // Not a session log: ignored.
+        append(&new.join("notes.txt"), &codex_line(99.0));
+
+        let mut reader = CodexLimitsReader::new(dir.clone());
+        let first = reader.read().unwrap();
+        assert_eq!(first.primary.unwrap().used_pct, 20.0);
+        assert_eq!(first.updated_ms, 1_795_680_000_000);
+        // Unchanged: not read again.
+        assert_eq!(reader.read(), None);
+        append(&new.join("rollout-b.jsonl"), &codex_line(30.0));
+        assert_eq!(reader.read().unwrap().primary.unwrap().used_pct, 30.0);
+        // A log with no reading yet gives none.
+        let empty = project(&dir, "2026/11/03");
+        append(
+            &empty.join("rollout-c.jsonl"),
+            "{\"type\":\"session_meta\"}\n",
+        );
+        // A newer session that ended before any reply: the reading before
+        // it still counts (reported: on a real Mac the limits never showed).
+        assert_eq!(reader.read().unwrap().primary.unwrap().used_pct, 30.0);
+        assert_eq!(CodexLimitsReader::new(dir.join("missing")).read(), None);
+    }
+
+    #[test]
+    fn codex_limits_are_found_in_the_tail_of_a_long_log() {
+        let dir = temp_dir("codex-tail");
+        let day = project(&dir, "2026/11/26");
+        let log = day.join("rollout-long.jsonl");
+        let filler = format!("{{\"text\":\"{}\"}}\n", "x".repeat(1024 * 1024));
+        append(&log, &codex_line(5.0));
+        for _ in 0..3 {
+            append(&log, &filler);
+        }
+        append(&log, &codex_line(55.0));
+        let limits = CodexLimitsReader::new(dir).read().unwrap();
+        assert_eq!(limits.primary.unwrap().used_pct, 55.0);
     }
 }

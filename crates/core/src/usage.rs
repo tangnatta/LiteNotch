@@ -30,6 +30,89 @@ pub struct RateWindow {
     pub resets_at_ms: Option<u64>,
 }
 
+/// One of Codex's usage-limit windows, as its session log reports it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LimitWindow {
+    /// Percentage of the window used.
+    pub used_pct: f32,
+    /// Length of the window in minutes (300 is five hours, 10080 a week).
+    pub window_mins: u32,
+    /// Unix ms at which the window resets, when known.
+    pub resets_at_ms: Option<u64>,
+}
+
+/// Codex's usage limits: the latest reading found in its session logs
+/// (`~/.codex/sessions/.../rollout-*.jsonl`, a `token_count` event). Like
+/// Claude Code's transcripts, that format is internal and may change; a
+/// line that does not match gives no reading rather than a wrong one.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AgentLimits {
+    /// The shorter window (five hours).
+    pub primary: Option<LimitWindow>,
+    /// The longer window (a week).
+    pub secondary: Option<LimitWindow>,
+    /// When Codex wrote the reading, Unix ms.
+    pub updated_ms: u64,
+}
+
+/// Longest window believed: a year.
+const MAX_WINDOW_MINS: u64 = 366 * 24 * 60;
+
+/// Codex's limits from one session-log line; `None` for any other line.
+pub fn parse_codex_limits(line: &str) -> Option<AgentLimits> {
+    // Most lines are messages; skip them before parsing.
+    if !line.contains("\"rate_limits\"") {
+        return None;
+    }
+    let v: Value = serde_json::from_str(line).ok()?;
+    let payload = v.get("payload")?;
+    if payload.get("type").and_then(Value::as_str) != Some("token_count") {
+        return None;
+    }
+    let limits = payload.get("rate_limits")?;
+    let primary = codex_window(limits.get("primary"));
+    let secondary = codex_window(limits.get("secondary"));
+    if primary.is_none() && secondary.is_none() {
+        return None;
+    }
+    Some(AgentLimits {
+        primary,
+        secondary,
+        updated_ms: v
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .and_then(parse_rfc3339_ms)
+            .unwrap_or(0),
+    })
+}
+
+fn codex_window(v: Option<&Value>) -> Option<LimitWindow> {
+    let v = v?;
+    let used_pct = v
+        .get("used_percent")
+        .and_then(Value::as_f64)
+        .and_then(finite_f32)
+        .filter(|p| (0.0..=1000.0).contains(p))?;
+    let window_mins = v
+        .get("window_minutes")
+        .and_then(Value::as_u64)
+        .filter(|m| (1..=MAX_WINDOW_MINS).contains(m))? as u32;
+    // Seconds; a value that already looks like milliseconds is kept as is.
+    let resets_at_ms = v.get("resets_at").and_then(Value::as_u64).map(|t| {
+        if t >= 100_000_000_000 {
+            t
+        } else {
+            t.saturating_mul(1000)
+        }
+    });
+    Some(LimitWindow {
+        used_pct,
+        window_mins,
+        resets_at_ms,
+    })
+}
+
 /// Token counters accumulated for one local day.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -72,6 +155,8 @@ pub struct UsageSnapshot {
     pub projects: Vec<NamedTokens>,
     /// One sentence about today; empty when there is nothing to say.
     pub summary: String,
+    /// Codex's usage limits, once a reading was found.
+    pub codex: Option<AgentLimits>,
 }
 
 /// Input plus output tokens for one local day.
@@ -276,6 +361,21 @@ impl Usage {
             .map(str::to_owned);
         self.snap.updated_ms = now;
         Ok(())
+    }
+
+    /// Keeps Codex's newest limit reading; an older one is ignored.
+    pub fn set_codex_limits(&mut self, limits: AgentLimits) -> bool {
+        if self
+            .snap
+            .codex
+            .as_ref()
+            .is_some_and(|c| c.updated_ms > limits.updated_ms)
+        {
+            return false;
+        }
+        let changed = self.snap.codex.as_ref() != Some(&limits);
+        self.snap.codex = Some(limits);
+        changed
     }
 
     /// Adds one transcript line; see [`Usage::ingest`].
@@ -1449,5 +1549,70 @@ mod tests {
         );
         assert_eq!(local_day_start_ms(DAY_MS + 5, -5 * 3600), 5 * 3_600_000);
         assert_eq!(local_day_start_ms(0, -3600), 0);
+    }
+
+    /// The shape Codex writes (Nov 2026): a `token_count` event with two
+    /// windows; extra fields such as credits and plan are ignored.
+    const CODEX: &str = r#"{"timestamp":"2026-11-26T08:00:00.123Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":5}},"rate_limits":{"limit_id":"codex","limit_name":null,"primary":{"used_percent":12.5,"window_minutes":300,"resets_at":1795000000},"secondary":{"used_percent":40.0,"window_minutes":10080,"resets_at":1795500000},"credits":{"has_credits":false,"unlimited":false,"balance":"0"},"plan_type":"plus"}}}"#;
+
+    #[test]
+    fn codex_limits_are_read_from_a_token_count_event() {
+        let l = parse_codex_limits(CODEX).unwrap();
+        assert_eq!(
+            l.primary,
+            Some(LimitWindow {
+                used_pct: 12.5,
+                window_mins: 300,
+                resets_at_ms: Some(1_795_000_000_000)
+            })
+        );
+        assert_eq!(l.secondary.as_ref().unwrap().window_mins, 10080);
+        assert_eq!(l.updated_ms, 1_795_680_000_123);
+    }
+
+    #[test]
+    fn codex_lines_without_believable_limits_give_none() {
+        assert_eq!(parse_codex_limits(r#"{"type":"session_meta"}"#), None);
+        assert_eq!(parse_codex_limits("not json \"rate_limits\""), None);
+        // Another event that mentions rate_limits.
+        assert_eq!(
+            parse_codex_limits(&CODEX.replace("\"type\":\"token_count\"", "\"type\":\"other\"")),
+            None
+        );
+        // Both windows unusable: a negative share, a window of no length.
+        let bad = CODEX
+            .replace("\"used_percent\":12.5", "\"used_percent\":-3")
+            .replace("\"window_minutes\":10080", "\"window_minutes\":0");
+        assert_eq!(parse_codex_limits(&bad), None);
+        // One window left: kept, the other dropped.
+        let one = CODEX.replace("\"used_percent\":12.5", "\"used_percent\":-3");
+        let l = parse_codex_limits(&one).unwrap();
+        assert!(l.primary.is_none() && l.secondary.is_some());
+        // Milliseconds already: kept as is.
+        let ms = CODEX.replace("1795000000}", "1795000000000}");
+        assert_eq!(
+            parse_codex_limits(&ms)
+                .unwrap()
+                .primary
+                .unwrap()
+                .resets_at_ms,
+            Some(1_795_000_000_000)
+        );
+    }
+
+    #[test]
+    fn an_older_codex_reading_never_replaces_a_newer_one() {
+        let mut u = Usage::new();
+        let newer = parse_codex_limits(CODEX).unwrap();
+        let mut older = newer.clone();
+        older.updated_ms -= 1;
+        older.primary.as_mut().unwrap().used_pct = 99.0;
+        assert!(u.set_codex_limits(newer.clone()));
+        assert!(!u.set_codex_limits(older));
+        assert!(!u.set_codex_limits(newer.clone()));
+        assert_eq!(u.snapshot(0).codex, Some(newer));
+        // The status line leaves it alone.
+        u.on_statusline(FULL, 5).unwrap();
+        assert!(u.snapshot(0).codex.is_some());
     }
 }

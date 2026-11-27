@@ -30,6 +30,10 @@ struct ClipboardTab: View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 searchField
+                IconButton(
+                    symbol: "eyedropper", label: "Pick a colour from the screen", size: 12, frame: 30,
+                    help: "Pick a colour from anywhere on the screen and copy it as #RRGGBB"
+                ) { model.pickColor() }
                 ConfirmPill(
                     title: "Clear history", question: ConfirmGate.question(count: clearCount),
                     help: "Remove everything except pinned items, and the picked colours", enabled: hasUnpinned, height: 30

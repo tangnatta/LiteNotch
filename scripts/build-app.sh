@@ -102,8 +102,9 @@ fi
 # signed without it.
 codesign --force --options runtime --sign - "$APP/Contents/Helpers/litenotch"
 codesign --force --sign - "$APP/Contents/Helpers/libnowplaying.dylib"
-# The one entitlement lets macOS ask whether LiteNotch may control the
-# terminal (to raise a session's window); see macos/LiteNotch.entitlements.
+# The two entitlements let macOS ask whether LiteNotch may control the
+# terminal (to raise a session's window) and read the calendars; see
+# macos/LiteNotch.entitlements.
 codesign --force --options runtime --entitlements macos/LiteNotch.entitlements --sign - "$APP"
 
 du -sh "$APP" | awk '{print "==> " $2 " (" $1 ")"}'

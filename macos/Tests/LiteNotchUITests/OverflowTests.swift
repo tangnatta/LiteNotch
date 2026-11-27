@@ -57,6 +57,8 @@ final class OverflowTests: XCTestCase {
     }
 
     func testEverySettingsSectionFitsThePanel() throws {
+        SettingsTab.showMoreOptions = true
+        defer { SettingsTab.showMoreOptions = false }
         for name in ["idle", "media", "pair"] {
             for section in SettingsSection.allCases {
                 for icons in DayIcons.allCases {
@@ -88,6 +90,36 @@ final class OverflowTests: XCTestCase {
                 XCTAssertLessThanOrEqual(height(AgentsTab(vm: vm, model: p)), room.height, "Agents › \(pane), \(name)")
             }
         }
+    }
+
+    func testEveryCalendarPageFitsThePanel() throws {
+        for name in ["calendar", "calendar-detail", "idle"] {
+            let (vm, p) = try panel(name) { $0.settings.calendar.enabled = true }
+            let key = vm.calendar.events.first?.key ?? "0-none"
+            for page in [CalendarPage.list, .event(key), .edit(key), .new] {
+                p.calendarPage = page
+                XCTAssertLessThanOrEqual(height(CalendarTab(vm: vm, model: p)), room.height, "Calendar › \(page), \(name)")
+            }
+            p.app?.calendarAccess = .denied
+            XCTAssertLessThanOrEqual(height(CalendarTab(vm: vm, model: p)), room.height, "Calendar, no permission")
+        }
+        // A detail with as much as the core lets through.
+        let (vm, p) = try panel("calendar-detail") {
+            $0.calendar.detail?.notes = Array(repeating: String(repeating: "word ", count: 40), count: 40)
+                .joined(separator: "\n")
+            let someone = $0.calendar.detail!.attendees[0]
+            $0.calendar.detail?.attendees = Array(repeating: someone, count: 30)
+            $0.calendar.detail?.attendeesMore = 12
+            $0.calendar.detail?.title = String(repeating: "Long title ", count: 12)
+            $0.calendar.detail?.url = "https://" + String(repeating: "a", count: 290)
+        }
+        p.calendarPage = .event(vm.calendar.detail!.key)
+        XCTAssertLessThanOrEqual(height(CalendarTab(vm: vm, model: p)), room.height, "Calendar, the longest detail")
+    }
+
+    func testTheWelcomeFitsThePanel() {
+        // Its own height, not the room it is offered: nothing here scrolls.
+        XCTAssertLessThanOrEqual(height(WelcomeCard {}.fixedSize(horizontal: false, vertical: true)), room.height)
     }
 
     func testTheCheckNoticesAViewThatIsTooTall() {

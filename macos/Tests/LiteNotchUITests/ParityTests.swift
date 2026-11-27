@@ -54,6 +54,7 @@ final class ParityTests: XCTestCase {
         try check("phase", Phase.self)
         try check("run_state", RunState.self)
         try check("tab", Tab.self)
+        try check("attendee_status", AttendeeStatus.self)
         try check("update_status", UpdateStatus.self)
         try check("update_channel", UpdateChannel.self)
         try check("peek_kind", PeekKind.self)

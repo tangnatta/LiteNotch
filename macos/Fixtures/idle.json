@@ -96,7 +96,8 @@
     ],
     "models": [],
     "projects": [],
-    "summary": ""
+    "summary": "",
+    "codex": null
   },
   "caffeine": {
     "mode": "off",
@@ -185,7 +186,7 @@
   "colors": [],
   "analytics": [],
   "update": {
-    "current": "0.2.6-beta",
+    "current": "0.2.7-beta",
     "status": "idle",
     "latest": null,
     "url": null,

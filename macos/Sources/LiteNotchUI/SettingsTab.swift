@@ -5,8 +5,7 @@ extension SettingsSection {
         switch self {
         case .general: return "General"
         case .notch: return "Notch"
-        case .home: return "Home"
-        case .day: return "Day"
+        case .day: return "Work day"
         case .timer: return "Timer"
         case .music: return "Music"
         case .notifications: return "Notifications"
@@ -22,7 +21,6 @@ extension SettingsSection {
         switch self {
         case .general: return "gearshape"
         case .notch: return "rectangle.topthird.inset.filled"
-        case .home: return "house"
         case .day: return "sun.horizon"
         case .timer: return "timer"
         case .music: return "music.note"
@@ -46,12 +44,19 @@ struct SettingsTab: View {
     @State private var pending: DispatchWorkItem?
     /// The hue strip was asked for (it also shows for a custom accent).
     @State private var customAccent = false
+    /// General's "More options" are shown. Snapshots open them so every
+    /// control is drawn and measured.
+    @State private var moreLook: Bool
 
     init(vm: ViewModel, model: PanelState) {
         self.vm = vm
         self.model = model
         _draft = State(initialValue: vm.settings)
+        _moreLook = State(initialValue: SettingsTab.showMoreOptions)
     }
+
+    /// Starts General with "More options" open (snapshots and their tests).
+    @MainActor static var showMoreOptions = false
 
     private var send: (ShellCommand) -> Void { model.send }
 
@@ -144,7 +149,6 @@ struct SettingsTab: View {
             )
             .environment(\.dayIcons, draft.day.icons)
             .environment(\.dayMotion, draft.day.motion)
-        case .home: home
         case .day: day
         case .timer: timer
         case .music: music
@@ -158,6 +162,12 @@ struct SettingsTab: View {
     }
 
     @ViewBuilder private var general: some View {
+        // First: with no Dock icon, this is the only way out.
+        row("Quit LiteNotch", caption: "It has no Dock icon; quit it here.") {
+            TextPill(title: "Quit", tint: NT.text1, height: 22) { model.app?.onQuit() }
+                .help("Quit LiteNotch")
+        }
+        Hairline().padding(.vertical, 2)
         updateBlock
         Hairline().padding(.vertical, 2)
         if let app = model.app { LaunchAtLoginRow(app: app) }
@@ -176,7 +186,35 @@ struct SettingsTab: View {
                     set: { draft.appearance.theme = $0 }),
                 label: "Theme", height: 22)
         }
-        row("Notch") {
+        accentRow
+        Hairline().padding(.vertical, 2)
+        moreButton
+        if moreLook { moreLookRows }
+    }
+
+    /// Choices whose effect a newcomer cannot guess from their names stay
+    /// folded away until asked for; every default is the original look.
+    private var moreButton: some View {
+        Button {
+            moreLook.toggle()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: moreLook ? "chevron.down" : "chevron.right").glyph(9, .semibold)
+                Text(verbatim: "More options").nfont(.bodyMedium)
+                Text(verbatim: "notch style, shrink, glass").nfont(.caption).foregroundStyle(NT.text3)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(NT.text2)
+            .frame(height: 22)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "More options"))
+        .accessibilityValue(Text(verbatim: moreLook ? "Shown" : "Hidden"))
+    }
+
+    @ViewBuilder private var moreLookRows: some View {
+        row("Notch", caption: "Attached hangs from the top edge. Island floats inside the menu bar.") {
             SegmentedPill(
                 options: [(NotchStyle.attached, "Attached"), (NotchStyle.island, "Island")],
                 selection: Binding(
@@ -219,6 +257,9 @@ struct SettingsTab: View {
             }
         }
         materialRow
+    }
+
+    @ViewBuilder private var accentRow: some View {
         row("Accent") {
             HStack(spacing: 5) {
                 namedSwatch(.system, help: "Use the accent colour chosen in macOS", label: "System accent") {
@@ -249,11 +290,6 @@ struct SettingsTab: View {
                     ) { model.app?.pickAccent() }
                 }
             }
-        }
-        Hairline().padding(.vertical, 2)
-        row("Quit LiteNotch") {
-            TextPill(title: "Quit", tint: NT.text1, height: 22) { model.app?.onQuit() }
-                .help("Quit LiteNotch")
         }
     }
 
@@ -387,7 +423,7 @@ struct SettingsTab: View {
         toggle("Auto-start breaks", $draft.pomodoro.autoStartBreaks)
         toggle("Auto-start focus", $draft.pomodoro.autoStartFocus)
         Hairline().padding(.vertical, 2)
-        wideRow("Heads-up before it ends", caption: "Pomodoro and timer show the time left for a moment.") {
+        wideRow("Heads-up before it ends", caption: "Focus sessions and the timer show the time left for a moment.") {
             SegmentedPill(
                 options: SettingsLimits.timeWarningSecs.map { ($0, $0 == 0 ? "Off" : $0 == 600 ? "10 min" : "\($0 / 60)") },
                 selection: $draft.peek.timeWarningSecs, label: "Heads-up before it ends", height: 22)
@@ -422,7 +458,7 @@ struct SettingsTab: View {
     @ViewBuilder private var day: some View {
         toggle(
             "Day progress", $draft.day.enabled,
-            caption: "How far through your office hours: \u{2212} before they start, + after they end.")
+            caption: "Shows how much of your working day has passed, in the closed notch and on Home.")
         if draft.day.enabled {
             row("Starts") {
                 TimeStepper(
@@ -461,22 +497,12 @@ struct SettingsTab: View {
             toggle(
                 "Animate", $draft.day.motion,
                 caption: "The sun turns slowly, the tree sways. Off, the icon is still and costs nothing.")
-        }
-    }
-
-    @ViewBuilder private var home: some View {
-        row("Big card", caption: homeCardCaption) {
-            SegmentedPill(
-                options: [(HomeCard.auto, "Auto"), (.day, "Day"), (.media, "Music")],
-                selection: $draft.day.homeCard, label: "Big card", height: 22)
-        }
-        .opacity(draft.day.enabled ? 1 : 0.5)
-        if !draft.day.enabled {
-            row("Day progress is off", caption: "Until it is on, the big card is always Now playing.", tint: NT.text2) {
-                TextPill(title: "Turn on", tint: NT.text1, height: 22) {
-                    model.settingsSection = .day
-                }
-                .help("Opens Settings \u{203A} Day")
+            // Home's big card shows the day or the music; the choice only
+            // matters while day progress is on, so it lives here.
+            row("Home's big card", caption: homeCardCaption) {
+                SegmentedPill(
+                    options: [(HomeCard.auto, "Auto"), (.day, "Day"), (.media, "Music")],
+                    selection: $draft.day.homeCard, label: "Home's big card", height: 22)
             }
         }
     }
@@ -552,10 +578,11 @@ struct SettingsTab: View {
 
     private var calendarCaption: String {
         if !draft.calendar.enabled {
-            return "Your next event on Home and a reminder before it starts. Asks to see your calendars."
+            return "A Calendar tab, your next event on Home and a reminder before it starts. Asks to see your calendars."
         }
         switch model.calendarAccess {
-        case .granted: return "Events from the calendars in the Calendar app. All-day events are left out."
+        case .granted:
+            return "Events from the calendars in the Calendar app; add or change them in the Calendar tab. All-day events are left out."
         case .denied: return "Waiting for permission."
         case .unknown: return "Asking for permission\u{2026}"
         }
@@ -572,25 +599,14 @@ struct SettingsTab: View {
             caption: "Ignores what password managers copy.")
     }
 
+    /// Every agent first, each with its own Connect, then how they behave.
     @ViewBuilder private var agents: some View {
-        toggle(
-            "Show Claude Code activity", $draft.agent.enabled,
-            caption: "Sessions and approval requests appear in the notch.")
-        toggle(
-            "Usage alerts", $draft.general.usageAlerts,
-            caption: "A notification when a usage limit is close.")
-        stepper("Approval wait", $draft.agent.approvalTimeoutSecs, SettingsLimits.approvalSecs, step: 15, unit: "s")
+        SectionLabel(text: "Agents")
         let installed = vm.agents.hooksInstalled ?? false
-        row("Claude Code", caption: installed ? "Connected" : "Not connected") {
-            if installed {
-                TextPill(title: "Disconnect", tint: NT.text2, height: 22) { send(.hooksUninstall) }
-                    .help("Stop sending Claude Code sessions to LiteNotch")
-            } else {
-                TextPill(title: "Connect", tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold) {
-                    send(.hooksInstall)
-                }
-                .help("Adds LiteNotch to Claude Code\u{2019}s settings. New sessions show up here.")
-            }
+        row("Claude Code", caption: installed ? "Connected \u{00B7} sessions, approvals, questions" : "Not connected") {
+            connectPill(
+                connected: installed, name: "Claude Code",
+                connect: { send(.hooksInstall) }, disconnect: { send(.hooksUninstall) })
         }
         if let warning = AgentsText.otherCopies(
             found: vm.agents.otherCopies ?? 0,
@@ -603,33 +619,55 @@ struct SettingsTab: View {
                 .help("Removes the other copies\u{2019} hooks from Claude Code\u{2019}s settings. This copy stays connected.")
             }
         }
-        ForEach(vm.agents.connectors ?? []) { connector in
-            row(connector.name, caption: AgentsText.connectorCaption(connector)) {
-                if connector.installed ?? false {
-                    TextPill(title: "Disconnect", tint: NT.text2, height: 22) {
-                        send(.connectorUninstall(agent: connector.agent))
-                    }
-                    .help("Stop sending \(connector.name) sessions to LiteNotch")
-                } else {
-                    TextPill(title: "Connect", tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold) {
-                        send(.connectorInstall(agent: connector.agent))
-                    }
-                    .help("Adds LiteNotch to \(connector.name)\u{2019}s hook settings. New sessions show up here.")
-                }
+        ForEach(vm.agents.connectors ?? []) { c in
+            row(c.name, caption: AgentsText.connectorCaption(c), tint: c.present ? NT.text1 : NT.text2) {
+                connectPill(
+                    connected: c.installed ?? false, name: c.name,
+                    connect: { send(.connectorInstall(agent: c.agent)) },
+                    disconnect: { send(.connectorUninstall(agent: c.agent)) })
             }
         }
         if let note = AgentsText.activityOnlyNote(vm.agents.connectors ?? []) {
             VText(note).nfont(.caption).foregroundStyle(NT.text2)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        Hairline().padding(.vertical, 2)
+        toggle(
+            "Show agent activity", $draft.agent.enabled,
+            caption: "Sessions and requests from connected agents appear in the notch.")
+        stepper(
+            "Wait for my answer", $draft.agent.approvalTimeoutSecs, SettingsLimits.approvalSecs, step: 15, unit: "s",
+            caption: "Then the agent asks in its terminal instead.")
         let limits = vm.agents.statuslineInstalled ?? false
-        row("Usage limits", caption: limits ? "Shown in Agents \u{203A} Usage" : "Not shown") {
+        row(
+            "Claude Code usage limits",
+            caption: limits
+                ? "Shown in Agents \u{203A} Usage. Codex\u{2019}s show on their own."
+                : "Adds LiteNotch to Claude Code\u{2019}s status line; yours is kept."
+        ) {
             if limits {
-                TextPill(title: "Stop showing usage limits", tint: NT.text2, height: 22) { send(.statuslineUninstall) }
+                TextPill(title: "Stop showing", tint: NT.text2, height: 22) { send(.statuslineUninstall) }
                     .help("Gives Claude Code its previous status line back")
             } else {
-                TextPill(title: "Show usage limits", tint: NT.text1, height: 22) { send(.statuslineInstall) }
+                TextPill(title: "Show", tint: NT.text1, height: 22) { send(.statuslineInstall) }
                     .help("Makes LiteNotch Claude Code\u{2019}s status line, keeping the one you have")
+            }
+        }
+        toggle(
+            "Usage alerts", $draft.general.usageAlerts,
+            caption: "A notification when a Claude Code usage limit is close.")
+    }
+
+    private func connectPill(
+        connected: Bool, name: String, connect: @escaping () -> Void, disconnect: @escaping () -> Void
+    ) -> some View {
+        Group {
+            if connected {
+                TextPill(title: "Disconnect", tint: NT.text2, height: 22, action: disconnect)
+                    .help("Stop sending \(name) sessions to LiteNotch")
+            } else {
+                TextPill(title: "Connect", tint: NT.onAccent, background: NT.accent, height: 22, weight: .semibold, action: connect)
+                    .help("Adds LiteNotch to \(name)\u{2019}s settings. New sessions show up in Agents.")
             }
         }
     }
@@ -658,7 +696,7 @@ struct SettingsTab: View {
         VText("One limit for every mode, with the lid open or closed. 0 % means no limit: the Mac stays awake until the battery runs out.")
             .nfont(.caption).foregroundStyle(NT.text2)
             .fixedSize(horizontal: false, vertical: true)
-        row("Keep awake for", caption: awakeCaption(c)) {
+        row("Keep awake now for", caption: awakeCaption(c)) {
             HStack(spacing: 4) {
                 chip("30m", 1800)
                 chip("1h", 3600)
@@ -671,7 +709,9 @@ struct SettingsTab: View {
     /// While on: for how long. The chips start a new stretch, so none of
     /// them is shown as selected; this line says what is running.
     private func awakeCaption(_ c: CaffeineView) -> String {
-        guard c.mode != .off && c.mode != .unknown else { return "" }
+        guard c.mode != .off && c.mode != .unknown else {
+            return "Off. Pick one to start now, or click the cup in the tab bar."
+        }
         return KeepAwakeText.help(on: true, untilMs: c.untilMs, nowMs: nowMs(Date(), offset: offset))
             .replacingOccurrences(of: " Click to stop.", with: "")
     }
@@ -800,9 +840,9 @@ struct SettingsTab: View {
 
     private func stepper(
         _ title: String, _ b: Binding<Int>, _ r: ClosedRange<Int>, step: Int = 1,
-        unit: String = ""
+        unit: String = "", caption: String = ""
     ) -> some View {
-        row(title) {
+        row(title, caption: caption) {
             HStack(spacing: 6) {
                 MiniStepper(value: b, range: r, step: step, label: title)
                 if !unit.isEmpty {

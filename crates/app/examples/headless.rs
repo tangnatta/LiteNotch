@@ -55,7 +55,8 @@ fn main() {
         println!(
             "{}",
             serde_json::json!({"compact": view["compact"], "pending": view["agents"]["pending"],
-                "media": view["media"], "week": view["usage"]["week"], "summary": view["usage"]["summary"]})
+                "media": view["media"], "week": view["usage"]["week"], "summary": view["usage"]["summary"],
+                "codex": view["usage"]["codex"]})
         );
         let (Some(decision), Some(pending)) = (&auto, view["agents"]["pending"].as_array()) else {
             continue;

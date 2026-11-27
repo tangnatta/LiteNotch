@@ -111,7 +111,7 @@ public enum MediaAction: String, Codable, Equatable {
 }
 
 public enum Tab: String, Codable, CaseIterable, Equatable {
-    case home, music, timer, clipboard, agents, inbox, settings
+    case home, music, timer, clipboard, agents, inbox, settings, calendar
 }
 
 // MARK: - Settings (sent back whole, so every field is mirrored)
@@ -917,6 +917,22 @@ public struct UsageSnapshot: Codable, Equatable {
     public var projects: [UsageShare]
     /// One plain sentence; may be empty.
     public var summary: String
+    /// Codex's own limits, read from its session logs; nil until found.
+    public var codex: AgentLimits? = nil
+}
+
+/// Another agent's usage limits (today only Codex reports them).
+public struct AgentLimits: Codable, Equatable {
+    public var primary: LimitWindow?
+    public var secondary: LimitWindow?
+    public var updatedMs: Int
+}
+
+/// One limit window with its length, since Codex names none.
+public struct LimitWindow: Codable, Equatable {
+    public var usedPct: Double
+    public var windowMins: Int
+    public var resetsAtMs: Int?
 }
 
 /// One day's total; `tokens` is input + output.
@@ -947,6 +963,7 @@ extension UsageSnapshot {
         models = (try? c.decodeIfPresent([UsageShare].self, forKey: .models)) ?? []
         projects = (try? c.decodeIfPresent([UsageShare].self, forKey: .projects)) ?? []
         summary = (try? c.decodeIfPresent(String.self, forKey: .summary)) ?? ""
+        codex = try? c.decodeIfPresent(AgentLimits.self, forKey: .codex)
     }
 }
 
@@ -1030,12 +1047,61 @@ public struct CalendarEvent: Codable, Equatable, Identifiable {
 public struct CalendarView: Codable, Equatable {
     /// Soonest first; may still hold one that ended since it was sent.
     public var events: [CalendarEvent]
+    /// The event the Calendar tab shows in full, sanitized by the core.
+    public var detail: EventDetail? = nil
     public static let empty = CalendarView(events: [])
+
+    /// The events still to come or running at `nowMs`.
+    public func upcoming(nowMs: Int) -> [CalendarEvent] { events.filter { $0.endMs > nowMs } }
 
     /// The event to show at `nowMs`: the first that has not ended.
     public func current(nowMs: Int) -> CalendarEvent? { events.first { $0.endMs > nowMs } }
     /// How many more follow it.
     public func later(nowMs: Int) -> Int { max(0, events.filter { $0.endMs > nowMs }.count - 1) }
+}
+
+extension CalendarEvent {
+    /// One occurrence of one event: `<start>-<id>`, as in a calendar notice's pane.
+    public var key: String { "\(startMs)-\(id)" }
+}
+
+/// An attendee's answer to the invitation.
+public enum AttendeeStatus: String, LenientEnum, CaseIterable {
+    case accepted, declined, tentative, pending, unknown
+    static var unknownCase: AttendeeStatus { .unknown }
+    public init(from decoder: Decoder) throws { self = try decodeLenient(decoder) }
+}
+
+public struct Attendee: Codable, Equatable {
+    public var name: String
+    public var status: AttendeeStatus
+    /// This attendee is the user.
+    public var me: Bool
+}
+
+/// One event in full: everything the Calendar tab's event page shows. The
+/// text is the invitation's, sanitized and capped by the core.
+public struct EventDetail: Codable, Equatable {
+    public var id: String
+    public var title: String
+    public var startMs: Int
+    public var endMs: Int
+    public var calendar: String
+    public var color: String?
+    public var location: String
+    /// Several lines; shown, never interpreted.
+    public var notes: String
+    public var notesTruncated: Bool
+    /// Shown as text and copied on request; never opened.
+    public var url: String
+    public var organizer: String
+    public var attendees: [Attendee]
+    public var attendeesMore: Int
+    public var recurring: Bool
+    /// The calendar allows changes and the event is not someone else's invitation.
+    public var canEdit: Bool
+
+    public var key: String { "\(startMs)-\(id)" }
 }
 
 /// The plain countdown timer.

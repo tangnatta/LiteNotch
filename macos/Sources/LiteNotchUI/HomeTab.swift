@@ -10,6 +10,14 @@ struct HomeTab: View {
     private var icons: DayIcons { vm.settings.day.icons }
 
     var body: some View {
+        if model.welcome {
+            WelcomeCard { model.app?.dismissWelcome() }
+        } else {
+            dashboard
+        }
+    }
+
+    private var dashboard: some View {
         HStack(alignment: .top, spacing: 12) {
             Group {
                 if let day = vm.day, DayConfig.showsDayCard(vm) {
@@ -81,7 +89,7 @@ struct HomeTab: View {
             }
         }
         .opens("day settings", model) {
-            model.settingsSection = .home
+            model.settingsSection = .day
             model.selectTab(.settings)
         }
     }
@@ -280,8 +288,8 @@ struct HomeTab: View {
     }
 
     /// The next event (or the one running). Shown only while the calendar
-    /// is on; a click opens the Calendar app, or the setting when access is
-    /// missing.
+    /// is on; a click opens the Calendar tab on that event (on its list when
+    /// there is none), or the setting when access is missing.
     private var calendarRow: some View {
         EverySecond(interval: 20) { now in
             let event = vm.calendar.current(nowMs: now)
@@ -323,7 +331,8 @@ struct HomeTab: View {
                     model.settingsSection = .calendar
                     model.selectTab(.settings)
                 } else {
-                    model.follow(.app(bundleId: CalendarText.appBundleId, tty: nil))
+                    model.calendarPage = event.map { .event($0.key) } ?? .list
+                    model.selectTab(.calendar)
                 }
             }
         }
@@ -332,11 +341,14 @@ struct HomeTab: View {
     private var agentsRow: some View {
         let waiting = vm.agents.sessions.contains { $0.status == .waitingApproval || $0.status == .waitingInput }
         let detail = Format.agentsDetail(vm.usage)
+        // Before an agent is connected "No active sessions · 0 tokens" read
+        // as if one already were; say what the row is for instead.
+        let unconnected = vm.agents.sessions.isEmpty && !AgentsText.anyConnected(vm.agents)
         return HomeRow(symbol: "terminal", tint: waiting ? NT.accent : NT.text2) {
-            VText(Format.agentsHeadline(vm.agents.sessions))
-                .nfont(.emphasis).foregroundStyle(NT.text1).lineLimit(1)
-            Text(verbatim: detail.tokens)
-                .nfont(.caption).monospacedDigit().foregroundStyle(NT.text2).lineLimit(1)
+            VText(unconnected ? "No coding agent yet" : Format.agentsHeadline(vm.agents.sessions))
+                .nfont(.emphasis).foregroundStyle(unconnected ? NT.text2 : NT.text1).lineLimit(1)
+            Text(verbatim: unconnected ? "Click to connect Claude Code, Codex\u{2026}" : detail.tokens)
+                .nfont(.caption).monospacedDigit().foregroundStyle(unconnected ? NT.text3 : NT.text2).lineLimit(1)
         } trailing: {
             if let limit = detail.limit {
                 Text(verbatim: limit)
@@ -444,5 +456,38 @@ public enum CalendarText {
             startMs: e.startMs, endMs: e.endMs, nowMs: nowMs,
             calendar: calendar, locale: locale)
         return e.location.isEmpty ? time : "\(time) \u{b7} \(e.location)"
+    }
+}
+
+/// Shown once, on the first launch: what the notch is and how to open,
+/// close and quit it. Fits the panel's 220 pt without scrolling.
+struct WelcomeCard: View {
+    let done: () -> Void
+
+    static let lines: [(symbol: String, text: String)] = [
+        ("cursorarrow.motionlines", "Move the pointer onto the notch, or click it, to open this panel. Move away to close it."),
+        ("square.grid.2x2", "Home, Music, Timer, Clipboard and Agents are on the left. Keep awake, Inbox and Settings are on the right."),
+        ("rectangle.topthird.inset.filled", "While closed, the notch shows what is running: a timer, music, a meeting."),
+        ("power", "LiteNotch has no Dock icon. Quit it from Settings \u{203A} General."),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(verbatim: "Welcome to LiteNotch").nfont(.title).foregroundStyle(NT.text1)
+            ForEach(Self.lines, id: \.text) { line in
+                HStack(alignment: .firstTextBaseline, spacing: 9) {
+                    Image(systemName: line.symbol).glyph(11).foregroundStyle(NT.accentText)
+                        .frame(width: 16)
+                    VText(line.text).nfont(.body).foregroundStyle(NT.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+            HStack {
+                Spacer()
+                TextPill(title: "Got it", tint: NT.onAccent, background: NT.accent, height: 24, weight: .semibold, action: done)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

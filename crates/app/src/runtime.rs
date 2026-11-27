@@ -21,7 +21,7 @@ use serde::Deserialize;
 use crate::clock::SteadyClock;
 use crate::ports::Ports;
 use crate::server::{Server, ServerEvent};
-use crate::transcripts::{day_start_ms, TranscriptScanner};
+use crate::transcripts::{day_start_ms, CodexLimitsReader, TranscriptScanner};
 use crate::{hooks_file, store};
 
 /// How long a change may sit in memory before it is written to disk.
@@ -100,6 +100,7 @@ enum ShellCommand {
 }
 
 enum Msg {
+    CodexLimits(litenotch_core::usage::AgentLimits),
     Shell(ShellCommand),
     Server(ServerEvent),
     LidResult(bool),
@@ -138,7 +139,11 @@ impl Runtime {
             None
         };
         let core = Core::new(store::load(&config.dir));
-        let scan_tx = spawn_transcript_scanner(config.claude_dir.join("projects"), tx.clone());
+        let scan_tx = spawn_transcript_scanner(
+            config.claude_dir.join("projects"),
+            Some(config.codex_dir.join("sessions")),
+            tx.clone(),
+        );
         let mut state = Loop {
             core,
             ports,
@@ -188,13 +193,24 @@ impl Drop for Runtime {
 }
 
 /// Transcript files can be large, so they are read off the core thread.
-fn spawn_transcript_scanner(projects_dir: PathBuf, tx: Sender<Msg>) -> Sender<u64> {
+fn spawn_transcript_scanner(
+    projects_dir: PathBuf,
+    codex_sessions: Option<PathBuf>,
+    tx: Sender<Msg>,
+) -> Sender<u64> {
     let (scan_tx, scan_rx) = mpsc::channel::<u64>();
     let _ = std::thread::Builder::new()
         .name("litenotch-usage".into())
         .spawn(move || {
             let mut scanner = TranscriptScanner::new(projects_dir);
+            let mut codex = codex_sessions.map(CodexLimitsReader::new);
             while let Ok(day_start) = scan_rx.recv() {
+                // Same moments as the transcripts: after an agent's hook.
+                if let Some(limits) = codex.as_mut().and_then(CodexLimitsReader::read) {
+                    if tx.send(Msg::CodexLimits(limits)).is_err() {
+                        break;
+                    }
+                }
                 let scan = scanner.scan(day_start);
                 if (scan.reset || !scan.records.is_empty())
                     && tx
@@ -428,6 +444,7 @@ impl Loop {
             }
             Msg::LidResult(ok) => self.apply(Input::LidResult { ok }, now),
             Msg::UpdateResult(answer) => self.apply(Input::UpdateChecked(answer), now),
+            Msg::CodexLimits(limits) => self.apply(Input::CodexLimits(limits), now),
             Msg::Transcripts { reset, records } => {
                 if reset {
                     self.apply(Input::UsageResetToday, now);
@@ -575,12 +592,19 @@ impl Loop {
         }
     }
 
-    /// What `litenotch status` shows. Clipboard and notification text stay
-    /// out of it: the socket is for commands, not for reading user data.
+    /// What `litenotch status` shows. Clipboard, notification, calendar
+    /// and track text stay out of it: the socket is for commands, not for
+    /// reading user data, and any process of the user can ask (one without
+    /// the Calendar or Accessibility permission LiteNotch has). So the
+    /// closed notch is described by kind and timing only.
     fn status(&self, now: u64) -> serde_json::Value {
         let view = self.core.view(now);
+        let c = &view.compact;
         serde_json::json!({
-            "compact": view.compact,
+            "compact": {
+                "kind": c.kind, "ends_at_ms": c.ends_at_ms,
+                "total_secs": c.total_secs, "count": c.count,
+            },
             "pomodoro": view.pomodoro,
             "caffeine": view.caffeine,
             "usage": view.usage,
@@ -1476,8 +1500,12 @@ mod tests {
         assert_eq!(view["compact"]["kind"], "banner");
         assert_eq!(view["pending_approvals"], 0);
         let text = view.to_string();
+        // From review: the banner's title used to come back in `compact`,
+        // which would hand other apps' and calendar text to any process.
         assert!(
-            !text.contains("secret clipboard") && !text.contains("private body"),
+            !text.contains("secret clipboard")
+                && !text.contains("private body")
+                && !text.contains("Deploy done"),
             "{text}"
         );
     }
@@ -1869,6 +1897,28 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(h.dir.join("claude/settings.json")).unwrap(),
             "[]"
+        );
+    }
+
+    #[test]
+    fn codex_limits_are_read_from_its_newest_session_log() {
+        let dir = crate::store::temp_dir("rt-codex");
+        let day = dir.join("codex/sessions/2026/11/26");
+        std::fs::create_dir_all(&day).unwrap();
+        let line = json!({"timestamp":"2026-11-26T08:00:00Z","type":"event_msg","payload":{
+            "type":"token_count","rate_limits":{
+                "primary":{"used_percent":12.5,"window_minutes":300,"resets_at":1_795_000_000u64},
+                "secondary":{"used_percent":40.0,"window_minutes":10080,"resets_at":1_795_500_000u64}}}});
+        std::fs::write(day.join("rollout-a.jsonl"), format!("{line}\n")).unwrap();
+        let h = Harness::start_in(dir, FakeOs::default());
+        let view = h
+            .views
+            .wait("codex limits", |v| !v["usage"]["codex"].is_null());
+        assert_eq!(view["usage"]["codex"]["primary"]["used_pct"], 12.5);
+        assert_eq!(view["usage"]["codex"]["primary"]["window_mins"], 300);
+        assert_eq!(
+            view["usage"]["codex"]["secondary"]["resets_at_ms"],
+            1_795_500_000_000u64
         );
     }
 

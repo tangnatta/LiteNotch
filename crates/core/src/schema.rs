@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 
 use crate::agent::AgentStatus;
 use crate::caffeine::{AwakeMode, LidState};
+use crate::calendar::AttendeeStatus;
 use crate::clipboard::ClipKind;
 use crate::day::{DayIcons, HomeCard};
 use crate::notify::Priority;
@@ -123,7 +124,8 @@ pub fn schema() -> Value {
             "run_state": variants!(RunState: Stopped, Running, Paused),
             "update_status": variants!(UpdateStatus: Idle, Checking, UpToDate, Available, Failed),
             "update_channel": variants!(Channel: Stable, Beta),
-            "tab": variants!(Tab: Home, Music, Timer, Clipboard, Agents, Inbox, Settings),
+            "tab": variants!(Tab: Home, Music, Timer, Clipboard, Agents, Inbox, Settings, Calendar),
+            "attendee_status": variants!(AttendeeStatus: Accepted, Declined, Tentative, Pending, Unknown),
             "peek_kind": variants!(PeekKind: TrackChanged, TimeWarning, EyeBreak, Move, Quote, StillWorking),
             "activity_kind": variants!(ActivityKind: Idle, Approval, Banner, Pomodoro, Media, Caffeine, Agent,
                 Meeting, Timer, Calendar, Nudge, Day, Unknown),
@@ -155,7 +157,11 @@ mod tests {
     #[test]
     fn every_enum_is_listed_without_its_unknown_case() {
         let e = &schema()["enums"];
-        assert_eq!(e["tab"].as_array().map(Vec::len), Some(7));
+        assert_eq!(e["tab"].as_array().map(Vec::len), Some(8));
+        assert_eq!(
+            e["attendee_status"],
+            json!(["accepted", "declined", "tentative", "pending"])
+        );
         assert!(!e["activity_kind"]
             .as_array()
             .is_some_and(|a| a.iter().any(|v| v == "unknown")));

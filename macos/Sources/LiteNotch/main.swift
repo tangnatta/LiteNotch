@@ -48,6 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !Bench.scripted { calendar.start() }
         screenPresence.start()
         Bench.run(model: model)
+        // A benchmark measures the closed notch; it must not open by itself.
+        if !Bench.enabled { model.welcomeIfFirstRun() }
         quitCleanlyOnSignals()
     }
 
@@ -117,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// launch never sees them.
 enum Bench {
     private static let env = ProcessInfo.processInfo.environment
-    private static var enabled: Bool { !(env["LITENOTCH_DATA_DIR"] ?? "").isEmpty }
+    static var enabled: Bool { !(env["LITENOTCH_DATA_DIR"] ?? "").isEmpty }
 
     /// True when start-up commands were given: a scripted run.
     static var scripted: Bool { enabled && !(env["LITENOTCH_BENCH_COMMANDS"] ?? "").isEmpty }

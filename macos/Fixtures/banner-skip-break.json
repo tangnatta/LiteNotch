@@ -178,6 +178,16 @@
         "last_message": "All 42 tests pass.",
         "app": null,
         "tty": null
+      },
+      {
+        "id": "codex:c1",
+        "project": "web",
+        "cwd": "/Users/me/Github/web",
+        "status": "working",
+        "last_event_ms": 1794400000001,
+        "last_message": "fix the login form",
+        "app": null,
+        "tty": null
       }
     ],
     "pending": [],
@@ -185,7 +195,29 @@
     "statusline_installed": null,
     "other_copies": 0,
     "other_copies_missing": 0,
-    "connectors": []
+    "connectors": [
+      {
+        "agent": "codex",
+        "name": "Codex",
+        "present": true,
+        "installed": true,
+        "approvals": true
+      },
+      {
+        "agent": "gemini",
+        "name": "Gemini CLI",
+        "present": true,
+        "installed": false,
+        "approvals": false
+      },
+      {
+        "agent": "antigravity",
+        "name": "Antigravity",
+        "present": false,
+        "installed": false,
+        "approvals": false
+      }
+    ]
   },
   "usage": {
     "five_hour": {
@@ -272,7 +304,20 @@
         "tokens": 42000
       }
     ],
-    "summary": "832k tokens today across 3 projects, 73% above your daily average. Mostly fable-5-2 on litenotch."
+    "summary": "832k tokens today across 3 projects, 73% above your daily average. Mostly fable-5-2 on litenotch.",
+    "codex": {
+      "primary": {
+        "used_pct": 64.0,
+        "window_mins": 300,
+        "resets_at_ms": 1794405400000
+      },
+      "secondary": {
+        "used_pct": 23.0,
+        "window_mins": 10080,
+        "resets_at_ms": 1794700000000
+      },
+      "updated_ms": 1794400060000
+    }
   },
   "caffeine": {
     "mode": "off",
@@ -386,7 +431,7 @@
     }
   ],
   "update": {
-    "current": "0.2.6-beta",
+    "current": "0.2.7-beta",
     "status": "idle",
     "latest": null,
     "url": null,

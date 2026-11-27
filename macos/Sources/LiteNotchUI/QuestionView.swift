@@ -17,6 +17,10 @@ public struct QuestionDraft: Equatable {
     /// `noteLimit` characters and a "More" button.
     public private(set) var expandedNotes: Set<String> = []
     public static let noteLimit = 200
+    /// Questions opened in full; a long one shows `questionLimit`
+    /// characters and an inline "More", like a long note.
+    public private(set) var expandedQuestions: Set<Int> = []
+    public static let questionLimit = 200
     private let multi: [Bool]
     private let open: [Bool]
 
@@ -47,6 +51,18 @@ public struct QuestionDraft: Equatable {
     public func shownNote(_ note: String, _ q: Int, _ i: Int) -> String {
         guard Self.isLongNote(note), !isExpanded(q, i) else { return note }
         return String(note.prefix(Self.noteLimit - 1)).trimmingCharacters(in: .whitespaces) + "\u{2026}"
+    }
+    /// The question has more than the short view shows.
+    public static func isLongQuestion(_ text: String) -> Bool { text.count > questionLimit }
+    public func isQuestionExpanded(_ q: Int) -> Bool { expandedQuestions.contains(q) }
+    public mutating func toggleQuestion(_ q: Int) {
+        if !expandedQuestions.insert(q).inserted { expandedQuestions.remove(q) }
+    }
+    /// What to draw of a question: all of it when opened, else the first
+    /// `questionLimit` characters ending in an ellipsis.
+    public func shownQuestion(_ text: String, _ q: Int) -> String {
+        guard Self.isLongQuestion(text), !isQuestionExpanded(q) else { return text }
+        return String(text.prefix(Self.questionLimit - 1)).trimmingCharacters(in: .whitespaces) + "\u{2026}"
     }
     public mutating func next() { if currentAnswered, !isLast { step += 1 } }
     public mutating func back() { if step > 0 { step -= 1 } }
@@ -246,8 +262,14 @@ struct QuestionForm: View {
                     Text(verbatim: "Choose any").nfont(.caption).foregroundStyle(NT.text3)
                 }
             }
-            VText(question.question).nfont(.emphasis).foregroundStyle(NT.text1)
+            Text(questionText(q, question.question))
                 .fixedSize(horizontal: false, vertical: true)
+                .environment(
+                    \.openURL,
+                    OpenURLAction { _ in
+                        draft.toggleQuestion(q)
+                        return .handled
+                    })
             ForEach(Array(question.options.enumerated()), id: \.offset) { i, option in
                 optionRow(q, i, question, option)
             }
@@ -256,6 +278,23 @@ struct QuestionForm: View {
             }
             otherField(q, roomy: draft.isOpen(q), multi: question.multiSelect)
         }
+    }
+
+    /// The question, and for a long one an inline "More" / "Less" at its
+    /// end: Claude Code's questions often carry a paragraph of context, which
+    /// should not push the choices out of sight.
+    private func questionText(_ q: Int, _ text: String) -> AttributedString {
+        var out = AttributedString(ApprovalPresentation.visible(draft.shownQuestion(text, q)))
+        out.font = NType.emphasis.font
+        out.foregroundColor = NT.text1
+        if QuestionDraft.isLongQuestion(text) {
+            var more = AttributedString(draft.isQuestionExpanded(q) ? " Less" : " More")
+            more.font = NType.captionStrong.font
+            more.foregroundColor = NT.accent
+            more.link = URL(string: "litenotch-question://\(q)")
+            out.append(more)
+        }
+        return out
     }
 
     /// The option's text: label, its note, and for a long note an inline

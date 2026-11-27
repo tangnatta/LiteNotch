@@ -65,12 +65,13 @@ struct ApprovalView: View {
                 Spacer(minLength: 8)
                 EverySecond { now in
                     let left = Format.secondsLeft(until: request.expiresMs, nowMs: now)
-                    Text(verbatim: "Expires in \(Format.countdown(seconds: left))")
+                    // Not "Expires": nothing is refused, the terminal asks instead.
+                    Text(verbatim: "Back to terminal in \(Format.countdown(seconds: left))")
                         .nfont(.bodyMedium).monospacedDigit()
                         .foregroundStyle(left <= 15 ? NT.warning : NT.text2)
                         .fixedSize()
-                        .help("Unanswered requests go back to the terminal")
-                        .accessibilityLabel(Text(verbatim: "Expires in \(left) seconds"))
+                        .help("If you don\u{2019}t answer here, Claude Code asks in its terminal instead")
+                        .accessibilityLabel(Text(verbatim: "Back to the terminal in \(left) seconds"))
                 }
             }
 

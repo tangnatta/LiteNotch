@@ -270,7 +270,7 @@ final class CommandTests: XCTestCase {
             ])
         XCTAssertEqual((inner["media"] as! NSDictionary)["enabled"] as? Bool, true)
         XCTAssertEqual((inner["notify"] as! NSDictionary)["system"] as? Bool, false)
-        XCTAssertEqual(Tab.allCases.map(\.rawValue), ["home", "music", "timer", "clipboard", "agents", "inbox", "settings"])
+        XCTAssertEqual(Tab.allCases.map(\.rawValue), ["home", "music", "timer", "clipboard", "agents", "inbox", "settings", "calendar"])
         XCTAssertEqual((inner["pomodoro"] as! NSDictionary)["focus_secs"] as? Int, 1800)
         XCTAssertEqual((inner["general"] as! NSDictionary)["persist_clipboard"] as? Bool, false)
         XCTAssertEqual((inner["notify"] as! NSDictionary)["dnd_min_priority"] as? String, "high")
@@ -427,7 +427,9 @@ final class GeometryTests: XCTestCase {
         let banner = try XCTUnwrap(vm.inbox.banner)
         XCTAssertEqual(banner.action, .skipBreak)
         XCTAssertTrue(vm.settings.peek.stillWorking)
-        XCTAssertEqual(ToastView.symbol(banner), "cup.and.saucer.fill")
+        // A break's leaf; the cup means keep awake in the tab bar.
+        XCTAssertEqual(ToastView.symbol(banner), "leaf.fill")
+        XCTAssertNotNil(NSImage(systemSymbolName: "leaf.fill", accessibilityDescription: nil))
         XCTAssertEqual(ToastView.symbol(try XCTUnwrap(try loadFixture("banner").inbox.banner)), "bell.fill")
 
         let bridge = MockBridge()
@@ -724,6 +726,32 @@ final class FormatTests: XCTestCase {
             ["T", "F", "S", "S", "M", "T", "W"])
     }
 
+    func testEverySessionNamesItsAgent() throws {
+        XCTAssertEqual(Format.agentName(sessionId: "8f0c-41"), "Claude Code")
+        XCTAssertEqual(Format.agentName(sessionId: "codex:019a"), "Codex")
+        XCTAssertEqual(Format.agentName(sessionId: "gemini:a1"), "Gemini CLI")
+        XCTAssertEqual(Format.agentName(sessionId: "antigravity:x"), "Antigravity")
+        // A Claude Code id that merely contains a name is still Claude Code's.
+        XCTAssertEqual(Format.agentName(sessionId: "my-codex:1"), "Claude Code")
+        let sessions = try loadFixture("media").agents.sessions
+        XCTAssertEqual(Set(sessions.map { Format.agentName(sessionId: $0.id) }), ["Claude Code", "Codex"])
+    }
+
+    func testCodexLimitsDecodeAndNameTheirWindows() throws {
+        let codex = try XCTUnwrap(try loadFixture("media").usage.codex)
+        XCTAssertEqual(codex.primary?.usedPct, 64)
+        XCTAssertEqual(codex.primary.map { Format.windowName(minutes: $0.windowMins) }, "5-hour")
+        XCTAssertEqual(codex.secondary.map { Format.windowName(minutes: $0.windowMins) }, "7-day")
+        XCTAssertEqual(Format.windowName(minutes: 90), "90-min")
+        XCTAssertEqual(Format.windowName(minutes: 120), "2-hour")
+        // Malformed: no limits rather than no view model.
+        let json =
+            #"{"five_hour":null,"updated_ms":0,"today":{"input":0,"output":0,"cache_read":0,"cache_write":0,"messages":0},"codex":{"primary":"x"}}"#
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        XCTAssertNil(try d.decode(UsageSnapshot.self, from: Data(json.utf8)).codex)
+    }
+
     func testAgentsHeadlineAndDetail() throws {
         func s(_ project: String, _ status: AgentStatus) -> AgentSession {
             AgentSession(id: project, project: project, cwd: "/", status: status, lastEventMs: 0, lastMessage: nil)
@@ -940,7 +968,7 @@ final class HoverAndClickTests: XCTestCase {
         XCTAssertEqual(model.tab, .settings)
         XCTAssertEqual(model.settingsSection, .timer)
         XCTAssertEqual(bridge.sent.last, #"{"cmd":"tab_opened","tab":"settings"}"#)
-        XCTAssertEqual(SettingsSection.allCases.count, 12)
+        XCTAssertEqual(SettingsSection.allCases.count, 11)
     }
 }
 
@@ -1757,6 +1785,29 @@ final class PanelStateTests: XCTestCase {
 
     private func spin(_ seconds: TimeInterval) {
         RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    func testTheFirstLaunchOpensOnTheWelcomeOnce() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "litenotch-welcome-test"))
+        defaults.removePersistentDomain(forName: "litenotch-welcome-test")
+        defer { defaults.removePersistentDomain(forName: "litenotch-welcome-test") }
+
+        let app = try makeApp()
+        app.primary.selectTab(.timer)
+        app.welcomeIfFirstRun(defaults: defaults, after: 0)
+        spin(0.05)
+        XCTAssertTrue(app.primary.welcome)
+        XCTAssertTrue(app.primary.expanded)
+        XCTAssertEqual(app.primary.tab, .home)
+        app.dismissWelcome()
+        XCTAssertFalse(app.primary.welcome)
+
+        // Seen once is enough, even without "Got it".
+        let again = try makeApp()
+        again.welcomeIfFirstRun(defaults: defaults, after: 0)
+        spin(0.05)
+        XCTAssertFalse(again.primary.welcome)
+        XCTAssertFalse(again.primary.expanded)
     }
 
     func testHoverAndClicksOnlyAffectTheirOwnPanel() throws {

@@ -149,14 +149,16 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   end, `total_secs` = length). The shell works out the percentage:
   `−12%` before the start, `37%`, `+19%` past the end
   (`Format.dayProgress`), and redraws only when the whole percent changes
-  (`DaySchedule`). The day turns over at 03:00 local (`ROLLOVER_MS`), so a late night still counts as the day it started; the core wakes once then. Settings › Day
+  (`DaySchedule`). The day turns over at 03:00 local (`ROLLOVER_MS`), so a
+  late night still counts as the day it started; the core wakes once then.
+  Settings › Work day
   holds it all. The icon (`day.icons`) is Default, the time of day
   (`Format.daySymbol`): horizon before the start, sun until 3 h before
   the end, horizon, then moon; or Grow a tree (`GrowthIcon.swift`,
   `Format.growthStage`): seed before the start, two leaves to 33 %,
   sapling to 66 %, young tree, then a full tree after the end. It never
   withers. With the tree the closed notch's icon and value are green
-  (`NT.grow`), the same all day; Home stays grey. Home's big left card (Settings › Home,
+  (`NT.grow`), the same all day; Home stays grey. Home's big left card (also in Settings › Work day,
   `day.home_card`: Auto, Day, Music) shows the day instead of now
   playing; Auto gives way to music while it plays. The line under the
   number is one of `DAY_LINES`, one per day.
@@ -183,9 +185,19 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   (`ClosedActivityView.pomodoroSymbol`, from the core's phase label).
 - **Shell layout.** Tabs: Home (dashboard: now playing, timer, agents,
   inbox), Music, Timer, Clipboard, Agents (Sessions | Usage) on the left of
-  the notch; keep-awake toggle (cup icon), Inbox, Settings on the right.
+  the notch; keep-awake toggle (cup icon), Calendar (only while
+  `settings.calendar.enabled`; the left has no room for a sixth icon beside
+  a hardware notch), Inbox, Settings on the right (`TabBar.right`).
   Settings is a sidebar of feature categories (`AppModel.settingsSection`,
-  so other tabs can deep-link). Hover opens after a delay, a click opens at
+  so other tabs can deep-link), most used first since the last ones sit
+  below the fold. General starts with Quit (there is no Dock icon) and
+  folds the choices a newcomer cannot predict (notch style, closed notch,
+  Shrink, Panel) under "More options"; snapshots and `OverflowTests`
+  open it (`SettingsTab.showMoreOptions`). The colour eyedropper is in
+  the Clipboard tab, where picked colours land. The first launch opens the
+  panel once on a welcome card on Home (`AppModel.welcomeIfFirstRun`,
+  remembered in `UserDefaults` as soon as it shows; never in a benchmark
+  run). Hover opens after a delay, a click opens at
   once, a click on the tab-bar background closes.
   Opening (hover or click) lands on the page of a banner that showed since
   the panel last closed (within 5 min; agent banners → Agents › Sessions,
@@ -257,7 +269,11 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   that would be cut short (over 4 questions, 8 options, or the length caps)
   gives none and the prompt falls back to the plain detail view; an option's
   note over 1000 chars is only shortened with an ellipsis (the answer is the label);
-  the shell shows 200 of it and a More / Less button (`QuestionDraft.shownNote`). The shell answers with
+  the shell shows 200 of it and a More / Less button (`QuestionDraft.shownNote`).
+  The question text itself may be 2000 chars (Claude Code sets no limit and
+  often adds a paragraph of context; at the old 300 a real question fell back
+  to the raw input); over 200 the shell shows its start and an inline More /
+  Less (`QuestionDraft.shownQuestion`), so the choices stay in sight. The shell answers with
   `agent_answer` (one list of labels or typed text per question); the core
   checks the shape and lengths (`Agents::answer`, no answer = request stays
   pending) and the CLI prints `allow` with `updatedInput` = the original input
@@ -362,8 +378,29 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   cancelled and declined events are left out (the last two in the shell).
   Needs the calendar permission (`NSCalendarsFullAccessUsageDescription`,
   entitlement `com.apple.security.personal-information.calendars`); full
-  access is the only level that allows reading. Nothing is written to the
-  calendar and no event text is stored on disk.
+  access is the only level that allows reading. No event text is stored on
+  disk.
+  The **Calendar tab** (`CalendarTab.swift`, `PanelState.calendarPage`:
+  list | event | edit | new) lists the view model's events by day. Opening
+  one makes the shell read that occurrence in full from EventKit
+  (`CalendarEditing.open`, an occurrence is id + start, since a repeating
+  event's occurrences share an id) and send it as `calendar_detail`; the
+  core sanitizes and caps it (`calendar::EventDetail`: notes keep their line
+  breaks, each line sanitized, 40 lines / 2000 chars; 30 attendees and a
+  count) and shows it as `calendar.detail` until `calendar_detail_close`,
+  the event leaving the list, or the calendar turning off. A calendar
+  notice's target is the Calendar tab with pane `<start>-<id>`, so a click
+  opens that event; Home's calendar row does the same. The shell writes
+  events itself (EventKit is Swift-only, like the reads): New event, Edit
+  (title, start, end, place; moving the start keeps the length) and a
+  two-step Delete, always `.thisEvent`. `EventDraft` holds the rules and
+  writes only the fields the user changed, since the form shows the core's
+  cleaned-up text. Someone else's invitation or a read-only calendar
+  (`EventKitSource.canEdit`, checked again at write time) gets Open
+  Calendar instead, and so does any event with guests: changing or
+  deleting one's own meeting makes the server mail every guest, and
+  Calendar asks about that properly. An occurrence that two events match
+  is not touched. An event's link is shown with Copy, never opened.
 - **Clipboard files**: copied images (`img-*`) and the formatting of rich
   text (`rich-*`, RTF or HTML) are saved in `<data dir>/clips`, named by a
   hash of their content. The runtime deletes any such file the history no
@@ -405,6 +442,16 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   keeps per-day totals, today's totals by model and project, and writes the
   one-sentence summary (`usage::Usage::snapshot`). "Tokens" there means
   input + output; cache tokens are tracked separately in `today`.
+  Codex's limits (`usage.codex`, `AgentLimits`) come from its own session
+  logs (`<CODEX_HOME>/sessions/YYYY/MM/DD/rollout-*.jsonl`, the last
+  `token_count` event with `rate_limits`), read on the same thread at the
+  same moments as the transcripts (`CodexLimitsReader`: the tail of the
+  newest log, older ones when it has none, never again while the newest is
+  unchanged). That format is internal to Codex, like Claude Code's
+  transcripts. Gemini CLI and Antigravity keep no limits on disk (their
+  quotas are on Google's servers), and asking for them would be a second
+  outgoing request, so they have none. The Agents tab names each session's
+  agent from its id prefix (`Format.agentName`).
 - **Lid choice and battery limit** (`caffeine::CaffeineConfig`): `lid_closed`
   is a saved setting, not an action. Turning keep awake on (`activate` from off)
   brings the lid with it when it is set (`apply_lid`), turning it off takes
@@ -515,8 +562,9 @@ command after changing the core.
     High priority and a 60 s ttl. Text captured from other apps' banners and
     now-playing titles (a web page chooses its own) is sanitized and capped
     the same way. So is calendar event text: anyone can send an invitation.
-    A calendar notification only opens Home; no link from an event is
-    followed.
+    A calendar notification only opens its event's page in the Calendar
+    tab (a read); no link from an event is followed. `litenotch status`
+    describes the closed notch by kind and timing only, never its text.
   - An artwork path is passed to the shell only if it is an `art-*` file
     directly inside the data directory's `artwork` folder.
   - Only validated integers and a `[A-Za-z0-9/._-]` path are interpolated into
@@ -533,6 +581,12 @@ command after changing the core.
     with "Keep on restart" off the clips folder is emptied on quit.
   - Socket notifications cannot use the core's own sources (`agent`,
     `litenotch`, …) or the captured-banner group; they get "(script)".
+  - Calendar events are written (added, changed, deleted) only by the
+    shell's `CalendarEditing` calls from the Calendar tab's own buttons,
+    one occurrence at a time, and only where `canEdit` holds at write
+    time. No core command, socket request or notification target can
+    cause a write; a target only selects a page. Links in events are
+    never opened.
   - The app and CLI are signed with the hardened runtime (no `DYLD_*`
     injection to borrow the Accessibility permission). Keep it on. The app
     has two entitlements: `com.apple.security.automation.apple-events`, so
@@ -686,9 +740,9 @@ the plain animation.
   button and Settings › Notch are covered by unit tests and snapshots
   only; none has been used in the running app.
 - The calendar: the core's alerts and the observer's logic are unit-tested
-  (the observer against a fake store). Not exercised: the real EventKit
-  store, macOS's permission question, and a real event coming due in the
-  running app. A benchmark run with start-up commands does not start the
+  (the observer against a fake store, including detail, save and delete).
+  Not exercised: macOS's permission question and a real event coming due
+  in the running app. A benchmark run with start-up commands does not start the
   observer, so it never raises that question. Not built: a "Join" button for
   the meeting link, choosing which calendars count, and all-day events.
 - Reading other apps' notifications (`SystemNotificationObserver`) is
@@ -728,4 +782,4 @@ the plain animation.
   with a fake lid in tests and the watcher's start/stop on this Mac, not yet
   with a real lid closing.
 - Shortlist from the Notchy comparison, deliberately not built to keep the
-  app small: file shelf, Codex usage, listening ports.
+  app small: file shelf, listening ports.

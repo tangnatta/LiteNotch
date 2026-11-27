@@ -75,6 +75,9 @@ jobs:
       - name: Swift format
         run: swift format lint --strict --recursive macos/Sources macos/Tests
       - name: Shell tests
+        # A view that never finishes building (an init calling itself, a
+        # layout loop) hangs the tests rather than failing them.
+        timeout-minutes: 15
         run: swift test --package-path macos
       - name: Footprint budget
         run: scripts/bench.sh --check

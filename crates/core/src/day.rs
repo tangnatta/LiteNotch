@@ -65,6 +65,9 @@ pub struct DayConfig {
     /// Home's left card, while day progress is on.
     pub home_card: HomeCard,
     pub icons: DayIcons,
+    /// The icon moves a little (sun turns, tree sways). Off by default: it
+    /// is drawn by Core Animation and costs a little GPU time while shown.
+    pub motion: bool,
 }
 
 impl Default for DayConfig {
@@ -76,6 +79,7 @@ impl Default for DayConfig {
             days: 0b001_1111,
             home_card: HomeCard::Auto,
             icons: DayIcons::Sun,
+            motion: false,
         }
     }
 }

@@ -143,6 +143,7 @@ struct SettingsTab: View {
                 hasNotch: model.hasNotch
             )
             .environment(\.dayIcons, draft.day.icons)
+            .environment(\.dayMotion, draft.day.motion)
         case .home: home
         case .day: day
         case .timer: timer
@@ -449,8 +450,17 @@ struct SettingsTab: View {
             ) {
                 SegmentedPill(
                     options: [(DayIcons.sun, "Default"), (.tree, "Grow a tree")],
-                    selection: $draft.day.icons, label: "Icon", height: 22)
+                    selection: $draft.day.icons, label: "Icon", height: 22
+                ) { icon in
+                    switch icon {
+                    case .sun: Image(systemName: "sun.max.fill").font(.system(size: 11, weight: .semibold))
+                    case .tree: GrowthIcon(stage: .tree, size: 13, color: NT.grow)
+                    }
+                }
             }
+            toggle(
+                "Animate", $draft.day.motion,
+                caption: "The sun turns slowly, the tree sways. Off, the icon is still and costs nothing.")
         }
     }
 

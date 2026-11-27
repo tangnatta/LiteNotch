@@ -896,7 +896,7 @@ struct SegmentedPill<Value: Hashable>: View {
     var label: String = ""
     var height: CGFloat = 24
     /// Drawn before each option's title, if given.
-    var icon: ((Value) -> AnyView)? = nil
+    var optionIcon: ((Value) -> AnyView)? = nil
 
     var body: some View {
         HStack(spacing: 2) {
@@ -906,7 +906,7 @@ struct SegmentedPill<Value: Hashable>: View {
                     selection = o.value
                 } label: {
                     HStack(spacing: 5) {
-                        if let icon { icon(o.value).foregroundStyle(on ? NT.text1 : NT.text2) }
+                        if let optionIcon { optionIcon(o.value).foregroundStyle(on ? NT.text1 : NT.text2) }
                         Text(verbatim: o.title)
                             .nfont(on ? .emphasis : .bodyMedium)
                             .foregroundStyle(on ? NT.text1 : NT.text2)
@@ -934,7 +934,11 @@ extension SegmentedPill {
         options: [(value: Value, title: String)], selection: Binding<Value>, label: String = "",
         height: CGFloat = 24, @ViewBuilder icon: @escaping (Value) -> Icon
     ) {
-        self.init(options: options, selection: selection, label: label, height: height, icon: { AnyView(icon($0)) })
+        // `optionIcon:`, not `icon:`: with `icon:` this init called itself
+        // forever and hung the app the moment Settings › Day opened.
+        self.init(
+            options: options, selection: selection, label: label, height: height,
+            optionIcon: { AnyView(icon($0)) })
     }
 }
 

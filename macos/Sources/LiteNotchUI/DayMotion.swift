@@ -51,13 +51,34 @@ struct MovingGlyph<Content: View>: View {
     @Environment(\.displayScale) private var scale
 
     var body: some View {
-        let renderer = ImageRenderer(content: content.environment(\.colorScheme, scheme))
-        renderer.scale = max(scale, 2)
-        let image = renderer.cgImage
-        let size = image.map { CGSize(width: CGFloat($0.width) / renderer.scale, height: CGFloat($0.height) / renderer.scale) } ?? .zero
-        return MovingLayer(image: image, kind: kind, key: key + "\(scheme)")
+        let s = max(scale, 2)
+        let id = "\(key)|\(scheme)|\(s)"
+        let image = GlyphCache.image(id) {
+            let renderer = ImageRenderer(content: content.environment(\.colorScheme, scheme))
+            renderer.scale = s
+            return renderer.cgImage
+        }
+        let size = image.map { CGSize(width: CGFloat($0.width) / s, height: CGFloat($0.height) / s) } ?? .zero
+        return MovingLayer(image: image, kind: kind, key: id)
             .frame(width: size.width, height: size.height)
             .accessibilityHidden(true)
+    }
+}
+
+/// Bitmaps already drawn, by glyph, colour scheme and scale. The body runs
+/// on every SwiftUI update (each minute on Home, every percent in the
+/// notch); drawing the glyph again each time cost an `ImageRenderer` pass
+/// for nothing. A day has at most a handful of glyphs.
+@MainActor
+private enum GlyphCache {
+    private static var images: [String: CGImage] = [:]
+
+    static func image(_ id: String, draw: () -> CGImage?) -> CGImage? {
+        if let hit = images[id] { return hit }
+        guard let made = draw() else { return nil }
+        if images.count >= 32 { images.removeAll() }
+        images[id] = made
+        return made
     }
 }
 

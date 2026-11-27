@@ -49,3 +49,27 @@ final class BodyTests: XCTestCase {
         XCTAssertEqual(try fixture("idle").settings.body, .default)
     }
 }
+
+@MainActor
+final class LiquidLayoutTests: XCTestCase {
+    /// Reported: after a tap the water hung from the top of the tank. A
+    /// second layout set `frame` on a layer that carried the fall's
+    /// transform, which moved the layer to cancel it.
+    func testTheWaterStaysAtTheBottomAfterARefill() {
+        let view = LiquidNSView(frame: CGRect(x: 0, y: 0, width: 100, height: 206))
+        let body = 206 - LiquidNSView.waveHeight
+        func top(_ left: Int, emptyAt: Int?) -> CGFloat {
+            view.configure(
+                gauge: GaugeView(spanMs: 1000, leftMs: left, emptyAtMs: emptyAt), nowMs: 0,
+                color: NSColor.systemBlue.cgColor, animated: false)
+            view.layout()
+            // The layer's model value: where the water rests when its fall ends,
+            // or where it stands still. Its top edge is the body's top.
+            return view.water.frame.minY + body
+        }
+        XCTAssertEqual(top(500, emptyAt: nil), body / 2, accuracy: 0.5, "half, standing still")
+        XCTAssertEqual(top(1000, emptyAt: 1000), 0, accuracy: 0.5, "counting: rests empty")
+        XCTAssertEqual(top(250, emptyAt: nil), body / 4, accuracy: 0.5, "after a tap, still from the bottom")
+        XCTAssertEqual(top(250, emptyAt: nil), body / 4, accuracy: 0.5, "and again")
+    }
+}

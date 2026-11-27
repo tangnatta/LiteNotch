@@ -463,14 +463,16 @@ struct SettingsTab: View {
         row("Big card", caption: homeCardCaption) {
             SegmentedPill(
                 options: [(HomeCard.auto, "Auto"), (.day, "Day"), (.media, "Music"), (.body, "Body")],
-                selection: $draft.day.homeCard, label: "Big card", height: 22)
+                selection: $draft.day.homeCard, label: "Big card", height: 22,
+                symbols: ["wand.and.stars", "sun.max", "music.note", "figure.mind.and.body"])
         }
         .opacity(homeCardWorks ? 1 : 0.5)
         if draft.day.homeCard == .body {
             row("Show") {
                 SegmentedPill(
                     options: [(BodyShow.water, "Water"), (.both, "Water and stretch")],
-                    selection: $draft.body.show, label: "Show", height: 22)
+                    selection: $draft.body.show, label: "Show", height: 22,
+                    symbols: ["drop", "figure.flexibility"])
             }
             .opacity(bodyOn ? 1 : 0.5)
             if !bodyOn {

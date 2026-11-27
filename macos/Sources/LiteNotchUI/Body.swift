@@ -155,8 +155,9 @@ private struct GaugeColumn: View {
                         .accessibilityLabel(Text(verbatim: "\(kind.title) \(p)%"))
                     Text(verbatim: BodyMath.since(gauge.lastMs, nowMs: now, verb: kind.verb))
                         .nfont(.caption).foregroundStyle(NT.text2).lineLimit(1).minimumScaleFactor(0.8)
+                    Spacer(minLength: 0)
+                    // The button sits at the bottom, the reading centred above it.
                     TextPill(title: kind.button, tint: NT.text1, background: NT.fillHi, height: 22) { send(kind.command) }
-                        .padding(.top, 2)
                         // "+1 cup" rises from the button, past the number.
                         .overlay {
                             ForEach(floats) { f in
@@ -165,10 +166,10 @@ private struct GaugeColumn: View {
                                 }
                             }
                         }
-                    Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, 6)
+                .padding(.bottom, 10)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: NT.radiusContainer, style: .continuous))
@@ -271,7 +272,7 @@ final class LiquidNSView: NSView {
     private static let waveSecs: CFTimeInterval = 3.2
 
     /// Body and wave move together.
-    private let water = CALayer()
+    let water = CALayer()
     private let fill = CALayer()
     let wave = CAShapeLayer()
     private var gauge: GaugeView?
@@ -339,7 +340,11 @@ final class LiquidNSView: NSView {
         defer { CATransaction.commit() }
         let w = bounds.width
         let body = bounds.height - Self.waveHeight
-        water.frame = bounds
+        // Not `frame`: the water carries a transform (its fall), and setting
+        // `frame` then moves the layer to cancel it, which drew the water
+        // hanging from the top after every tap.
+        water.bounds = CGRect(origin: .zero, size: bounds.size)
+        water.position = CGPoint(x: bounds.midX, y: bounds.midY)
         fill.frame = CGRect(x: 0, y: 0, width: w, height: body)
         // Twice as wide as the tank plus a wave length, sliding left by one
         // wave length forever.

@@ -888,23 +888,31 @@ struct SegmentedPill<Value: Hashable>: View {
     @Binding var selection: Value
     var label: String = ""
     var height: CGFloat = 24
+    /// An SF Symbol before each title, in the same order; none if empty.
+    var symbols: [String] = []
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(Array(options.enumerated()), id: \.offset) { _, o in
+            ForEach(Array(options.enumerated()), id: \.offset) { i, o in
                 let on = o.value == selection
                 Button {
                     selection = o.value
                 } label: {
-                    Text(verbatim: o.title)
-                        .nfont(on ? .emphasis : .bodyMedium)
-                        .foregroundStyle(on ? NT.text1 : NT.text2)
-                        .lineLimit(1).fixedSize()
-                        .padding(.horizontal, 10)
-                        .frame(height: height - 4)
-                        .background(on ? NT.fillHi : Color.clear, in: Capsule())
-                        .contentShape(Capsule())
-                        .controlHover(Capsule())
+                    HStack(spacing: 4) {
+                        if i < symbols.count {
+                            Image(systemName: symbols[i]).glyph(10, on ? .semibold : .medium)
+                                .accessibilityHidden(true)
+                        }
+                        Text(verbatim: o.title)
+                    }
+                    .nfont(on ? .emphasis : .bodyMedium)
+                    .foregroundStyle(on ? NT.text1 : NT.text2)
+                    .lineLimit(1).fixedSize()
+                    .padding(.horizontal, 10)
+                    .frame(height: height - 4)
+                    .background(on ? NT.fillHi : Color.clear, in: Capsule())
+                    .contentShape(Capsule())
+                    .controlHover(Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(on ? .isSelected : [])

@@ -174,7 +174,7 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   `span_ms`, `left_ms` and `empty_at_ms` (set while counting), so the shell
   draws the level itself; between events a gauge is left untouched, or the
   view model would change on every settle (the pasteboard poll) and the
-  panel would redraw twice a second (measured: 1.3 % CPU, now 0.05 %). It
+  panel would redraw twice a second (measured: 1.3 % CPU, now 0.05–0.45 %). It
   says so once when empty (the Move peek above), then stays empty and
   quiet. `body_drink`: a cup is worth `CUP_PCT` (50 %) when the last was
   `CUP_SPACING_MS` (10 min) or more ago, down to `SIP_PCT` (10 %) right

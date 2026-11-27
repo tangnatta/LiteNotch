@@ -33,7 +33,8 @@ use crate::usage::{local_day_start_ms, Usage, UsageRecord, UsageSnapshot};
 mod presentation;
 use presentation::Peek;
 pub use presentation::{
-    PeekConfig, PeekKind, BREAK_LINES, EYE_MS, NUDGE_MS, PEEK_MS, STRETCH_LINES, WATER_LINES,
+    PeekConfig, PeekKind, BREAK_LINES, EYE_LINES, EYE_MS, NUDGE_MS, PEEK_MS, STRETCH_LINES,
+    WATER_LINES,
 };
 
 /// Version of the persisted file layout.

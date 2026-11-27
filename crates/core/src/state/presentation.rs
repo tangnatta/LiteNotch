@@ -28,7 +28,7 @@ pub struct PeekConfig {
     /// Peek when a running countdown has this long left; 0 is off. Only for
     /// countdowns longer than twice this.
     pub time_warning_secs: u32,
-    /// A quick blinking `>_<` every this many minutes at the screen, so the
+    /// A quick blinking `O-O` every this many minutes at the screen, so the
     /// user blinks and looks away; 0 is off (the default), else 1..=60.
     pub eye_break_mins: u32,
     /// The Move reminder of earlier versions, read from old files only: the
@@ -118,7 +118,8 @@ const LATE_MS: u64 = 60_000;
 const QUOTE_WAIT_MS: u64 = 60_000;
 
 const EYE_BREAK_TITLE: &str = "Eye break";
-const EYE_BREAK_LINE: &str = "Look away";
+/// The eye break's word, one per break (picked from the minute).
+pub const EYE_LINES: [&str; 3] = ["Blink", "Relax", "Look away"];
 const QUOTE_TITLE: &str = "Break over";
 
 /// The first check whether the user is still working, this long into a
@@ -468,7 +469,11 @@ impl Core {
             }
         }
         if self.eye_due(now) {
-            let eye = Peek::nudge(PeekKind::EyeBreak, EYE_BREAK_TITLE, EYE_BREAK_LINE);
+            let eye = Peek::nudge(
+                PeekKind::EyeBreak,
+                EYE_BREAK_TITLE,
+                EYE_LINES[(now / 60_000 % EYE_LINES.len() as u64) as usize],
+            );
             self.start_peek(eye, now);
         }
         // After the eye break, so an empty gauge at the same moment wins.
@@ -942,7 +947,7 @@ mod tests {
                 ActivityKind::Nudge,
                 Some(PeekKind::EyeBreak),
                 "Eye break",
-                "Look away"
+                EYE_LINES[((T0 + 5 * MIN) / MIN % 3) as usize]
             )
         );
         assert_eq!(c.next_deadline(), Some(T0 + 5 * MIN + EYE_MS), "a glance");

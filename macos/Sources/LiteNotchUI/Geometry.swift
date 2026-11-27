@@ -78,8 +78,8 @@ public enum NotchGeometry {
         case .timeWarning: return 82
         // A symbol on one side, the scrolling line on the other. The eye
         // break's short line takes the `.nudge` width below.
-        case .move, .quote, .stillWorking: return 130
-        case .eyeBreak, .unknown, nil: break
+        case .move, .quote, .stillWorking, .eyeBreak: return 130
+        case .unknown, nil: break
         }
         switch compact.kind {
         case .idle, .unknown: return 0
@@ -173,8 +173,8 @@ extension NotchGeometry {
         case .trackChanged: return 80
         // `10:00 left` with the capsule's padding.
         case .timeWarning: return 72
-        case .move, .quote, .stillWorking: return 80
-        case .eyeBreak, .unknown, nil: break
+        case .move, .quote, .stillWorking, .eyeBreak: return 80
+        case .unknown, nil: break
         }
         switch compact.kind {
         case .idle, .unknown: return 0
@@ -282,9 +282,9 @@ extension NotchGeometry {
         // `10:00 left`.
         case .timeWarning: return 66
         // A line that scrolls, like a song title.
-        case .move, .quote, .stillWorking: return 200
+        case .move, .quote, .stillWorking, .eyeBreak: return 200
         // The eye break's short line takes the `.nudge` width below.
-        case .eyeBreak, .unknown, nil: break
+        case .unknown, nil: break
         }
         switch c.kind {
         case .idle, .unknown: return 0
@@ -316,7 +316,9 @@ extension NotchGeometry {
             }
             inner = slot(first) + rowPairSpace + slot(second)
         } else {
-            inner = rowIcon + rowGap + rowValueWidth(first)
+            // The eye break's face is wider than a symbol.
+            let icon = first.peek == .eyeBreak ? max(rowIcon, BlinkingFaceNSView.size.width) : rowIcon
+            inner = icon + rowGap + rowValueWidth(first)
         }
         return min(2 * edge + inner + dot, maxRowWidth)
     }

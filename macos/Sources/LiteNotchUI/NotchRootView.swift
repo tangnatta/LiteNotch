@@ -313,6 +313,8 @@ struct ClosedActivityView: View {
             MarqueeText(text: compact.value.isEmpty ? compact.title : "\(compact.title) — \(compact.value)")
         case .move, .quote, .stillWorking:
             MarqueeText(text: compact.value)
+        case .eyeBreak:
+            MarqueeText(text: compact.value, tint: NT.accentText)
         case .timeWarning where compact.endsAtMs != nil:
             EverySecond { now in
                 let left = Format.countdown(seconds: Format.secondsLeft(until: compact.endsAtMs ?? 0, nowMs: now))
@@ -408,14 +410,15 @@ struct ClosedActivityView: View {
 /// for the few seconds of a peek.
 struct MarqueeText: View {
     let text: String
+    var tint: Color = NT.text1
     @Environment(\.isSnapshot) private var snapshot
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         if snapshot || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            VText(text).wingText(mono: false)
+            VText(text).wingText(mono: false, tint: tint)
         } else {
-            MarqueeLayer(text: text, color: NSColor(NT.text1).resolved(dark: scheme == .dark))
+            MarqueeLayer(text: text, color: NSColor(tint).resolved(dark: scheme == .dark))
                 .frame(height: 16)
         }
     }
@@ -619,13 +622,13 @@ private struct AnimatedBars: NSViewRepresentable {
     }
 }
 
-/// `>_<` for an eye break, blinking now and then: the glyph swaps to
-/// `-_-` for a moment. Like the equaliser bars the swap is a Core
+/// `O-O` for an eye break, blinking now and then: the glyph swaps to
+/// `>-<` for a moment. Like the equaliser bars the swap is a Core
 /// Animation keyframe animation the window server runs, never a SwiftUI
 /// animation, and it is on screen only for the seconds of the peek.
 struct BlinkingFace: View {
-    static let face = ">_<"
-    static let shut = "-_-"
+    static let face = "O-O"
+    static let shut = ">-<"
     @Environment(\.isSnapshot) private var snapshot
     @Environment(\.colorScheme) private var scheme
 

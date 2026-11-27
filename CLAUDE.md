@@ -115,7 +115,9 @@ scripts/         build-app.sh, bench.sh, coverage.sh
   Mac awake does not count); they never follow the focus timer (an earlier
   `move_counts` choice is gone, old files still load):
   the eye break (`peek.eye_break_mins`, 0 = off, the default; every few
-  minutes of screen time), a quick blinking `>_<` with "Look away" for 3 s
+  minutes of screen time), a quick blinking `O-O` (`>-<` on the blink)
+  with one of `EYE_LINES` ("Blink", "Relax", "Look away", picked from the
+  minute) in the accent colour for 3 s
   (`EYE_MS`) so the user blinks; a gauge running empty (`PeekKind::Move`,
   see Water and stretch below), titled Water or Stretch with one of
   `WATER_LINES` / `STRETCH_LINES` picked from `now_ms` ("Water and

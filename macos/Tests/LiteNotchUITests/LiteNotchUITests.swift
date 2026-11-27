@@ -369,16 +369,14 @@ final class GeometryTests: XCTestCase {
     }
 
     func testNudgesShowAFaceOrSymbolAndALine() throws {
-        // The eye break is a glance: the face and a short line, no scrolling,
-        // so its wings are only as wide as "Look away".
+        // The eye break gets the room of a scrolling line, like Move.
         let eye = try loadFixture("peek-eye-break").compact
         XCTAssertEqual(eye.kind, .nudge)
         XCTAssertEqual(eye.peek, .eyeBreak)
-        XCTAssertEqual(eye.value, "Look away")
+        XCTAssertTrue(["Blink", "Relax", "Look away"].contains(eye.value))
         XCTAssertTrue(eye.peek?.isNudge ?? false)
-        XCTAssertLessThan(NotchGeometry.wingWidth(for: eye), 100)
-        XCTAssertGreaterThan(NotchGeometry.wingWidth(for: eye), 40)
-        XCTAssertLessThanOrEqual(NotchGeometry.islandWingWidth(for: eye), 80)
+        XCTAssertEqual(NotchGeometry.wingWidth(for: eye), 130)
+        XCTAssertEqual(NotchGeometry.islandWingWidth(for: eye), 80)
 
         let move = try loadFixture("peek-move").compact
         XCTAssertEqual(move.kind, .nudge)
@@ -458,7 +456,7 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(faces.count, 2)
         XCTAssertEqual(
             faces.compactMap { ($0 as? CATextLayer)?.string as? NSAttributedString }.map(\.string),
-            [">_<", "-_-"])
+            ["O-O", ">-<"])
         XCTAssertTrue(faces.allSatisfy { $0.animation(forKey: "blink") != nil })
         view.layout()
         XCTAssertEqual(view.layer?.sublayers?.count, 2, "laying out again adds nothing")

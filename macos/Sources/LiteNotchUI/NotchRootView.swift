@@ -1068,6 +1068,21 @@ struct DaySchedule: TimelineSchedule {
     }
 }
 
+/// Now, then each of `timesMs` still to come. Not `.explicit` with every
+/// time: once the day had ended all of them were past, and SwiftUI redrew
+/// the closed notch over and over (about 3 % CPU every evening).
+struct ChangeSchedule: TimelineSchedule {
+    let timesMs: [Int]
+    let offsetMs: Int
+
+    func entries(from startDate: Date, mode: TimelineScheduleMode) -> [Date] {
+        let later = timesMs.map { Date(timeIntervalSince1970: Double($0 + 1 - offsetMs) / 1000) }
+            .filter { $0 > startDate }
+            .sorted()
+        return [startDate] + later
+    }
+}
+
 /// The sun or moon for the time of day, or the growing plant, redrawn
 /// only at the times it changes.
 struct DayIcon: View {
@@ -1087,10 +1102,7 @@ struct DayIcon: View {
                     icons == .tree
                     ? Format.growthStageChanges(startMs: start, endMs: end)
                     : Format.daySymbolChanges(startMs: start, endMs: end)
-                let dates = changes.map { Date(timeIntervalSince1970: Double($0 + 1 - offset) / 1000) }
-                TimelineView(.explicit(dates)) { _ in
-                    // The clock, not the entry's date: once every change is
-                    // past, an explicit schedule hands back an old one.
+                TimelineView(ChangeSchedule(timesMs: changes, offsetMs: offset)) { _ in
                     glyph(start, end)
                 }
             }

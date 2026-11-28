@@ -52,7 +52,7 @@ while :; do
 done
 WINDOW=20
 case "${1:-}" in ''|*[!0-9]*) ;; *) WINDOW=$1; shift ;; esac
-ALL="idle timer music panel island glass glassisland calendar pair body bodyclosed closedglass day dayanim treeanim daypanel daypanelanim"
+ALL="idle timer music panel island glass glassisland calendar pair body bodyclosed closedglass day dayanim treeanim daypanel daypanelanim dayover"
 SCENARIOS=${*:-$ALL}
 
 APP=dist/LiteNotch.app
@@ -161,7 +161,7 @@ measure() {
 
 TIMER='[{"cmd":"timer_set","secs":3600},{"cmd":"timer_toggle"}]'
 QUIET='{}'
-day() { printf '{"day":{"enabled":true,"start_min":0,"end_min":1440,"days":127,"icons":"%s","motion":%s,"home_card":"day"}}' "$1" "$2"; }
+day() { printf '{"day":{"enabled":true,"start_min":%s,"end_min":%s,"days":127,"icons":"%s","motion":%s,"home_card":"day"}}' "${3:-0}" "${4:-1440}" "$1" "$2"; }
 launch() {
     case "$1" in
         idle) start idle 0.5 30 "$QUIET" ;;
@@ -188,12 +188,16 @@ launch() {
         closedglass) start closedglass 1.0 30 '{"appearance":{"notch_style":"island","closed_notch":"theme","theme":"light","material":"glass"}}' \
             LITENOTCH_BENCH_COMMANDS="$TIMER" ;;
         # The day icon still and moving (day.motion). Office hours cover
-        # the whole day so the sun is up whenever this runs.
+        # the whole day, so the sun is up whenever this runs, except from
+        # 00:00 to 03:00, which still belongs to the day before (over).
         day) start day 1.0 30 "$(day sun false)" ;;
         dayanim) start dayanim 1.0 30 "$(day sun true)" ;;
         treeanim) start treeanim 1.0 30 "$(day tree true)" ;;
         daypanel) start daypanel 1.5 40 "$(day sun false)" LITENOTCH_BENCH_OPEN=1 ;;
         daypanelanim) start daypanelanim 1.5 40 "$(day sun true)" LITENOTCH_BENCH_OPEN=1 ;;
+        # A day already over (00:00-00:30) whenever this runs: every icon
+        # change is past. Its schedule once redrew the notch nonstop then.
+        dayover) start dayover 1.0 30 "$(day sun false 0 30)" ;;
     esac
 }
 

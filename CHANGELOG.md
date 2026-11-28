@@ -54,6 +54,10 @@ the section in the pull request that bumps the version in `Cargo.toml`.
 - The README is shorter, with the details in a separate guide.
 
 ### Fixed and under the hood
+- **Day progress cost about 3 % CPU every evening.** Once the work day had
+  ended, the closed notch's sun, moon or tree kept redrawing until the next
+  day started. It now redraws only when the icon changes. A new benchmark
+  scenario measures a day that is already over.
 - **A question with a paragraph of context showed as raw text** in the notch
   instead of the question form: questions over 300 characters were refused.
   Now any up to 2000 characters is a question; a long one shows its start with

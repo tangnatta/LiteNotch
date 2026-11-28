@@ -5,13 +5,14 @@
 LiteNotch turns the notch on your MacBook into a small control centre: what's
 playing, a focus timer, your next meeting, your clipboard history,
 notifications, and, if you code with an AI agent (Claude Code, Codex, Gemini
-CLI or Antigravity), its sessions, approvals and questions. Move the pointer onto the notch to open it; move away to
-close it.
+CLI or Antigravity), its sessions, approvals and questions. Move the pointer
+onto the notch to open it; move away to close it. In the open panel a
+two-finger swipe left or right moves between tabs.
 
 <img src="docs/preview/overview.gif" width="680" alt="The closed notch showing what's playing, then the panel opening on Home, Timer and Clipboard, then a Claude Code permission request">
 
 > **Early beta** for Apple silicon Macs on macOS 14 or later. It uses about
-> 15 MB of memory and under 0.5 % CPU while idle, and the app is 7 MB.
+> 15 MB of memory and under 0.5 % CPU while idle, and the app is 8 MB.
 
 ## Install
 
@@ -79,7 +80,7 @@ tells you about a new version; it never installs anything.
 | [**Clipboard**](#clipboard) | Everything you copied, searchable, plus a colour picker. |
 | [**Inbox**](#inbox-and-keep-awake) | Notifications from LiteNotch, Claude Code, scripts and other apps. |
 | [**Keep awake**](#inbox-and-keep-awake) | The cup keeps the Mac awake, with the lid closed if you like. |
-| [**Work day**](#work-day) | How far through your working day you are. Off until you turn it on. |
+| [**Your day**](#your-day) | How far through your working day you are, and water and stretch gauges. Each is off until you turn it on. |
 
 ## Coding agents
 
@@ -142,7 +143,7 @@ closed notch fills up.
 
 ## Calendar
 
-<img src="docs/preview/calendar.gif" width="680" alt="Home showing the next event, the closed notch counting down to it, and the notification with a Pause focus button when it starts">
+<img src="docs/preview/calendar.gif" width="680" alt="The Calendar tab listing the next two days, one event in full with its guests and notes, the edit form, the closed notch counting down to the event, and the notification with a Pause focus button when it starts">
 
 Turn on **Settings › Calendar**. LiteNotch follows the calendars in the
 Calendar app (iCloud, Google, Exchange…): your next event on **Home**, a
@@ -153,8 +154,8 @@ A **Calendar** tab (beside the inbox) lists the next two days. Click an event
 for everything in it: time, place, link, guests and their answers, notes.
 **New event**, **Edit** and **Delete** change your calendar; for a repeating
 event only that occurrence. An event with guests opens in Calendar instead,
-since changing it sends them an update. Clicking a reminder opens its event. Links in invitations are shown
-and can be copied, never opened by LiteNotch.
+since changing it sends them an update. Clicking a reminder opens its event.
+Links in invitations are shown and can be copied, never opened by LiteNotch.
 
 ## Clipboard
 
@@ -177,15 +178,29 @@ Scripts can post here as well:
 The **cup** keeps the Mac awake. **Settings › Keep awake** sets how long,
 whether it stays awake with the lid closed, and a battery level to stop at.
 
-## Work day
+## Your day
 
-<img src="docs/preview/day.gif" width="680" alt="The closed notch showing how far through the day it is, with a sun, then a tree growing from a seed; then Home with the day card">
+<img src="docs/preview/day.gif" width="680" alt="The closed notch showing how far through the day it is, with a sun, then a tree growing from a seed; then Home's day card with the tree, and with the sun on a sky for the time of day">
 
-Turn on **Settings › Day** and set your hours (10:00–18:00, Monday to
-Friday, until you change them). The closed notch shows how far through the day
-you are, `-12%` before it starts and `+19%` after it ends, with a sun and moon
-or a tree that grows through the day. It is only a number: no bar, no red, no
-line telling you to stop.
+Turn on **Day progress** in **Settings › Day** and set your hours
+(10:00–18:00, Monday to Friday, until you change them). The closed notch shows
+how far through the day you are, `-12%` before it starts and `+19%` after it
+ends, with a sun and moon or a tree that grows through the day (**Animate**
+lets them move). On Home the day gets the big card, on a sky for the time of
+day. A late night still counts as the day it started: the day turns over at
+03:00. It is only a number: no bar, no red, no line telling you to stop.
+
+<img src="docs/preview/body.gif" width="680" alt="The closed notch showing the stretch gauge, Home with the water and stretch tanks, then Settings › Day with Water and Stretch turned on">
+
+**Water** and **Stretch**, in the same place, are two gauges that run down
+while you are at the Mac and stand still while it is locked or asleep. Click
+the tank, or **Drank** / **Stretch**, to fill it; cups spaced out count more
+than one right after another. The notch says so once when one falls below
+20 % and once when it is empty, and Home can show the tanks (**Home's big
+card**). There is no daily total to reach. They replace the Move reminder.
+
+Over Home's big card, a two-finger swipe up or down moves between the day,
+the gauges and now playing. [More in the guide](docs/guide.md#heads-ups-and-reminders).
 
 ## The closed notch
 
@@ -194,9 +209,10 @@ line telling you to stop.
 When several things run, the closed notch shows the most pressing on the left
 and the next, dimmed, on the right. **Settings › Notch** changes the order or
 shows one at a time. For a few seconds it can also show a new song, a timer
-about to end, a reminder to rest your eyes, or that water or stretch is running low:
+about to end, a reminder to rest your eyes, or that water or stretch is
+running low:
 
-<img src="docs/preview/peeks.gif" width="680" alt="One after another: a new song, five minutes left, the eye-break face, a reminder to walk, a line after a break">
+<img src="docs/preview/peeks.gif" width="680" alt="One after another: a new song, five minutes left, the eye-break face, a reminder to stretch, a line after a break">
 
 ## Appearance
 

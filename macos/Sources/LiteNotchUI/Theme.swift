@@ -281,7 +281,11 @@ struct NotchScroll<Content: View>: View {
 
     var body: some View {
         if snapshot {
+            // At its own height, cut off at the bottom like the top of a
+            // scroll view: proposed the panel's height, a long page squeezed
+            // its rows on top of each other.
             VStack(spacing: 0) { content }
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()
         } else {

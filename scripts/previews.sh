@@ -8,7 +8,9 @@ cd "$(dirname "$0")/.."
 OUT=docs/preview
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-swift run --package-path macos LiteNotchSnapshot --previews macos/Fixtures "$TMP" >/dev/null
+# One locale for everyone (dates, the calendar system), not this Mac's.
+swift run --package-path macos LiteNotchSnapshot --previews macos/Fixtures "$TMP" \
+    -AppleLocale en_GB -AppleLanguages '(en-GB)' >/dev/null
 mkdir -p "$OUT"
 for dir in "$TMP"/*/; do
     name=$(basename "$dir")

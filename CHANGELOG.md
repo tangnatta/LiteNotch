@@ -21,6 +21,24 @@ the section in the pull request that bumps the version in `Cargo.toml`.
   - Clicking a calendar reminder, or the event on Home, opens that event.
   - A link in an invitation is shown with a **Copy** button; LiteNotch never
     opens it.
+- **Water and stretch gauges** (Settings › Day, each off by default). They
+  run down while you are at the Mac and stand still while it is locked,
+  asleep or shut. Click the tank (or **Drank** / **Stretch**) to fill it: a
+  cup adds 200 ml to a 400 ml tank, or as little as 50 ml right after the
+  last one, so spaced-out cups count more. The notch says so once below
+  20 % and once when empty. Home's big card can show them (**Body**: water
+  alone, or water and stretch), and the closed notch can show the one that
+  empties first (Settings › Notch). No daily total, no warning colours.
+  They replace the **Move** reminder; its setting carries over.
+- **Two-finger swipe** in the open panel: left or right moves one tab (round
+  from Settings back to Home); up or down over Home's big card moves between
+  the day, the gauges and now playing, with page dots on the card. A page you
+  picked, or a tap on Drank, Stretch or a music button, keeps that card until
+  the panel closes.
+- **Day progress**: the day now turns over at 03:00, so a late night still
+  counts as the day it started. With the sun icon, Home's day card is a sky
+  for the time of day. **Animate** (Settings › Day) lets the sun turn and the
+  tree sway, and the icon choice shows its icons.
 - **Codex's usage limits** in Agents › Usage, read from Codex's own session
   logs (no request leaves your Mac).
 - **A welcome on first launch**: the panel opens once and says how to open,
@@ -28,11 +46,18 @@ the section in the pull request that bumps the version in `Cargo.toml`.
 
 ### Improved
 - Settings lists its sections most-used first, and General folds the choices
-  that need explaining under **More options**.
+  that need explaining under **More options**. **Settings › Day** holds day
+  progress, the eye break, water, stretch and Home's big card; the separate
+  Home section is gone.
+- The eye break's face is `O-O`, blinking to `>-<`.
 - The colour eyedropper moved to the Clipboard tab, where picked colours land.
 - The README is shorter, with the details in a separate guide.
 
 ### Fixed and under the hood
+- **Day progress cost about 3 % CPU every evening.** Once the work day had
+  ended, the closed notch's sun, moon or tree kept redrawing until the next
+  day started. It now redraws only when the icon changes. A new benchmark
+  scenario measures a day that is already over.
 - **A question with a paragraph of context showed as raw text** in the notch
   instead of the question form: questions over 300 characters were refused.
   Now any up to 2000 characters is a question; a long one shows its start with
@@ -48,6 +73,11 @@ the section in the pull request that bumps the version in `Cargo.toml`.
   Accessibility permission.
 - Reading Codex's logs skips anything that is not a plain file, and a log
   dated in the future no longer holds back the real limits.
+- The README's previews show the Calendar tab and the gauges, in one locale
+  whatever the Mac's (a Thai Mac drew Buddhist-era years in the edit form),
+  and a long Settings page in a preview no longer squeezes its rows together.
+- Hover tests wait for the panel instead of a fixed time; one failed on a busy
+  CI runner.
 
 ## 0.2.6-beta
 

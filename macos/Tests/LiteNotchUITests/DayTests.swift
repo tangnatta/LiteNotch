@@ -147,4 +147,24 @@ final class DayTests: XCTestCase {
         let back = try d.decode(Settings.self, from: JSONSerialization.data(withJSONObject: obj))
         XCTAssertEqual(back.day, .default)
     }
+
+    /// After the day's end every icon change is past. The schedule then
+    /// gave SwiftUI only old dates and the closed notch redrew over and over
+    /// (about 3 % CPU every evening; CI's benchmark caught it at 00:12).
+    func testTheIconScheduleNeverHandsBackAPastTime() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let ms = 1_800_000_000_000
+        let hour = 3_600_000
+        let changes = Format.daySymbolChanges(startMs: ms - 10 * hour, endMs: ms - 2 * hour)
+        let ended = ChangeSchedule(timesMs: changes, offsetMs: 0)
+            .entries(from: start, mode: .normal)
+        XCTAssertEqual(ended, [start], "the day is over: nothing more to redraw for")
+
+        let during = ChangeSchedule(timesMs: [ms + hour, ms - hour, ms + 2 * hour], offsetMs: 0)
+            .entries(from: start, mode: .normal)
+        XCTAssertEqual(during.count, 3)
+        XCTAssertEqual(during.first, start)
+        XCTAssertEqual(during, during.sorted())
+        XCTAssertTrue(during.allSatisfy { $0 >= start })
+    }
 }

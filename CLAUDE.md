@@ -769,6 +769,7 @@ alone and only that result counts. `--serial` runs them one at a time:
 | pair | two countdowns side by side in the closed notch | ≤ 1.0 % | ≤ 30 MB |
 | body | the panel open on Home showing the water and stretch gauges (wave animating) | ≤ 1.5 % | ≤ 40 MB |
 | bodyclosed | the closed notch showing the water gauge (redrawn once per percent) | ≤ 1.0 % | ≤ 30 MB |
+| dayover | the closed notch on day progress after the day ended (every icon change past; `ChangeSchedule` hands SwiftUI only times to come, `.explicit` with past ones redrew nonstop) | ≤ 1.0 % | ≤ 30 MB |
 | closedglass | the closed notch drawn with glass (Island, Match theme, light) and a countdown; needs a display without a notch | ≤ 1.0 % | ≤ 30 MB |
 
 Bundle ≤ 15 MB; Rust line coverage ≥ 90 %. The app reads a few

@@ -16,6 +16,7 @@ public enum PreviewRenderer {
         var pane: AgentsPane = .sessions
         var timerPane: TimerPane = .focus
         var clipPreview: Int?
+        var calendarPage: CalendarPage = .list
         var notchless = false
         /// A question form already part-answered.
         var draft: QuestionDraft?
@@ -73,7 +74,7 @@ public enum PreviewRenderer {
                     _ = try SnapshotRenderer.write(
                         shot.vm, expanded: shot.expanded, tab: shot.tab, section: shot.section,
                         pane: shot.pane, timerPane: shot.timerPane, clipPreview: shot.clipPreview,
-                        notchless: shot.notchless,
+                        calendarPage: shot.calendarPage, notchless: shot.notchless,
                         nowMs: clock, backdrop: true,
                         zoom: open ? 1 : scene.zoom, marqueeShift: shot.scroll * i,
                         size: CGSize(width: 680, height: scene.height), to: url)
@@ -90,6 +91,8 @@ public enum PreviewRenderer {
         let pomodoro = try load("pomodoro")
         let pair = try load("pair")
         let calendar = try load("calendar")
+        let detail = try load("calendar-detail")
+        let body = try load("body")
         let approval = try load("approval")
         let day = try load("day")
         let banner = try load("banner")
@@ -172,12 +175,34 @@ public enum PreviewRenderer {
             return v
         }
 
+        // The gauges as the fixture took them, 5 min after a cup, moved so
+        // that moment is the scene's start.
+        var gauges = body
+        let gaugeShift = now - ((body.body?.water?.lastMs ?? 0) + 5 * 60_000)
+        func moved(_ g: GaugeView?) -> GaugeView? {
+            g.map {
+                var g = $0
+                g.emptyAtMs = g.emptyAtMs.map { $0 + gaugeShift }
+                g.lastMs = g.lastMs.map { $0 + gaugeShift }
+                return g
+            }
+        }
+        gauges.body?.water = moved(body.body?.water)
+        gauges.body?.stretch = moved(body.body?.stretch)
+        var gaugeClosed = gauges
+        gaugeClosed.compact = CompactView(
+            kind: .body, title: "Stretch", value: "", endsAtMs: gauges.body?.stretch?.emptyAtMs,
+            totalSecs: (gauges.body?.stretch?.spanMs ?? 0) / 1000, count: 0)
+        gaugeClosed.compactSecondary = nil
+        let event = detail.calendar.detail.map { CalendarPage.event($0.key) } ?? .list
+        let edit = detail.calendar.detail.map { CalendarPage.edit($0.key) } ?? .list
+
         var truncated = approval
         truncated.agents.pending[0].truncated = true
         truncated.agents.pending[0].detail = String(
             repeating: "rm -rf build && cargo build --release --target aarch64-apple-darwin && ", count: 8)
 
-        // Twelve scenes, one per README section, none longer than about
+        // Thirteen scenes, one per README section, none longer than about
         // twelve seconds; each screen appears in one of them only.
         return [
             // The hero: closed, then the panel's main tabs, then the reason
@@ -257,7 +282,9 @@ public enum PreviewRenderer {
             Scene(
                 name: "calendar",
                 shots: [
-                    Shot(vm: calendar, secs: 3),
+                    Shot(vm: calendar, secs: 2, tab: .calendar),
+                    Shot(vm: detail, secs: 3, tab: .calendar, calendarPage: event),
+                    Shot(vm: detail, secs: 2, tab: .calendar, calendarPage: edit),
                     Shot(vm: calendar, secs: 2, expanded: false),
                     Shot(vm: starting, secs: 3, expanded: false),
                 ]),
@@ -274,7 +301,7 @@ public enum PreviewRenderer {
                     Shot(vm: banner, secs: 2, expanded: false),
                     Shot(vm: banner, secs: 3, tab: .inbox),
                 ]),
-            // The sun, then the tree growing, then Home's day card.
+            // The sun, then the tree growing, then Home's day card with each.
             Scene(
                 name: "day",
                 shots: [
@@ -283,7 +310,18 @@ public enum PreviewRenderer {
                     Shot(vm: dayAt(-1.5, tree: true), secs: 1, expanded: false),
                     Shot(vm: dayAt(4, tree: true), secs: 1, expanded: false),
                     Shot(vm: dayAt(9, tree: true), secs: 1, expanded: false),
-                    Shot(vm: dayAt(4, tree: true), secs: 3),
+                    Shot(vm: dayAt(4, tree: true), secs: 2),
+                    // With the sun, Home's card is a sky for the part of the day.
+                    Shot(vm: dayAt(6.5), secs: 3),
+                ]),
+            // The gauge in the closed notch, then Home's tanks and where
+            // they are set.
+            Scene(
+                name: "body",
+                shots: [
+                    Shot(vm: gaugeClosed, secs: 2, expanded: false),
+                    Shot(vm: gauges, secs: 3),
+                    Shot(vm: gauges, secs: 3, tab: .settings, section: .day),
                 ]),
             Scene(
                 name: "notch-priority",

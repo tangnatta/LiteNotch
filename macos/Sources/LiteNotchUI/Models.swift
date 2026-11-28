@@ -499,6 +499,23 @@ public enum HomeCardPick {
     public static let lowPct = 20
     public static let halfPct = 50
 
+    /// The cards that have something to show, in page order: the day, the
+    /// gauges, now playing (always, it is the fallback).
+    public static func pages(_ vm: ViewModel) -> [HomeCardShown] {
+        var p: [HomeCardShown] = []
+        if vm.day != nil { p.append(.day) }
+        if vm.body != nil { p.append(.body) }
+        p.append(.media)
+        return p
+    }
+
+    /// `held` (the user's own pick while the panel is open) wins while it
+    /// still has something to show.
+    public static func card(_ vm: ViewModel, nowMs: Int, held: HomeCardShown?) -> HomeCardShown {
+        if let held, pages(vm).contains(held) { return held }
+        return card(vm, nowMs: nowMs)
+    }
+
     public static func card(_ vm: ViewModel, nowMs: Int) -> HomeCardShown {
         switch vm.settings.day.homeCard {
         case .media: return .media
